@@ -6,6 +6,9 @@ import { open } from 'sqlite';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cert, getApps as getAdminApps, initializeApp as initializeAdminApp } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 
 dotenv.config();
 const app = express();
@@ -15,6 +18,34 @@ const ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').split('
 const COOKIE = 'kelasplus_session';
 const TTL = 8 * 60 * 60 * 1000;
 const DB_PATH = process.env.DB_PATH || path.join(path.dirname(fileURLToPath(import.meta.url)), 'kelasplus.sqlite');
+
+const firebaseServiceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
+let firebaseAdminApp = null;
+if (firebaseServiceAccountJson) {
+ const serviceAccount = JSON.parse(firebaseServiceAccountJson);
+ firebaseAdminApp = getAdminApps().length ? getAdminApps()[0] : initializeAdminApp({ credential: cert(serviceAccount), projectId: serviceAccount.project_id || process.env.VITE_FIREBASE_PROJECT_ID });
+ console.log('Firebase Admin SDK initialized.');
+}
+const firebaseAdminAuth = firebaseAdminApp ? getAdminAuth(firebaseAdminApp) : null;
+const firebaseAdminDb = firebaseAdminApp ? getAdminFirestore(firebaseAdminApp) : null;
+
+async function createFirebaseCustomToken(userRow) {
+ if (!firebaseAdminAuth || !firebaseAdminDb) return null;
+ const user = publicUser(userRow);
+ // Server-trusted profile write: clients are never allowed to assign their own role.
+ await firebaseAdminDb.collection('users').doc(user.id).set({
+  name: user.name,
+  username: user.username,
+  role: user.role,
+  subject: user.subject,
+  assignedClasses: user.assignedClasses,
+  avatar: user.avatar,
+  active: user.active,
+  updatedAt: new Date().toISOString()
+ }, { merge: true });
+ return firebaseAdminAuth.createCustomToken(user.id, { kelasplusRole: user.role });
+}
+
 app.disable('x-powered-by');
 app.use(cors({ origin: ORIGINS, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
@@ -113,10 +144,11 @@ app.post('/api/login',loginRateLimit,async(req,res,next)=>{
   if(!username||!password)return fail(res,400,'Username dan password wajib diisi.');
   const row=await db.get('SELECT * FROM users WHERE username=? COLLATE NOCASE AND active=1',username);
   if(!row||!verifyPassword(password,row.password_hash)){await new Promise(r=>setTimeout(r,250));return fail(res,401,'Username atau password tidak valid.');}
+  const firebaseCustomToken = await createFirebaseCustomToken(row);
   const token=crypto.randomBytes(32).toString('base64url');
   await db.run('INSERT INTO sessions(id,user_id,token_hash,expires_at) VALUES(?,?,?,?)',crypto.randomUUID(),row.id,crypto.createHash('sha256').update(token).digest('hex'),Date.now()+TTL);
   res.cookie(COOKIE,token,cookieOptions()); await audit(publicUser(row),'LOGIN','session',null);
-  res.json({success:true,user:publicUser(row)});
+  res.json({success:true,user:publicUser(row),...(firebaseCustomToken ? {firebaseCustomToken} : {})});
  } catch(e){next(e);}
 });
 app.get('/api/auth/me',auth,(req,res)=>res.json({success:true,user:req.user}));
