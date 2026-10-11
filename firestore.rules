@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasUserProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function activeUser() {
+      return hasUserProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+
+    // Users can read only their own profile. Profile and role writes must be trusted.
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid && activeUser();
+      allow create, update, delete: if false;
+    }
+
+    // Secure baseline: authenticated active users may read school records.
+    // Client writes remain blocked until role-specific validation rules are implemented.
+    match /{collection}/{document=**} {
+      allow read: if collection != 'users' && activeUser()
+        && role() in ['ADMIN', 'LEADER', 'TEACHER'];
+      allow write: if false;
+    }
+  }
+}
