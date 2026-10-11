@@ -82,17 +82,21 @@ async function createFirebaseCustomToken(user) {
 }
 async function init() {
   const users = await list('users');
-  if (!users.length) {
+  // The previous SQLite-backed version may already have written a profile-only
+  // users/{uid} document. Treat it as a profile, not as a usable login account.
+  if (!users.some(user => typeof user.passwordHash === 'string' && user.passwordHash.includes(':'))) {
     const username = clean(process.env.INITIAL_ADMIN_USERNAME);
     const password = process.env.INITIAL_ADMIN_PASSWORD || '';
     if (!username || password.length < 12) {
-      throw new Error('Firestore belum memiliki pengguna. Atur INITIAL_ADMIN_USERNAME dan INITIAL_ADMIN_PASSWORD (minimal 12 karakter) untuk membuat Admin pertama.');
+      throw new Error('Belum ada akun login di Firestore. Atur INITIAL_ADMIN_USERNAME dan INITIAL_ADMIN_PASSWORD (minimal 12 karakter) di .env.');
     }
-    const adminId = id();
+    const existing = users.find(user => clean(user.username).toLowerCase() === username.toLowerCase());
+    const adminId = existing?.id || id();
     await setDoc('users', adminId, { username, usernameLower: username.toLowerCase(), passwordHash: hashPassword(password),
-      name: 'Administrator Sekolah', nip: '', role: 'ADMIN', subject: 'Administrator',
-      assignedClasses: ['ALL'], avatar: '', active: true, createdAt: nowIso(), updatedAt: nowIso() });
-    console.log('Admin awal dibuat di Firestore dari environment.');
+      name: existing?.name || 'Administrator Sekolah', nip: existing?.nip || '', role: 'ADMIN', subject: 'Administrator',
+      assignedClasses: ['ALL'], avatar: existing?.avatar || '', active: true,
+      createdAt: existing?.createdAt || nowIso(), updatedAt: nowIso() }, true);
+    console.log('Akun Admin login disiapkan di Firestore dari environment.');
   }
   const classes = await list('classes');
   if (!classes.length) {
