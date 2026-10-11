@@ -402,6 +402,20 @@ export default function App() {
               </>
             )}
 
+            {currentUser.role === 'LEADER' && (
+              <>
+                <button onClick={() => { setActiveTab('leader_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'leader_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <BarChart2 className="w-4 h-4 text-amber-400" /> Dashboard Leader
+                </button>
+                <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Users className="w-4 h-4 text-emerald-400" /> Monitoring Siswa
+                </button>
+                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Profil
+                </button>
+              </>
+            )}
+
             {currentUser.role === 'ADMIN' && (
               <>
                 <button onClick={() => { setActiveTab('admin_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
@@ -760,6 +774,22 @@ export default function App() {
         )}
 
         {/* ADMIN - OVERVIEW */}
+        {currentUser.role === 'LEADER' && activeTab === 'leader_overview' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Dashboard Leader</h1><p className="text-xs text-slate-500 mt-1">Pemantauan umum kelas, siswa, dan aktivitas pembelajaran tanpa akses pengaturan administrator.</p></div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Total Guru</span><p className="text-2xl font-black text-blue-800 mt-1">{users.filter(u => u.role === 'TEACHER').length}</p></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Total Rombel</span><p className="text-2xl font-black text-purple-600 mt-1">{classesList.length}</p></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Total Siswa</span><p className="text-2xl font-black text-emerald-600 mt-1">{students.length}</p></div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><div className="p-4 border-b border-slate-100"><h2 className="font-bold text-slate-800">Ringkasan Rombel</h2></div>
+              <table className="w-full text-left text-xs"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Kelas</th><th className="p-3">Tingkat</th><th className="p-3">Jumlah Siswa</th><th className="p-3">Wali Kelas</th></tr></thead><tbody className="divide-y divide-slate-100">
+                {classesList.map(c => <tr key={c.id}><td className="p-3 font-bold">{c.name}</td><td className="p-3">{c.grade}</td><td className="p-3">{students.filter(st => st.class === c.name).length}</td><td className="p-3">{c.homeroomTeacher || 'Belum ditentukan'}</td></tr>)}
+              </tbody></table>
+            </div>
+          </div>
+        )}
+
         {currentUser.role === 'ADMIN' && activeTab === 'admin_overview' && (
           <div className="space-y-6">
             <div>
