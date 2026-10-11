@@ -559,6 +559,9 @@ export default function App() {
                 <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Users className="w-4 h-4 text-amber-400" /> Learning Map
                 </button>
+                <button onClick={() => { setActiveTab('reports'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'reports' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Printer className="w-4 h-4 text-purple-400" /> Laporan & PDF
+                </button>
                 <button onClick={() => { setActiveTab('ai'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'ai' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Bot className="w-4 h-4 text-cyan-400" /> AI Assistant
                 </button>
@@ -797,18 +800,18 @@ export default function App() {
                   <option value="ALL">Semua kelas yang diampu</option>{teacherAssignedClasses.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>Kelas {c}</option>)}
                 </select>
                 <input type="text" placeholder="Cari nama/NISN..." value={studentSearchTerm} onChange={e => setStudentSearchTerm(e.target.value)} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs" />
-                <button onClick={() => setLearningTaskCount(n => n + 1)} className="px-3 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold">+ Tambah Tugas</button>
+                <button onClick={handleAddLearningTask} className="px-3 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold">+ Tambah Tugas</button>
               </div>
             </div>
-            <p className="text-xs text-slate-500">Mata pelajaran: <b>{currentUser.subject || 'yang diampu'}</b> · {learningTaskCount} tugas aktif · Nilai 0–100. Rata-rata dihitung dari nilai tugas yang sudah disimpan.</p>
+            <p className="text-xs text-slate-500">Mata pelajaran: <b>{currentUser.subject || 'yang diampu'}</b> · {teacherLearningTasks.length} tugas aktif milik akun Anda · Nilai 0–100.</p>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
               <table className="w-full text-left text-xs min-w-[900px]">
-                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3 text-center">Kehadiran</th>{Array.from({length:learningTaskCount},(_,i)=><th key={i+1} className="p-3 text-center">Tugas {i+1}</th>)}<th className="p-3 text-center">Rata-rata</th><th className="p-3 text-center">Simpan</th><th className="p-3 text-center">Status</th></tr></thead>
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3 text-center">Kehadiran</th>{teacherLearningTasks.map(task=><th key={task.id} className="p-3 text-center"><div>{task.title}</div><div className="text-[10px] normal-case text-slate-400 mt-1">Tugas {task.assignmentNo}</div><button type="button" title={'Hapus '+task.title} disabled={teacherLearningTasks.length<=1} onClick={()=>handleDeleteLearningTask(task)} className="mt-1 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-rose-50 text-rose-700 normal-case disabled:opacity-30"><Trash2 className="w-3 h-3"/> Hapus</button></th>)}<th className="p-3 text-center">Rata-rata</th><th className="p-3 text-center">Simpan</th><th className="p-3 text-center">Status</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredStudents.map(std => <tr key={std.id} className="hover:bg-slate-50">
                     <td className="p-3 font-bold text-slate-800">{std.name}</td><td className="p-3 font-bold text-blue-800">{std.class}</td>
                     <td className="p-3 text-center font-mono">{std.attendanceRate == null ? 'Belum ada data' : std.attendanceRate + '%'}</td>
-                    {Array.from({length:learningTaskCount},(_,i)=>i+1).map(no=><td key={no} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={'Nilai tugas '+no+' '+std.name} value={gradeDrafts[std.id]?.[no] ?? ''} onChange={e=>setGradeDrafts(prev=>({...prev,[std.id]:{...(prev[std.id]||{}),[no]:e.target.value}}))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
+                    {teacherLearningTasks.map(task=><td key={task.id} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={'Nilai '+task.title+' '+std.name} value={gradeDrafts[std.id]?.[task.assignmentNo] ?? ''} onChange={e=>setGradeDrafts(prev=>({...prev,[std.id]:{...(prev[std.id]||{}),[task.assignmentNo]:e.target.value}}))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
                     <td className="p-3 text-center font-bold">{std.averageScore == null ? '—' : std.averageScore+'%'}</td>
                     <td className="p-2 text-center"><button onClick={()=>handleSaveStudentGrades(std)} disabled={savingGradesFor===std.id} className="px-3 py-2 rounded-lg bg-blue-800 text-white font-bold disabled:opacity-50">{savingGradesFor===std.id?'Menyimpan…':'Simpan'}</button></td>
                     <td className="p-3 text-center whitespace-nowrap">
@@ -819,7 +822,7 @@ export default function App() {
                       {std.statusFlag==='NO_DATA' && <span className="px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">Belum Ada Data</span>}
                     </td>
                   </tr>)}
-                  {!filteredStudents.length && <tr><td colSpan={learningTaskCount+6} className="p-6 text-center text-slate-500">Tidak ada siswa untuk kelas/pencarian ini.</td></tr>}
+                  {!filteredStudents.length && <tr><td colSpan={teacherLearningTasks.length+6} className="p-6 text-center text-slate-500">Tidak ada siswa untuk kelas/pencarian ini.</td></tr>}
                 </tbody>
               </table>
             </div>
