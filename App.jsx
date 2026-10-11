@@ -685,8 +685,8 @@ export default function App() {
                     <tr key={std.id} className="hover:bg-slate-50">
                       <td className="p-3 font-bold text-slate-800">{std.name}</td>
                       <td className="p-3 font-bold text-blue-800">{std.class}</td>
-                      <td className="p-3 text-center font-mono">{std.attendanceRate}%</td>
-                      <td className="p-3 text-center font-mono">{std.assignmentScore}</td>
+                      <td className="p-3 text-center font-mono">{std.attendanceRate == null ? '—' : std.attendanceRate + '%'}</td>
+                      <td className="p-3 text-center font-mono">{std.assignmentScore == null ? '—' : std.assignmentScore}</td>
                       <td className="p-3 text-center">
                         {std.statusFlag === 'GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
                         {std.statusFlag === 'NEEDS_FOLLOW_UP' && <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">⚠️ Pendampingan</span>}
@@ -893,9 +893,7 @@ export default function App() {
                 <input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
                 <input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
                 <select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">
-                  <option value="VII A">Kelas VII A</option>
-                  <option value="VII B">Kelas VII B</option>
-                  <option value="VIII A">Kelas VIII A</option>
+                  {classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}
                 </select>
                 <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
                   + Simpan Siswa
