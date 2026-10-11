@@ -151,7 +151,8 @@ app.post('/api/teachers',auth,allow('ADMIN'),async(req,res,next)=>{
   const b=req.body||{},name=String(b.name||'').trim(),username=String(b.username||'').trim(),password=String(b.password||'');
   if(!name||!username||password.length<12)return fail(res,400,'Nama, username, dan password minimal 12 karakter wajib diisi.');
   const assigned=Array.isArray(b.assignedClasses)?b.assignedClasses:[];
-  const id=crypto.randomUUID();await db.run('INSERT INTO users(id,username,password_hash,name,nip,role,subject,assigned_classes) VALUES(?,?,?,?,?,?,?,?)',id,username,hashPassword(password),name,String(b.nip||''),'TEACHER',String(b.subject||''),JSON.stringify(assigned));
+  const id=crypto.randomUUID(),subject=String(b.subject||'Umum');await db.run('INSERT INTO users(id,username,password_hash,name,nip,role,subject,assigned_classes) VALUES(?,?,?,?,?,?,?,?)',id,username,hashPassword(password),name,String(b.nip||''),'TEACHER',subject,JSON.stringify(assigned));
+  for(let assignmentNo=1;assignmentNo<=4;assignmentNo+=1) await db.run('INSERT INTO assignment_tasks(id,teacher_id,subject,assignment_no,title) VALUES(?,?,?,?,?)',crypto.randomUUID(),id,subject,assignmentNo,'Tugas '+assignmentNo);
   const row=await db.get('SELECT * FROM users WHERE id=?',id);await audit(req.user,'CREATE','user',id);res.status(201).json({success:true,user:publicUser(row)});
  } catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Username sudah digunakan.');next(e);}
 });
