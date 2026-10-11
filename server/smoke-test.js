@@ -76,9 +76,10 @@ try {
   });
   assert.equal(duplicateClass.status, 409, 'duplicate class names should be rejected');
 
+  const testNisn = 'CI' + Date.now();
   const createStudent = await request('/students', {
     method: 'POST', headers,
-    body: JSON.stringify({ name: 'CI Test Student', nisn: 'CI' + Date.now(), class: 'VII CI TEST', gender: 'L' })
+    body: JSON.stringify({ name: 'CI Test Student', nisn: testNisn, class: 'VII CI TEST', gender: 'L' })
   });
   assert.equal(createStudent.status, 201, 'admin should create a student');
   const studentData = await createStudent.json();
@@ -88,6 +89,24 @@ try {
     body: JSON.stringify({ className: 'VII CI TEST', date: '2026-10-11', records: { [studentData.student.id]: 'PRESENT' } })
   });
   assert.equal(attendance.status, 200, 'attendance should persist for a valid student/class');
+
+  const deactivateStudent = await request('/students/' + studentData.student.id, { method: 'DELETE', headers });
+  assert.equal(deactivateStudent.status, 200, 'admin should deactivate a student');
+  const deactivateClass = await request('/classes/' + classData.class.id, { method: 'DELETE', headers });
+  assert.equal(deactivateClass.status, 200, 'admin should deactivate a class with no active students');
+
+  const restoreClass = await request('/classes', {
+    method: 'POST', headers, body: JSON.stringify({ name: 'VII CI TEST', grade: 'VII' })
+  });
+  assert.equal(restoreClass.status, 200, 'posting an inactive class should restore it');
+  assert.equal((await restoreClass.json()).restored, true, 'class response should mark restored record');
+
+  const restoreStudent = await request('/students', {
+    method: 'POST', headers,
+    body: JSON.stringify({ name: 'CI Test Student Restored', nisn: testNisn, class: 'VII CI TEST', gender: 'L' })
+  });
+  assert.equal(restoreStudent.status, 200, 'posting an inactive student NISN should restore it');
+  assert.equal((await restoreStudent.json()).restored, true, 'student response should mark restored record');
 
   const logout = await request('/auth/logout', { method: 'POST', headers });
   assert.equal(logout.status, 200);
