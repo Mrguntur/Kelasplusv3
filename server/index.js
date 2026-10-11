@@ -143,14 +143,39 @@ app.post('/api/teachers',auth,allow('ADMIN'),async(req,res,next)=>{
  } catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Username sudah digunakan.');next(e);}
 });
 app.post('/api/classes',auth,allow('ADMIN'),async(req,res,next)=>{
- try {const b=req.body||{},name=String(b.name||'').trim(),grade=String(b.grade||'');if(!name||!['VII','VIII','IX'].includes(grade))return fail(res,400,'Nama kelas dan tingkat tidak valid.');
- const id=crypto.randomUUID();await db.run('INSERT INTO classes(id,name,grade,homeroom_teacher) VALUES(?,?,?,?)',id,name,grade,String(b.homeroomTeacher||''));await audit(req.user,'CREATE','class',id);res.status(201).json({success:true,class:{id,name,grade,homeroomTeacher:b.homeroomTeacher||''}});
+ try {
+  const b=req.body||{},name=String(b.name||'').trim(),grade=String(b.grade||''),homeroomTeacher=String(b.homeroomTeacher||'');
+  if(!name||!['VII','VIII','IX'].includes(grade))return fail(res,400,'Nama kelas dan tingkat tidak valid.');
+  const existing=await db.get('SELECT * FROM classes WHERE name=?',name);
+  if(existing&&existing.active)return fail(res,409,'Nama kelas sudah digunakan.');
+  if(existing&&!existing.active){
+   await db.run('UPDATE classes SET grade=?,homeroom_teacher=?,active=1 WHERE id=?',grade,homeroomTeacher,existing.id);
+   await audit(req.user,'RESTORE','class',existing.id);
+   return res.status(200).json({success:true,restored:true,class:{id:existing.id,name,grade,homeroomTeacher}});
+  }
+  const id=crypto.randomUUID();
+  await db.run('INSERT INTO classes(id,name,grade,homeroom_teacher) VALUES(?,?,?,?)',id,name,grade,homeroomTeacher);
+  await audit(req.user,'CREATE','class',id);
+  res.status(201).json({success:true,class:{id,name,grade,homeroomTeacher}});
  }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Nama kelas sudah digunakan.');next(e);}
 });
 app.post('/api/students',auth,allow('ADMIN'),async(req,res,next)=>{
- try {const b=req.body||{},name=String(b.name||'').trim(),nisn=String(b.nisn||'').trim(),className=String(b.class||'');if(!name||!nisn||!className||!['L','P'].includes(b.gender||'L'))return fail(res,400,'Nama, NISN, kelas, dan jenis kelamin wajib valid.');
- const c=await db.get('SELECT * FROM classes WHERE name=? AND active=1',className);if(!c)return fail(res,400,'Kelas tidak ditemukan.');const id=crypto.randomUUID();
- await db.run('INSERT INTO students(id,nisn,name,class_id,gender) VALUES(?,?,?,?,?)',id,nisn,name,c.id,b.gender||'L');await audit(req.user,'CREATE','student',id);res.status(201).json({success:true,student:{id,nisn,name,class:className,gender:b.gender||'L',status:'ACTIVE'}});
+ try {
+  const b=req.body||{},name=String(b.name||'').trim(),nisn=String(b.nisn||'').trim(),className=String(b.class||''),gender=b.gender||'L';
+  if(!name||!nisn||!className||!['L','P'].includes(gender))return fail(res,400,'Nama, NISN, kelas, dan jenis kelamin wajib valid.');
+  const c=await db.get('SELECT * FROM classes WHERE name=? AND active=1',className);
+  if(!c)return fail(res,400,'Kelas tidak ditemukan.');
+  const existing=await db.get('SELECT * FROM students WHERE nisn=?',nisn);
+  if(existing&&existing.active)return fail(res,409,'NISN sudah terdaftar.');
+  if(existing&&!existing.active){
+   await db.run('UPDATE students SET name=?,class_id=?,gender=?,active=1 WHERE id=?',name,c.id,gender,existing.id);
+   await audit(req.user,'RESTORE','student',existing.id,{className});
+   return res.status(200).json({success:true,restored:true,student:{id:existing.id,nisn,name,class:className,gender,status:'ACTIVE'}});
+  }
+  const id=crypto.randomUUID();
+  await db.run('INSERT INTO students(id,nisn,name,class_id,gender) VALUES(?,?,?,?,?)',id,nisn,name,c.id,gender);
+  await audit(req.user,'CREATE','student',id);
+  res.status(201).json({success:true,student:{id,nisn,name,class:className,gender,status:'ACTIVE'}});
  }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'NISN sudah terdaftar.');next(e);}
 });
 app.post('/api/attendance',auth,async(req,res,next)=>{
