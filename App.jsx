@@ -551,15 +551,35 @@ export default function App() {
         {currentUser.role === 'TEACHER' && activeTab === 'dashboard' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1>
-                <p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran SMPN 2 Bajuin | Tahun 2026/2027</p>
-              </div>
-              <button onClick={() => setActiveTab('attendance')} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" /> Input Presensi Hari Ini
-              </button>
+              <div><h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1><p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran UPTD SMPN 2 Bajuin · Tahun {systemSettings.academicYear}</p></div>
+              <button onClick={() => setActiveTab('attendance')} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
             </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Kelas Pengampuan</span><p className="text-2xl font-black text-blue-800 mt-1">{teacherAssignedClasses.length}</p><p className="text-[10px] text-slate-500 mt-1">{teacherAssignedClasses.join(', ') || 'Belum ditentukan'}</p></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jumlah Siswa Diampu</span><p className="text-2xl font-black text-emerald-600 mt-1">{students.filter(s => teacherAssignedClasses.includes('ALL') || teacherAssignedClasses.includes(s.class)).length}</p></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jurnal Tersimpan</span><p className="text-2xl font-black text-purple-600 mt-1">{journals.length}</p><button onClick={() => setActiveTab('journal')} className="text-[10px] text-blue-800 font-bold mt-2">Buka Smart Journal →</button></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Status Asisten AI</span><p className="text-sm font-black text-cyan-700 mt-2">{isServerOnline ? 'Backend terhubung' : 'Backend belum terhubung'}</p><button onClick={() => setActiveTab('ai')} className="text-[10px] text-blue-800 font-bold mt-2">Buka AI Assistant →</button></div>
+            </div>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><h2 className="font-bold text-slate-800">Langkah cepat</h2><div className="flex flex-wrap gap-3 mt-4"><button onClick={() => setActiveTab('attendance')} className="px-4 py-2 rounded-xl bg-blue-50 text-blue-800 text-xs font-bold">Absensi Cepat</button><button onClick={() => setActiveTab('journal')} className="px-4 py-2 rounded-xl bg-purple-50 text-purple-800 text-xs font-bold">Isi Smart Journal</button><button onClick={() => setActiveTab('students')} className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold">Input Nilai Tugas</button></div></div>
+          </div>
+        )}
 
+        {/* LEADER - OVERVIEW */}
+        {currentUser.role === 'LEADER' && activeTab === 'leader_overview' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Dashboard Leader</h1><p className="text-xs text-slate-500 mt-1">Ringkasan guru, kelas, dan siswa. Buka daftar lengkap melalui tombol Selengkapnya.</p></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Guru Aktif</p><p className="text-2xl font-black text-blue-800">{users.filter(u => u.role === 'TEACHER' && u.active).length} Guru</p><div className="mt-3 space-y-2">{users.filter(u => u.role === 'TEACHER' && u.active).slice(0,5).map(u => <p key={u.id} className="text-xs text-slate-700">{u.name} <span className="text-slate-400">· {u.subject || 'Mapel belum diisi'}</span></p>)}</div><button onClick={() => setActiveTab('admin_teachers')} className="mt-4 text-xs font-bold text-blue-800 hover:underline">Selengkapnya: Daftar Guru →</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Kelas Aktif</p><p className="text-2xl font-black text-purple-600">{classesList.length} Kelas</p><div className="mt-3 space-y-2">{classesList.slice(0,5).map(k => <p key={k.id} className="text-xs text-slate-700">Kelas {k.name} <span className="text-slate-400">· {students.filter(s => s.class === k.name).length} siswa</span></p>)}</div><button onClick={() => setActiveTab('admin_classes')} className="mt-4 text-xs font-bold text-purple-700 hover:underline">Selengkapnya: Daftar Kelas →</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Siswa Aktif</p><p className="text-2xl font-black text-emerald-600">{students.length} Siswa</p><div className="mt-3 space-y-2">{students.slice(0,5).map(s => <p key={s.id} className="text-xs text-slate-700">{s.name} <span className="text-slate-400">· {s.class}</span></p>)}</div><button onClick={() => setActiveTab('admin_students')} className="mt-4 text-xs font-bold text-emerald-700 hover:underline">Selengkapnya: Daftar Siswa →</button></div>
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN - OVERVIEW */}
+        {currentUser.role === 'ADMIN' && activeTab === 'admin_overview' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Dashboard Performa Sekolah</h1><p className="text-xs text-slate-500 mt-1">Ringkasan akun guru, kelas, dan siswa UPTD SMPN 2 Bajuin.</p></div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Guru Aktif</p><p className="text-2xl font-black text-blue-800">{users.filter(u => u.role === 'TEACHER' && u.active).length} Guru</p><div className="mt-3 space-y-2">{users.filter(u => u.role === 'TEACHER' && u.active).slice(0,5).map(u => <p key={u.id} className="text-xs text-slate-700">{u.name} <span className="text-slate-400">· {u.subject || 'Mapel belum diisi'}</span></p>)}</div><button onClick={() => setActiveTab('admin_teachers')} className="mt-4 text-xs font-bold text-blue-800 hover:underline">Selengkapnya: Manajemen Guru →</button></div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Kelas Aktif</p><p className="text-2xl font-black text-purple-600">{classesList.length} Kelas</p><div className="mt-3 space-y-2">{classesList.slice(0,5).map(k => <p key={k.id} className="text-xs text-slate-700">Kelas {k.name} <span className="text-slate-400">· {students.filter(s => s.class === k.name).length} siswa</span></p>)}</div><button onClick={() => setActiveTab('admin_classes')} className="mt-4 text-xs font-bold text-purple-700 hover:underline">Selengkapnya: Manajemen Kelas →</button></div>
