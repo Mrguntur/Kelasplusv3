@@ -33,3 +33,11 @@ Do not deploy with Firestore test mode or unrestricted rules. The included `fire
 
 ## Migration status
 This commit adds the Firebase Web SDK, environment-based initialization, starter Firestore rules, and this guide. It does **not** yet replace the Express/SQLite authentication and API operations. Keep the current API enabled until login, data reads/writes, user provisioning, authorization, and migration of existing data have been implemented and tested. The application is not fully migrated yet.
+
+
+## Username/password login with Firebase Authentication
+The login screen continues to accept the existing username and password. When the backend has `FIREBASE_SERVICE_ACCOUNT_JSON` configured, it verifies the existing credentials on the server, creates a Firebase custom token for the same internal user ID, and writes that user's trusted profile to `users/{uid}`. The browser exchanges the custom token using Firebase Authentication. This avoids exposing service-account credentials and does not let the browser choose its role.
+
+Configure `FIREBASE_SERVICE_ACCOUNT_JSON` as a **backend-only secret** in the hosting provider, using the full JSON contents of a service-account key for the same Firebase project. Never put it in `VITE_*` variables or commit it to GitHub. If this variable is absent, the app remains on the existing backend session flow; Firebase Authentication is not yet active for that deployment.
+
+**Migration status:** this is the first authentication bridge only. Existing school data reads/writes still use the Express/SQLite API. Firestore client writes remain denied by the restrictive rules until the data layer is migrated and role-specific rules are tested. Do not remove the existing backend or deploy permissive rules yet.
