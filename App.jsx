@@ -483,7 +483,7 @@ export default function App() {
               </>
             )}
 
-          </nav>          </nav>
+          </nav>
         </div>
 
         <div className="p-4 border-t border-slate-800 flex items-center justify-between">
