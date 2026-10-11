@@ -196,7 +196,7 @@ app.post('/api/attendance',auth,async(req,res,next)=>{
  await audit(req.user,'UPSERT','attendance',null,{className,date,count:Object.keys(records).length});res.json({success:true,message:'Presensi tersimpan.'});
  }catch(e){if(e.statusCode)return fail(res,e.statusCode,e.message);next(e);}
 });
-app.post('/api/grades',auth,async(req,res,next)=>{
+app.post('/api/grades',auth,allow('ADMIN','TEACHER'),async(req,res,next)=>{
  try {
   const b=req.body||{},studentId=String(b.studentId||''),subject=String(b.subject||req.user.subject||'').trim(),assignmentNo=Number(b.assignmentNo),score=b.score===null||b.score===''?null:Number(b.score);
   if(!studentId||!subject||![1,2,3,4].includes(assignmentNo)||!(score===null||(Number.isFinite(score)&&score>=0&&score<=100)))return fail(res,400,'Data nilai tidak valid. Pilih tugas 1–4 dan nilai 0–100.');
@@ -249,7 +249,15 @@ app.delete('/api/users/:id',auth,allow('ADMIN'),async(req,res,next)=>{
 });
 app.patch('/api/classes/:id',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const old=await db.get('SELECT * FROM classes WHERE id=?',req.params.id);if(!old)return fail(res,404,'Kelas tidak ditemukan.');const b=req.body||{},name=String(b.name===undefined?old.name:b.name).trim(),grade=b.grade||old.grade;if(!name||!['VII','VIII','IX'].includes(grade))return fail(res,400,'Data kelas tidak valid.');
- await db.run('UPDATE classes SET name=?,grade=?,homeroom_teacher=? WHERE id=?',name,grade,String(b.homeroomTeacher===undefined?old.homeroom_teacher:b.homeroomTeacher),old.id);await audit(req.user,'UPDATE','class',old.id);res.json({success:true});
+ await db.run('UPDATE classes SET name=?,grade=?,homeroom_teacher=? WHERE id=?',name,grade,String(b.homeroomTeacher===undefined?old.homeroom_teacher:b.homeroomTeacher),old.id);
+ if(name!==old.name){
+  const teacherRows=await db.all("SELECT id,assigned_classes FROM users WHERE role='TEACHER'");
+  for(const teacher of teacherRows){
+   let assigned=[];try{assigned=JSON.parse(teacher.assigned_classes||'[]');}catch{}
+   if(assigned.includes(old.name)){const updated=assigned.map(x=>x===old.name?name:x);await db.run('UPDATE users SET assigned_classes=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',JSON.stringify(updated),teacher.id);}
+  }
+ }
+ await audit(req.user,'UPDATE','class',old.id,{previousName:old.name,name});res.json({success:true});
  }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Nama kelas sudah digunakan.');next(e);}
 });
 app.delete('/api/classes/:id',auth,allow('ADMIN'),async(req,res,next)=>{
