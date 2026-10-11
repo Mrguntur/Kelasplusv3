@@ -26,6 +26,7 @@ await db.exec("CREATE TABLE IF NOT EXISTS classes(id TEXT PRIMARY KEY,name TEXT 
 await db.exec("CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,nisn TEXT NOT NULL UNIQUE,name TEXT NOT NULL,class_id TEXT NOT NULL REFERENCES classes(id),gender TEXT NOT NULL DEFAULT 'L' CHECK(gender IN ('L','P')),active INTEGER NOT NULL DEFAULT 1,created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
 await db.exec("CREATE TABLE IF NOT EXISTS attendance_records(id TEXT PRIMARY KEY,student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,date TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('PRESENT','ABSENT','SICK','PERMISSION','LATE')),recorded_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(student_id,date));");
 await db.exec("CREATE TABLE IF NOT EXISTS journals(id TEXT PRIMARY KEY,teacher_id TEXT NOT NULL REFERENCES users(id),class_id TEXT NOT NULL REFERENCES classes(id),date TEXT NOT NULL,topic TEXT NOT NULL,method TEXT DEFAULT '',pulse TEXT DEFAULT '',text TEXT DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);");
+await db.exec("CREATE TABLE IF NOT EXISTS assignment_scores(id TEXT PRIMARY KEY,student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,subject TEXT NOT NULL,assignment_no INTEGER NOT NULL CHECK(assignment_no BETWEEN 1 AND 4),score REAL CHECK(score BETWEEN 0 AND 100),recorded_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(student_id,subject,assignment_no));");
 await db.exec("CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,revoked_at INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
 await db.exec("CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_by TEXT REFERENCES users(id),updated_at TEXT DEFAULT CURRENT_TIMESTAMP);");
 await db.exec("CREATE TABLE IF NOT EXISTS audit_logs(id TEXT PRIMARY KEY,actor_user_id TEXT REFERENCES users(id),action TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT,details_json TEXT DEFAULT '{}',created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
@@ -121,6 +122,7 @@ app.get('/api/bootstrap',auth,async(req,res,next)=>{
   const allAttendance=await db.all('SELECT a.*,c.name class_name FROM attendance_records a JOIN classes c ON c.id=a.class_id ORDER BY a.date DESC');
   const allJournals=await db.all('SELECT j.*,u.username teacher_username,u.name teacher_name,c.name class_name FROM journals j JOIN users u ON u.id=j.teacher_id JOIN classes c ON c.id=j.class_id ORDER BY j.date DESC LIMIT 1000');
   const allUsers=await db.all('SELECT * FROM users ORDER BY name');
+  const allGrades=await db.all('SELECT g.*,s.name student_name,s.nisn,s.class_id,c.name class_name FROM assignment_scores g JOIN students s ON s.id=g.student_id JOIN classes c ON c.id=s.class_id ORDER BY s.name,g.assignment_no');
   const settingsRows=await db.all("SELECT key,value FROM app_settings WHERE key NOT LIKE '%key%'");
   const assigned=req.user.assignedClasses || [];
   const visibleClasses=allClasses.filter(c=>req.user.role!=='TEACHER'||assigned.includes('ALL')||assigned.includes(c.name));
@@ -129,7 +131,8 @@ app.get('/api/bootstrap',auth,async(req,res,next)=>{
   const journals=allJournals.filter(j=>req.user.role!=='TEACHER'||j.teacher_id===req.user.id).map(j=>({id:j.id,teacherUsername:j.teacher_username,teacherName:j.teacher_name,class:j.class_name,date:j.date,month:j.date.slice(5,7),topic:j.topic,method:j.method,pulse:j.pulse,text:j.text}));
   const attendanceRecords=allAttendance.filter(a=>visibleIds.has(a.class_id)).map(a=>({class:a.class_name,date:a.date,student_id:a.student_id,status:a.status}));
   const users=allUsers.filter(u=>req.user.role==='ADMIN'||req.user.role==='LEADER'||u.id===req.user.id).map(publicUser);
-  res.json({success:true,users,classes:visibleClasses.map(c=>({id:c.id,name:c.name,grade:c.grade,totalStudents:students.filter(s=>s.class===c.name).length,homeroomTeacher:c.homeroom_teacher})),students,journals,attendanceRecords,settings:Object.assign({schoolName:'UPTD SMPN 2 BAJUIN',academicYear:'2026/2027'},Object.fromEntries(settingsRows))});
+  const assignmentScores=allGrades.filter(g=>visibleIds.has(g.class_id)).map(g=>({id:g.id,studentId:g.student_id,studentName:g.student_name,nisn:g.nisn,class:g.class_name,subject:g.subject,assignmentNo:g.assignment_no,score:g.score}));
+  res.json({success:true,users,classes:visibleClasses.map(c=>({id:c.id,name:c.name,grade:c.grade,totalStudents:students.filter(s=>s.class===c.name).length,homeroomTeacher:c.homeroom_teacher})),students,journals,attendanceRecords,assignmentScores,settings:Object.assign({schoolName:'UPTD SMPN 2 BAJUIN',academicYear:'2026/2027'},Object.fromEntries(settingsRows))});
  } catch(e){next(e);}
 });
 app.get('/api/users',auth,allow('ADMIN','LEADER'),async(req,res,next)=>{try{const rows=await db.all('SELECT * FROM users ORDER BY name');res.json({success:true,users:rows.map(publicUser)});}catch(e){next(e);}});
@@ -193,6 +196,20 @@ app.post('/api/attendance',auth,async(req,res,next)=>{
  await audit(req.user,'UPSERT','attendance',null,{className,date,count:Object.keys(records).length});res.json({success:true,message:'Presensi tersimpan.'});
  }catch(e){if(e.statusCode)return fail(res,e.statusCode,e.message);next(e);}
 });
+app.post('/api/grades',auth,async(req,res,next)=>{
+ try {
+  const b=req.body||{},studentId=String(b.studentId||''),subject=String(b.subject||req.user.subject||'').trim(),assignmentNo=Number(b.assignmentNo),score=b.score===null||b.score===''?null:Number(b.score);
+  if(!studentId||!subject||![1,2,3,4].includes(assignmentNo)||!(score===null||(Number.isFinite(score)&&score>=0&&score<=100)))return fail(res,400,'Data nilai tidak valid. Pilih tugas 1–4 dan nilai 0–100.');
+  const student=await db.get('SELECT s.id,s.class_id,c.name class_name FROM students s JOIN classes c ON c.id=s.class_id WHERE s.id=? AND s.active=1 AND c.active=1',studentId);
+  if(!student)return fail(res,404,'Siswa aktif tidak ditemukan.');
+  if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(student.class_name))return fail(res,403,'Anda tidak ditugaskan pada kelas siswa ini.');
+  const existing=await db.get('SELECT id FROM assignment_scores WHERE student_id=? AND subject=? AND assignment_no=?',studentId,subject,assignmentNo);
+  const id=existing?.id||crypto.randomUUID();
+  await db.run('INSERT INTO assignment_scores(id,student_id,subject,assignment_no,score,recorded_by) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject,assignment_no) DO UPDATE SET score=excluded.score,recorded_by=excluded.recorded_by,updated_at=CURRENT_TIMESTAMP',id,studentId,subject,assignmentNo,score,req.user.id);
+  await audit(req.user,'UPSERT','assignment_score',id,{studentId,subject,assignmentNo,score});
+  res.json({success:true,score:{id,studentId,subject,assignmentNo,score}});
+ }catch(e){next(e);}
+});
 app.post('/api/journals',auth,async(req,res,next)=>{
  try {const b=req.body||{},className=String(b.class||''),date=b.date,topic=String(b.topic||'').trim();if(!className||!validDate(date)||!topic)return fail(res,400,'Kelas, tanggal, dan topik wajib diisi.');
  if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(className))return fail(res,403,'Anda tidak ditugaskan pada kelas ini.');
@@ -203,7 +220,18 @@ app.post('/api/journals',auth,async(req,res,next)=>{
 app.post('/api/ai/teaching-recommendations',auth,async(req,res,next)=>{
  try {const b=req.body||{};if(!String(b.topic||'').trim())return fail(res,400,'Topik wajib diisi.');if(!process.env.GEMINI_API_KEY)return fail(res,503,'AI belum dikonfigurasi pada server.');
  const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+(process.env.GEMINI_MODEL||'gemini-2.5-flash')+':generateContent?key='+encodeURIComponent(process.env.GEMINI_API_KEY),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Anda konsultan pedagogi SMP Indonesia. Buat 3 rekomendasi mengajar praktis. Kembalikan JSON array murni dengan id,title,type,duration,objective,steps (array string). Mata pelajaran: '+String(b.subject||'').slice(0,100)+'. Topik: '+String(b.topic).slice(0,300)+'. Kondisi: '+String(b.condition||'').slice(0,200)+'.'}]}]})});
- const data=await response.json();if(!response.ok)return fail(res,502,'Layanan AI gagal merespons.');const raw=data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text||'';const match=raw.match(/\[[\s\S]*\]/);if(!match)return fail(res,502,'Format respons AI tidak dikenali.');res.json({success:true,recommendations:JSON.parse(match[0])});
+ const data=await response.json();
+ if(!response.ok){
+  const detail=String(data.error&&data.error.message||'').slice(0,240);
+  console.error('Gemini API error:',response.status,detail);
+  if(response.status===400||response.status===403) return fail(res,502,'Gemini menolak permintaan. Periksa GEMINI_API_KEY di file .env dan pastikan API aktif.'+(detail?' Detail: '+detail:''));
+  if(response.status===404) return fail(res,502,'Model Gemini tidak ditemukan. Periksa GEMINI_MODEL di file .env.');
+  if(response.status===429) return fail(res,503,'Kuota Gemini sedang habis atau terlalu banyak permintaan. Coba lagi nanti.');
+  return fail(res,502,'Layanan Gemini sedang gagal (HTTP '+response.status+'). Coba lagi nanti.');
+ }
+ const raw=data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text||'';
+ const match=raw.match(/\[[\s\S]*\]/);if(!match)return fail(res,502,'Gemini merespons tetapi format rekomendasi tidak dikenali. Coba ubah topik.');
+ try {res.json({success:true,recommendations:JSON.parse(match[0])});}catch(parseError){return fail(res,502,'Respons Gemini tidak dapat dibaca. Silakan coba lagi.');}
  }catch(e){next(e);}
 });
 app.patch('/api/users/:id',auth,allow('ADMIN'),async(req,res,next)=>{
