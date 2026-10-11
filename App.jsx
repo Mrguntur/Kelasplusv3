@@ -142,7 +142,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Login gagal.');
       setCurrentUser(data.user);
-      setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
+      setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
     } catch (err) {
       setLoginError(err.message || 'Server tidak dapat dihubungi. Pastikan backend berjalan.');
     } finally {
@@ -650,7 +650,7 @@ export default function App() {
         )}
 
         {/* TEACHER - LEARNING MAP */}
-        {currentUser.role === 'TEACHER' && activeTab === 'students' && (
+        {(currentUser.role === 'TEACHER' || currentUser.role === 'LEADER') && activeTab === 'students' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
