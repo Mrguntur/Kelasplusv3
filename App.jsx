@@ -636,11 +636,9 @@ export default function App() {
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
-              <div className="p-4 bg-slate-50 flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</span>
-                <button onClick={handleMarkAllPresent} className="px-3.5 py-1.5 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">
-                  ✓ Tandai Semua Hadir
-                </button>
+              <div className="p-4 bg-slate-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <div><p className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</p><p className={`text-[11px] font-bold mt-1 ${attendanceSaveStatus === 'saved' ? 'text-emerald-700' : attendanceSaveStatus === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>{attendanceSaveStatus === 'saved' ? '✓ Presensi tersimpan di database' : attendanceSaveStatus === 'saving' ? 'Menyimpan presensi…' : attendanceSaveStatus === 'error' ? 'Gagal menyimpan — silakan coba lagi' : '● Ada perubahan yang belum disimpan'}</p></div>
+                <div className="flex flex-wrap gap-2"><button onClick={handleMarkAllPresent} className="px-3.5 py-2 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">✓ Tandai Semua Hadir</button><button onClick={handleSaveAttendance} disabled={savingAttendance || attendanceSaveStatus === 'saved'} className="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl hover:bg-emerald-800 disabled:opacity-50 transition">{savingAttendance ? 'Menyimpan…' : 'Simpan / Kumpulkan Absen'}</button></div>
               </div>
 
               {students.filter(s => s.class === selectedClass).map((std, idx) => (
@@ -654,9 +652,9 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                    {['PRESENT', 'SICK', 'EXCUSED', 'ABSENT'].map(st => {
+                    {['PRESENT', 'SICK', 'PERMISSION', 'ABSENT'].map(st => {
                       const isActive = currentAttendance[std.id] === st;
-                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', EXCUSED: 'Izin', ABSENT: 'Alpa' }[st];
+                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', PERMISSION: 'Izin', ABSENT: 'Alpa' }[st];
                       let activeStyle = '';
                       if (st === 'PRESENT') activeStyle = 'bg-emerald-600 text-white font-bold shadow-sm';
                       if (st === 'SICK') activeStyle = 'bg-amber-500 text-white font-bold shadow-sm';
@@ -741,7 +739,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1>
-                <p className="text-xs text-slate-500 mt-1">Pemantauan pencapaian akademik dan karakter siswa</p>
+                <p className="text-xs text-slate-500 mt-1">Pemantauan siswa dan input nilai Tugas 1–4 untuk mata pelajaran {currentUser.subject || 'yang diampu'}. Nilai 0–100.</p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -759,11 +757,8 @@ export default function App() {
               <table className="w-full text-left text-xs min-w-[500px]">
                 <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
                   <tr>
-                    <th className="p-3">Nama Siswa</th>
-                    <th className="p-3">Kelas</th>
-                    <th className="p-3 text-center">Tingkat Kehadiran</th>
-                    <th className="p-3 text-center">Nilai Tugas</th>
-                    <th className="p-3 text-center">Status Pemantauan</th>
+                    <th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3 text-center">Kehadiran</th>
+                    <th className="p-3 text-center">Tugas 1</th><th className="p-3 text-center">Tugas 2</th><th className="p-3 text-center">Tugas 3</th><th className="p-3 text-center">Tugas 4</th><th className="p-3 text-center">Simpan Nilai</th><th className="p-3 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -772,7 +767,8 @@ export default function App() {
                       <td className="p-3 font-bold text-slate-800">{std.name}</td>
                       <td className="p-3 font-bold text-blue-800">{std.class}</td>
                       <td className="p-3 text-center font-mono">{std.attendanceRate == null ? '—' : std.attendanceRate + '%'}</td>
-                      <td className="p-3 text-center font-mono">{std.assignmentScore == null ? '—' : std.assignmentScore}</td>
+                      {[1,2,3,4].map(no => <td key={no} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={`Nilai tugas ${no} ${std.name}`} value={gradeDrafts[std.id]?.[no] ?? ''} onChange={e => setGradeDrafts(prev => ({ ...prev, [std.id]: { ...(prev[std.id] || {}), [no]: e.target.value } }))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
+                      <td className="p-2 text-center"><button onClick={() => handleSaveStudentGrades(std)} disabled={savingGradesFor === std.id || currentUser.role === 'LEADER'} className="px-3 py-2 rounded-lg bg-blue-800 text-white font-bold disabled:opacity-50">{savingGradesFor === std.id ? '…' : 'Simpan'}</button></td>
                       <td className="p-3 text-center">
                         {std.statusFlag === 'GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
                         {std.statusFlag === 'NEEDS_FOLLOW_UP' && <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">⚠️ Pendampingan</span>}
@@ -802,7 +798,7 @@ export default function App() {
                 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
-                  <input type="text" value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" />
+                  <select value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select>
                 </div>
 
                 <div>
@@ -927,23 +923,21 @@ export default function App() {
           </div>
         )}
 
-        {currentUser.role === 'ADMIN' && activeTab === 'admin_teachers' && (
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'LEADER') && activeTab === 'admin_teachers' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-blue-800" /> Tambah Akun Guru Baru
               </h2>
-              <form onSubmit={handleAddTeacher} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {currentUser.role === 'ADMIN' && <form onSubmit={handleAddTeacher} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <input type="text" placeholder="Nama Guru & Gelar" value={newTeacher.name} onChange={e => setNewTeacher({...newTeacher, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
                 <input type="text" placeholder="NIP" value={newTeacher.nip} onChange={e => setNewTeacher({...newTeacher, nip: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
-                <input type="text" placeholder="Mata Pelajaran" value={newTeacher.subject} onChange={e => setNewTeacher({...newTeacher, subject: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
+                <select value={newTeacher.subject} onChange={e => setNewTeacher({...newTeacher, subject: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required>{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select>
                 <input type="text" placeholder="Username Login" value={newTeacher.username} onChange={e => setNewTeacher({...newTeacher, username: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <input type="password" placeholder="Password Login" value={newTeacher.password} onChange={e => setNewTeacher({...newTeacher, password: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
-                  + Simpan Guru
-                </button>
-              </form>
+                <input type="password" minLength="12" placeholder="Password Login (min. 12 karakter)" value={newTeacher.password} onChange={e => setNewTeacher({...newTeacher, password: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
+                <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold text-slate-700 mb-2">Kelas yang diampu (pilih satu atau lebih)</p><div className="flex flex-wrap gap-3">{classesList.map(klass => <label key={klass.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={newTeacher.assignedClasses.includes(klass.name)} onChange={e => setNewTeacher(prev => ({...prev, assignedClasses: e.target.checked ? [...prev.assignedClasses, klass.name] : prev.assignedClasses.filter(x => x !== klass.name)}))} />{klass.name}</label>)}</div></div>
+                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Guru</button>
+              </form>}
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
@@ -953,7 +947,7 @@ export default function App() {
                     <th className="p-3">Nama Guru</th>
                     <th className="p-3">Mata Pelajaran</th>
                     <th className="p-3">Username</th>
-                    <th className="p-3">Kelas Pengampuan</th>
+                    <th className="p-3">Kelas Pengampuan</th><th className="p-3">Tindakan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -962,7 +956,8 @@ export default function App() {
                       <td className="p-3 font-bold text-slate-800">{t.name}</td>
                       <td className="p-3 font-bold text-blue-800">{t.subject}</td>
                       <td className="p-3 font-mono text-purple-700">{t.username}</td>
-                      <td className="p-3 font-bold text-emerald-600">{(t.assignedClasses || []).join(', ')}</td>
+                      <td className="p-3 font-bold text-emerald-600">{(t.assignedClasses || []).join(', ') || 'Belum ditentukan'}</td>
+                      <td className="p-3">{currentUser.role === 'ADMIN' && <button onClick={() => handleEditTeacher(t)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -972,37 +967,27 @@ export default function App() {
         )}
 
                 {/* ADMIN - ROMBEL KELAS */}
-        {currentUser.role === 'ADMIN' && activeTab === 'admin_classes' && (
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'LEADER') && activeTab === 'admin_classes' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Tambah Rombel Kelas Baru</h2>
-              <form onSubmit={handleAddClass} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <input type="text" placeholder="Nama Kelas (VII C)" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <select value={newClass.grade} onChange={e => setNewClass({...newClass, grade: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold"><option value="VII">Tingkat VII</option><option value="VIII">Tingkat VIII</option><option value="IX">Tingkat IX</option></select>
-                <input type="text" placeholder="Nama Wali Kelas" value={newClass.homeroomTeacher} onChange={e => setNewClass({...newClass, homeroomTeacher: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Rombel</button>
-              </form>
+              {currentUser.role === 'ADMIN' && <form onSubmit={handleAddClass} className="grid grid-cols-1 sm:grid-cols-4 gap-3"><input type="text" placeholder="Nama Kelas (VII C)" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><select value={newClass.grade} onChange={e => setNewClass({...newClass, grade: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold"><option value="VII">Tingkat VII</option><option value="VIII">Tingkat VIII</option><option value="IX">Tingkat IX</option></select><input type="text" placeholder="Nama Wali Kelas" value={newClass.homeroomTeacher} onChange={e => setNewClass({...newClass, homeroomTeacher: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" /><button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Rombel</button></form>}
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Kelas</th><th className="p-3">Tingkat</th><th className="p-3">Jumlah Siswa</th><th className="p-3">Wali Kelas</th><th className="p-3">Tindakan</th></tr></thead><tbody className="divide-y divide-slate-100">
-              {classesList.map(c => <tr key={c.id}><td className="p-3 font-bold">{c.name}</td><td className="p-3">{c.grade}</td><td className="p-3">{students.filter(st => st.class === c.name).length}</td><td className="p-3">{c.homeroomTeacher || 'Belum ditentukan'}</td><td className="p-3"><button onClick={() => handleDeactivateClass(c)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></td></tr>)}
+              {classesList.map(c => <tr key={c.id}><td className="p-3 font-bold">{c.name}</td><td className="p-3">{c.grade}</td><td className="p-3">{students.filter(st => st.class === c.name).length}</td><td className="p-3">{c.homeroomTeacher || 'Belum ditentukan'}</td><td className="p-3">{currentUser.role === 'ADMIN' && <div className="flex gap-2"><button onClick={() => handleEditClass(c)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button><button onClick={() => handleDeactivateClass(c)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></div>}</td></tr>)}
             </tbody></table></div>
           </div>
         )}
 
                 {/* ADMIN - DATA SISWA */}
-        {currentUser.role === 'ADMIN' && activeTab === 'admin_students' && (
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'LEADER') && activeTab === 'admin_students' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Tambah Data Siswa Baru</h2>
-              <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}</select>
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Siswa</button>
-              </form>
+              {currentUser.role === 'ADMIN' && <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-5 gap-3"><input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" required>{classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}</select><select value={newStudent.gender} onChange={e => setNewStudent({...newStudent, gender:e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select><button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Siswa</button></form>}
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Nama Siswa</th><th className="p-3">NISN</th><th className="p-3">Kelas</th><th className="p-3">Jenis Kelamin</th><th className="p-3">Tindakan</th></tr></thead><tbody className="divide-y divide-slate-100">
-              {students.map(student => <tr key={student.id}><td className="p-3 font-bold">{student.name}</td><td className="p-3 font-mono">{student.nisn}</td><td className="p-3">{student.class}</td><td className="p-3">{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</td><td className="p-3"><button onClick={() => handleDeactivateStudent(student)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></td></tr>)}
+              {students.map(student => <tr key={student.id}><td className="p-3 font-bold">{student.name}</td><td className="p-3 font-mono">{student.nisn}</td><td className="p-3">{student.class}</td><td className="p-3">{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</td><td className="p-3">{currentUser.role === 'ADMIN' && <div className="flex gap-2"><button onClick={() => handleEditStudent(student)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button><button onClick={() => handleDeactivateStudent(student)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></div>}</td></tr>)}
             </tbody></table></div>
           </div>
         )}
