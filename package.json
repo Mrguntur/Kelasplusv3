@@ -20,7 +20,8 @@
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "xlsx": "^0.18.5",
-    "firebase": "^11.10.0"
+    "firebase": "^11.10.0",
+    "firebase-admin": "^13.4.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
