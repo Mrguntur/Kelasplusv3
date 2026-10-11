@@ -93,7 +93,7 @@ function loginRateLimit(req,res,next) {
  const previous = loginAttempts.get(key) || { count:0, resetAt:now + 15 * 60 * 1000 };
  if (now > previous.resetAt) { previous.count = 0; previous.resetAt = now + 15 * 60 * 1000; }
  previous.count += 1; loginAttempts.set(key,previous);
- if (previous.count > 20) return fail(res,429,'Terlalu banyak percobaan login. Coba lagi setelah 15 menit.');
+ if (previous.count > 120) return fail(res,429,'Terlalu banyak percobaan login dari jaringan ini. Coba lagi setelah 15 menit.');
  if (loginAttempts.size > 5000) for (const [k,v] of loginAttempts) if (now > v.resetAt) loginAttempts.delete(k);
  next();
 }
