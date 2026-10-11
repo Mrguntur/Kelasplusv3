@@ -110,10 +110,12 @@ export default function App() {
     const key = `${selectedClass}_${attendanceDate}`;
     if (attendanceRecords[key]) {
       setCurrentAttendance(attendanceRecords[key]);
+      setAttendanceSaveStatus('saved');
     } else {
       const initial = {};
       students.filter(s => s.class === selectedClass).forEach(s => { initial[s.id] = 'PRESENT'; });
       setCurrentAttendance(initial);
+      setAttendanceSaveStatus('unsaved');
     }
   }, [selectedClass, attendanceDate, students, attendanceRecords]);
 
