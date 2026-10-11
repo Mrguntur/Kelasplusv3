@@ -621,11 +621,9 @@ export default function App() {
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
-              <div className="p-4 bg-slate-50 flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</span>
-                <button onClick={handleMarkAllPresent} className="px-3.5 py-1.5 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">
-                  ✓ Tandai Semua Hadir
-                </button>
+              <div className="p-4 bg-slate-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <div><p className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</p><p className={`text-[11px] font-bold mt-1 ${attendanceSaveStatus === 'saved' ? 'text-emerald-700' : attendanceSaveStatus === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>{attendanceSaveStatus === 'saved' ? '✓ Presensi tersimpan di database' : attendanceSaveStatus === 'saving' ? 'Menyimpan presensi…' : attendanceSaveStatus === 'error' ? 'Gagal menyimpan — silakan coba lagi' : '● Ada perubahan yang belum disimpan'}</p></div>
+                <div className="flex flex-wrap gap-2"><button onClick={handleMarkAllPresent} className="px-3.5 py-2 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">✓ Tandai Semua Hadir</button><button onClick={handleSaveAttendance} disabled={savingAttendance || attendanceSaveStatus === 'saved'} className="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl hover:bg-emerald-800 disabled:opacity-50 transition">{savingAttendance ? 'Menyimpan…' : 'Simpan / Kumpulkan Absen'}</button></div>
               </div>
 
               {students.filter(s => s.class === selectedClass).map((std, idx) => (
@@ -639,13 +637,13 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                    {['PRESENT', 'SICK', 'EXCUSED', 'ABSENT'].map(st => {
+                    {['PRESENT', 'SICK', 'PERMISSION', 'ABSENT'].map(st => {
                       const isActive = currentAttendance[std.id] === st;
-                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', EXCUSED: 'Izin', ABSENT: 'Alpa' }[st];
+                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', PERMISSION: 'Izin', ABSENT: 'Alpa' }[st];
                       let activeStyle = '';
                       if (st === 'PRESENT') activeStyle = 'bg-emerald-600 text-white font-bold shadow-sm';
                       if (st === 'SICK') activeStyle = 'bg-amber-500 text-white font-bold shadow-sm';
-                      if (st === 'EXCUSED') activeStyle = 'bg-blue-600 text-white font-bold shadow-sm';
+                      if (st === 'PERMISSION') activeStyle = 'bg-blue-600 text-white font-bold shadow-sm';
                       if (st === 'ABSENT') activeStyle = 'bg-rose-600 text-white font-bold shadow-sm';
 
                       return (
@@ -726,7 +724,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1>
-                <p className="text-xs text-slate-500 mt-1">Pemantauan pencapaian akademik dan karakter siswa</p>
+                <p className="text-xs text-slate-500 mt-1">Pemantauan siswa dan input nilai Tugas 1–4 untuk mata pelajaran {currentUser.subject || 'yang diampu'}. Nilai 0–100.</p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -746,9 +744,7 @@ export default function App() {
                   <tr>
                     <th className="p-3">Nama Siswa</th>
                     <th className="p-3">Kelas</th>
-                    <th className="p-3 text-center">Tingkat Kehadiran</th>
-                    <th className="p-3 text-center">Nilai Tugas</th>
-                    <th className="p-3 text-center">Status Pemantauan</th>
+                    <th className="p-3 text-center">Kehadiran</th><th className="p-3 text-center">Tugas 1</th><th className="p-3 text-center">Tugas 2</th><th className="p-3 text-center">Tugas 3</th><th className="p-3 text-center">Tugas 4</th><th className="p-3 text-center">Simpan Nilai</th><th className="p-3 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -756,8 +752,9 @@ export default function App() {
                     <tr key={std.id} className="hover:bg-slate-50">
                       <td className="p-3 font-bold text-slate-800">{std.name}</td>
                       <td className="p-3 font-bold text-blue-800">{std.class}</td>
-                      <td className="p-3 text-center font-mono">{std.attendanceRate}%</td>
-                      <td className="p-3 text-center font-mono">{std.assignmentScore}</td>
+                      <td className="p-3 text-center font-mono">{std.attendanceRate == null ? '—' : std.attendanceRate + '%'}</td>
+                      {[1,2,3,4].map(no => <td key={no} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={`Nilai tugas ${no} ${std.name}`} value={gradeDrafts[std.id]?.[no] ?? ''} onChange={e => setGradeDrafts(prev => ({ ...prev, [std.id]: { ...(prev[std.id] || {}), [no]: e.target.value } }))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
+                      <td className="p-2 text-center"><button onClick={() => handleSaveStudentGrades(std)} disabled={savingGradesFor === std.id || currentUser.role === 'LEADER'} className="px-3 py-2 rounded-lg bg-blue-800 text-white font-bold disabled:opacity-50">{savingGradesFor === std.id ? '…' : 'Simpan'}</button></td>
                       <td className="p-3 text-center">
                         {std.statusFlag === 'GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
                         {std.statusFlag === 'NEEDS_FOLLOW_UP' && <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">⚠️ Pendampingan</span>}
@@ -787,7 +784,7 @@ export default function App() {
                 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
-                  <input type="text" value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" />
+                  <select value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select>
                 </div>
 
                 <div>
