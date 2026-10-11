@@ -43,7 +43,7 @@ function verifyPassword(password, stored) {
  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 function publicUser(u) {
- return { id:u.id, username:u.username, name:u.name, nip:u.nip || '', role:u.role, subject:u.subject || '', assignedClasses:JSON.parse(u.assigned_classes || '[]'), avatar:u.avatar || '' };
+ return { id:u.id, username:u.username, name:u.name, nip:u.nip || '', role:u.role, subject:u.subject || '', assignedClasses:JSON.parse(u.assigned_classes || '[]'), avatar:u.avatar || '', active: Boolean(u.active) };
 }
 function fail(res, code, message) { return res.status(code).json({ success:false, message }); }
 function validDate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)); }
