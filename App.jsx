@@ -160,40 +160,29 @@ export default function App() {
     }
   };
 
-  // Attendance Handlers
+  // Persist attendance first; update the UI only after server confirmation.
   const handleStatusChange = async (studentId, status) => {
     const updatedRecord = { ...currentAttendance, [studentId]: status };
-    setCurrentAttendance(updatedRecord);
-
-    const key = `${selectedClass}_${attendanceDate}`;
-    setAttendanceRecords({ ...attendanceRecords, [key]: updatedRecord });
-
     try {
-      await fetch(`${API_BASE_URL}/attendance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord })
-      });
-    } catch (err) {
-      console.warn("Backend offline, updating locally:", err);
-    }
+      const response = await fetch(API_BASE_URL + '/attendance', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Presensi gagal disimpan.');
+      setCurrentAttendance(updatedRecord);
+      setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: updatedRecord }));
+    } catch (err) { alert(err.message || 'Presensi gagal disimpan.'); }
   };
 
-  const handleMarkAllPresent = () => {
+  const handleMarkAllPresent = async () => {
     const updatedRecord = {};
     students.filter(s => s.class === selectedClass).forEach(s => { updatedRecord[s.id] = 'PRESENT'; });
-    setCurrentAttendance(updatedRecord);
-
-    const key = `${selectedClass}_${attendanceDate}`;
-    setAttendanceRecords({ ...attendanceRecords, [key]: updatedRecord });
-
-    fetch(`${API_BASE_URL}/attendance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord })
-    }).catch(err => console.warn(err));
+    try {
+      const response = await fetch(API_BASE_URL + '/attendance', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Presensi gagal disimpan.');
+      setCurrentAttendance(updatedRecord);
+      setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: updatedRecord }));
+    } catch (err) { alert(err.message || 'Presensi gagal disimpan.'); }
   };
-
   // Journal Handlers
   const handleAutoGenerateJournal = () => {
     if (!journalTopic) {
@@ -205,128 +194,33 @@ export default function App() {
   };
 
   const handleSaveJournal = async () => {
-    if (!journalTopic) {
-      alert("Harap masukkan topik pembelajaran!");
-      return;
-    }
-    const newEntry = {
-      id: `j_${Date.now()}`,
-      teacherUsername: currentUser.username,
-      class: selectedClass,
-      date: attendanceDate,
-      month: attendanceDate.split('-')[1] || '10',
-      topic: journalTopic,
-      method: journalMethod || 'Tatap Muka Interaktif',
-      pulse: 'VERY_ACTIVE',
-      text: smartDraft || `Materi: ${journalTopic}. ${journalNote}`
-    };
-
-    setJournals([newEntry, ...journals]);
-
+    if (!journalTopic.trim()) { alert('Harap masukkan topik pembelajaran!'); return; }
     try {
-      await fetch(`${API_BASE_URL}/journals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEntry)
-      });
-      alert("✓ Jurnal Mengajar Berhasil Disimpan!");
-    } catch (err) {
-      alert("✓ Jurnal tersimpan di memori browser!");
-    }
-
-    setJournalTopic('');
-    setJournalMethod('');
-    setJournalNote('');
-    setSmartDraft('');
+      const payload = { class: selectedClass, date: attendanceDate, topic: journalTopic.trim(), method: journalMethod || 'Tatap Muka Interaktif', pulse: 'VERY_ACTIVE', text: smartDraft || ('Materi: ' + journalTopic + '. ' + journalNote) };
+      const response = await fetch(API_BASE_URL + '/journals', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Jurnal gagal disimpan.');
+      await fetchBootstrapData();
+      alert('Jurnal mengajar berhasil disimpan.');
+      setJournalTopic(''); setJournalMethod(''); setJournalNote(''); setSmartDraft('');
+    } catch (err) { alert(err.message || 'Jurnal gagal disimpan.'); }
   };
-
-  // Gemini AI Assistant Call
+  // AI requests go through the backend so the API key never reaches the browser.
   const handleGenerateAiActivities = async () => {
-    setIsGeneratingAi(true);
-    setAiRecommendations(null);
-
-    const apiKey = systemSettings.geminiApiKey?.trim();
-    if (apiKey) {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Anda adalah konsultan pedagogi SMP. Buatkan 3 rekomendasi skenario mengajar interaktif untuk:
-Mata Pelajaran: ${aiSubject}
-Topik: ${aiTopic}
-Kondisi Kelas: ${aiCondition}
-
-Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "title", "type", "duration", "objective", "steps" (array string).`
-              }]
-            }]
-          })
-        });
-
-        const data = await response.json();
-        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          const rawText = data.candidates[0].content.parts[0].text;
-          const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-          if (jsonMatch) {
-            setAiRecommendations(JSON.parse(jsonMatch[0]));
-            setIsGeneratingAi(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("Gemini API Error, fallback logic activated:", err);
-      }
-    }
-
-    // Fallback Recommendations
-    setTimeout(() => {
-      setAiRecommendations([
-        {
-          id: 1,
-          title: `Simulasi Role-Play Berpasangan (${aiSubject})`,
-          type: "Aktivitas Interaktif Kontekstual",
-          duration: "15 Menit",
-          objective: `Meningkatkan keberanian siswa pasif dalam memahami materi ${aiTopic}.`,
-          steps: [
-            "Bagi kelas menjadi kelompok berpasangan.",
-            "Berikan kartu situasi percakapan/masalah pendek.",
-            "Setiap pasangan mempraktikkan selama 2 menit dan mendapat masukan dari rekan."
-          ]
-        },
-        {
-          id: 2,
-          title: "Gallery Walk & Peer Feedback",
-          type: "Studi Kelompok Kompak",
-          duration: "20 Menit",
-          objective: "Mendorong kolaborasi dan penyampaian gagasan secara visual.",
-          steps: [
-            "Tempelkan 4 lembar kertas besar di dinding kelas.",
-            "Kelompok siswa menuliskan poin kunci materi.",
-            "Setiap kelompok rotasi memberikan catatan masukan berwarna."
-          ]
-        }
-      ]);
-      setIsGeneratingAi(false);
-    }, 600);
+    setIsGeneratingAi(true); setAiRecommendations(null);
+    try {
+      const response = await fetch(API_BASE_URL + '/ai/teaching-recommendations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject: aiSubject, topic: aiTopic, condition: aiCondition }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Rekomendasi AI gagal dibuat.');
+      setAiRecommendations(data.recommendations);
+    } catch (err) { alert(err.message || 'Layanan AI tidak tersedia.'); }
+    finally { setIsGeneratingAi(false); }
   };
-
   // Admin Operations
   const handleSaveGeminiApiKey = async (e) => {
     e.preventDefault();
-    try {
-      await fetch(`${API_BASE_URL}/settings/gemini-key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: systemSettings.geminiApiKey })
-      });
-      alert("✓ Gemini API Key Terpusat Berhasil Disimpan!");
-    } catch (err) {
-      alert("✓ API Key tersimpan!");
-    }
+    alert('Demi keamanan, kunci Gemini harus dikonfigurasi pada environment backend oleh pengelola aplikasi.');
   };
-
   const handleAddTeacher = async (e) => {
     e.preventDefault();
     if (!newTeacher.name || !newTeacher.username) return;
