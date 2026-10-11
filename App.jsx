@@ -266,6 +266,41 @@ export default function App() {
       setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
     } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
   };
+  const handleUserRoleChange = async (userId, role) => {
+    try {
+      const response = await fetch(API_BASE_URL + '/users/' + userId, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Peran akun gagal diperbarui.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Peran akun gagal diperbarui.'); }
+  };
+
+  const handleResetUserPassword = async (userId) => {
+    const password = window.prompt('Masukkan password baru minimal 12 karakter:');
+    if (!password) return;
+    if (password.length < 12) { alert('Password minimal 12 karakter.'); return; }
+    try {
+      const response = await fetch(API_BASE_URL + '/users/' + userId + '/reset-password', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Reset password gagal.');
+      alert('Password berhasil direset. Sesi akun tersebut akan berakhir.');
+    } catch (err) { alert(err.message || 'Reset password gagal.'); }
+  };
+
+  const handleToggleUserActive = async (user) => {
+    if (user.id === currentUser.id && user.active) { alert('Akun yang sedang digunakan tidak dapat dinonaktifkan.'); return; }
+    const action = user.active ? 'menonaktifkan' : 'mengaktifkan kembali';
+    if (!window.confirm('Yakin ingin ' + action + ' akun ' + user.username + '?')) return;
+    try {
+      const response = user.active
+        ? await fetch(API_BASE_URL + '/users/' + user.id, { method: 'DELETE', credentials: 'include' })
+        : await fetch(API_BASE_URL + '/users/' + user.id, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: true }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Status akun gagal diperbarui.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Status akun gagal diperbarui.'); }
+  };
+
   // Helper Lists
   const teacherAssignedClasses = currentUser?.role === 'TEACHER' ? (currentUser.assignedClasses || []) : classesList.map(c => c.name);
   const filteredStudents = students.filter(s => {
@@ -418,27 +453,17 @@ export default function App() {
 
             {currentUser.role === 'ADMIN' && (
               <>
-                <button onClick={() => { setActiveTab('admin_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <BarChart2 className="w-4 h-4 text-emerald-400" /> Dashboard Performa
-                </button>
-                <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Users className="w-4 h-4 text-amber-400" /> Manajemen Guru
-                </button>
-                <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Layers className="w-4 h-4 text-purple-400" /> Tambah Rombel Kelas
-                </button>
-                <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <UserPlus className="w-4 h-4 text-cyan-400" /> Data Siswa & Import
-                </button>
-                <button onClick={() => { setActiveTab('admin_api'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_api' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Key className="w-4 h-4 text-amber-400" /> Google API Key
-                </button>
-                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Admin
-                </button>
+                <button onClick={() => { setActiveTab('admin_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><BarChart2 className="w-4 h-4 text-emerald-400" /> Dashboard Performa</button>
+                <button onClick={() => { setActiveTab('admin_users'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_users' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-cyan-400" /> Manajemen Akun</button>
+                <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Manajemen Guru</button>
+                <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Manajemen Kelas</button>
+                <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-cyan-400" /> Manajemen Siswa</button>
+                <button onClick={() => { setActiveTab('admin_api'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_api' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Key className="w-4 h-4 text-amber-400" /> Konfigurasi AI</button>
+                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Settings className="w-4 h-4 text-slate-400" /> Pengaturan Admin</button>
               </>
             )}
-          </nav>
+
+          </nav>          </nav>
         </div>
 
         <div className="p-4 border-t border-slate-800 flex items-center justify-between">
@@ -819,6 +844,28 @@ export default function App() {
         )}
 
         {/* ADMIN - MANAJEMEN GURU */}
+        {currentUser.role === 'ADMIN' && activeTab === 'admin_users' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Manajemen Akun</h1><p className="text-xs text-slate-500 mt-1">Atur peran, reset password, dan aktif/nonaktifkan akun. Izin tetap divalidasi oleh server.</p></div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[760px]">
+                <thead className="bg-slate-100 text-slate-600 uppercase"><tr><th className="p-3">Nama</th><th className="p-3">Username</th><th className="p-3">Peran</th><th className="p-3">Status</th><th className="p-3">Tindakan</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map(u => <tr key={u.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold text-slate-800">{u.name}</td><td className="p-3 font-mono">{u.username}</td><td className="p-3">{u.role}</td>
+                    <td className="p-3"><span className={`px-2 py-1 rounded-full font-bold ${u.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{u.active ? 'Aktif' : 'Nonaktif'}</span></td>
+                    <td className="p-3"><div className="flex flex-wrap gap-2">
+                      {(u.role === 'TEACHER' || u.role === 'LEADER') && u.active && <button onClick={() => handleUserRoleChange(u.id, u.role === 'TEACHER' ? 'LEADER' : 'TEACHER')} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Jadikan {u.role === 'TEACHER' ? 'Leader' : 'Guru'}</button>}
+                      {u.active && <button onClick={() => handleResetUserPassword(u.id)} className="px-2 py-1 rounded bg-amber-50 text-amber-800 font-bold">Reset Password</button>}
+                      <button onClick={() => handleToggleUserActive(u)} disabled={u.id === currentUser.id && u.active} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold disabled:opacity-40">{u.active ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                    </div></td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {currentUser.role === 'ADMIN' && activeTab === 'admin_teachers' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
