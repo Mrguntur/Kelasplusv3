@@ -209,16 +209,45 @@ app.post('/api/attendance',auth,async(req,res,next)=>{
 });
 app.post('/api/grades',auth,allow('ADMIN','TEACHER'),async(req,res,next)=>{
  try {
-  const b=req.body||{},studentId=String(b.studentId||''),subject=String(b.subject||req.user.subject||'').trim(),assignmentNo=Number(b.assignmentNo),score=b.score===null||b.score===''?null:Number(b.score);
-  if(!studentId||!subject||![1,2,3,4].includes(assignmentNo)||!(score===null||(Number.isFinite(score)&&score>=0&&score<=100)))return fail(res,400,'Data nilai tidak valid. Pilih tugas 1–4 dan nilai 0–100.');
+  const b=req.body||{},studentId=String(b.studentId||''),subject=(req.user.role==='TEACHER'?String(req.user.subject||'Umum'):String(b.subject||req.user.subject||'Umum')).trim(),assignmentNo=Number(b.assignmentNo),score=b.score===null||b.score===''?null:Number(b.score);
+  if(!studentId||!subject||!Number.isInteger(assignmentNo)||assignmentNo<1||!(score===null||(Number.isFinite(score)&&score>=0&&score<=100)))return fail(res,400,'Data nilai tidak valid. Tugas harus valid dan nilai 0–100.');
   const student=await db.get('SELECT s.id,s.class_id,c.name class_name FROM students s JOIN classes c ON c.id=s.class_id WHERE s.id=? AND s.active=1 AND c.active=1',studentId);
   if(!student)return fail(res,404,'Siswa aktif tidak ditemukan.');
-  if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(student.class_name))return fail(res,403,'Anda tidak ditugaskan pada kelas siswa ini.');
-  const existing=await db.get('SELECT id FROM assignment_scores WHERE student_id=? AND subject=? AND assignment_no=?',studentId,subject,assignmentNo);
+  if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(student.class_name))return fail(res,403,'Anda tidak ditugaskan pada kelas ini.');
+  if(req.user.role==='TEACHER'&&!await db.get('SELECT id FROM assignment_tasks WHERE teacher_id=? AND subject=? AND assignment_no=?',req.user.id,subject,assignmentNo))return fail(res,404,'Tugas tidak ditemukan atau bukan milik akun Anda.');
+  const ownerId=req.user.id;
+  const existing=await db.get('SELECT id FROM teacher_assignment_scores WHERE student_id=? AND teacher_id=? AND subject=? AND assignment_no=?',studentId,ownerId,subject,assignmentNo);
   const id=existing?.id||crypto.randomUUID();
-  await db.run('INSERT INTO assignment_scores(id,student_id,subject,assignment_no,score,recorded_by) VALUES(?,?,?,?,?,?) ON CONFLICT(student_id,subject,assignment_no) DO UPDATE SET score=excluded.score,recorded_by=excluded.recorded_by,updated_at=CURRENT_TIMESTAMP',id,studentId,subject,assignmentNo,score,req.user.id);
+  await db.run('INSERT INTO teacher_assignment_scores(id,student_id,subject,assignment_no,score,teacher_id,recorded_by) VALUES(?,?,?,?,?,?,?) ON CONFLICT(student_id,teacher_id,subject,assignment_no) DO UPDATE SET score=excluded.score,recorded_by=excluded.recorded_by,updated_at=CURRENT_TIMESTAMP',id,studentId,subject,assignmentNo,score,ownerId,req.user.id);
   await audit(req.user,'UPSERT','assignment_score',id,{studentId,subject,assignmentNo,score});
-  res.json({success:true,score:{id,studentId,subject,assignmentNo,score}});
+  res.json({success:true,score:{id,studentId,subject,assignmentNo,score,teacherId:ownerId}});
+ }catch(e){next(e);}
+});
+app.post('/api/tasks',auth,allow('TEACHER'),async(req,res,next)=>{
+ try {
+  const title=String((req.body||{}).title||'').trim(),subject=String(req.user.subject||'Umum').trim();
+  if(!title||title.length>100)return fail(res,400,'Nama tugas wajib diisi dan maksimal 100 karakter.');
+  const latest=await db.get('SELECT MAX(assignment_no) n FROM assignment_tasks WHERE teacher_id=? AND subject=?',req.user.id,subject);
+  const assignmentNo=Number(latest?.n||0)+1,id=crypto.randomUUID();
+  await db.run('INSERT INTO assignment_tasks(id,teacher_id,subject,assignment_no,title) VALUES(?,?,?,?,?)',id,req.user.id,subject,assignmentNo,title);
+  await audit(req.user,'CREATE','assignment_task',id,{subject,assignmentNo,title});
+  res.status(201).json({success:true,task:{id,teacherId:req.user.id,subject,assignmentNo,title}});
+ }catch(e){next(e);}
+});
+app.delete('/api/tasks/:id',auth,allow('TEACHER'),async(req,res,next)=>{
+ try {
+  const task=await db.get('SELECT * FROM assignment_tasks WHERE id=? AND teacher_id=?',req.params.id,req.user.id);
+  if(!task)return fail(res,404,'Tugas tidak ditemukan atau bukan milik akun Anda.');
+  const count=await db.get('SELECT COUNT(*) n FROM assignment_tasks WHERE teacher_id=? AND subject=?',req.user.id,task.subject);
+  if(count.n<=1)return fail(res,400,'Minimal harus ada satu tugas aktif.');
+  await db.exec('BEGIN IMMEDIATE');
+  try {
+   await db.run('DELETE FROM teacher_assignment_scores WHERE teacher_id=? AND subject=? AND assignment_no=?',req.user.id,task.subject,task.assignment_no);
+   await db.run('DELETE FROM assignment_tasks WHERE id=? AND teacher_id=?',task.id,req.user.id);
+   await db.exec('COMMIT');
+  } catch(error) { await db.exec('ROLLBACK'); throw error; }
+  await audit(req.user,'DELETE','assignment_task',task.id,{subject:task.subject,assignmentNo:task.assignment_no});
+  res.json({success:true});
  }catch(e){next(e);}
 });
 app.post('/api/journals',auth,async(req,res,next)=>{
