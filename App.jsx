@@ -619,6 +619,9 @@ export default function App() {
                 <button onClick={() => { setActiveTab('reports'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'reports' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Printer className="w-4 h-4 text-purple-400" /> Laporan & PDF
                 </button>
+                <button onClick={() => { setActiveTab('reports'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'reports' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Printer className="w-4 h-4 text-purple-400" /> Laporan & PDF
+                </button>
                 <button onClick={() => { setActiveTab('ai'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'ai' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Bot className="w-4 h-4 text-cyan-400" /> AI Assistant
                 </button>
@@ -885,6 +888,24 @@ export default function App() {
             </div>
           </div>
         )}
+        {/* TEACHER - REPORTS AND PDF EXPORT */}
+        {currentUser.role === 'TEACHER' && activeTab === 'reports' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><Printer className="w-6 h-6 text-purple-700" /> Laporan & Ekspor PDF</h1><p className="text-xs text-slate-500 mt-1">Cetak rekap jurnal, absensi, dan nilai secara terpisah dengan format siap arsip.</p></div>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Kelas</label><select value={reportClass || selectedClass} onChange={e=>setReportClass(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{teacherAssignedClasses.filter(c=>c!=='ALL').map(c=><option key={c} value={c}>Kelas {c}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Awal</label><input type="date" value={reportFromDate} onChange={e=>setReportFromDate(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"/></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Akhir</label><input type="date" value={reportToDate} onChange={e=>setReportToDate(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"/></div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center mb-3"><FileText className="w-5 h-5"/></div><h2 className="font-extrabold text-slate-900">Jurnal Mengajar</h2><p className="text-xs text-slate-500 mt-2 mb-4">Tanggal, materi, metode, dan catatan refleksi jurnal pada periode terpilih.</p><button onClick={()=>generatePdfReport('journal')} className="w-full py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Cetak / Simpan PDF</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-3"><CheckCircle className="w-5 h-5"/></div><h2 className="font-extrabold text-slate-900">Rekap Absensi</h2><p className="text-xs text-slate-500 mt-2 mb-4">Daftar siswa, tanggal kehadiran, status, serta ringkasan hadir, terlambat, sakit, izin, dan alpa.</p><button onClick={()=>generatePdfReport('attendance')} className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Cetak / Simpan PDF</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center mb-3"><BarChart2 className="w-5 h-5"/></div><h2 className="font-extrabold text-slate-900">Rekap Nilai Tugas</h2><p className="text-xs text-slate-500 mt-2 mb-4">Tabel nilai tiap siswa, tugas aktif milik Anda, dan rata-rata nilai.</p><button onClick={()=>generatePdfReport('grades')} className="w-full py-2.5 rounded-xl bg-blue-800 hover:bg-blue-900 text-white text-xs font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Cetak / Simpan PDF</button></div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><b>Petunjuk:</b> pilih kelas dan rentang tanggal, lalu klik salah satu laporan. Pada dialog cetak browser, pilih <b>Simpan sebagai PDF (Save as PDF)</b>. Setiap laporan dibuat terpisah dan dilengkapi tanggal cetak serta ruang tanda tangan.</div>
+          </div>
+        )}
+
         {/* LEADER - SCHOOL-WIDE LEARNING MAP */}
         {currentUser.role === 'LEADER' && activeTab === 'students' && (
           <div className="space-y-6">
