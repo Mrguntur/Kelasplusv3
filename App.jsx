@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { firebaseConfigured } from './firebase.js';
+import { auth, firebaseConfigured } from './firebase.js';
+import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { 
   Home, Users, Calendar, BookOpen, AlertTriangle, FileText, 
   Bot, Settings, CheckCircle, Clock, Plus, BarChart2, ChevronRight, 
@@ -167,6 +168,10 @@ export default function App() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Login gagal.');
+      if (firebaseConfigured && data.firebaseCustomToken) {
+        if (!auth) throw new Error('Firebase Authentication belum siap. Periksa konfigurasi aplikasi.');
+        await signInWithCustomToken(auth, data.firebaseCustomToken);
+      }
       setCurrentUser(data.user);
       setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
     } catch (err) {
@@ -178,6 +183,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      if (auth) await signOut(auth);
       await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (err) {
       console.warn('Logout request failed:', err);
