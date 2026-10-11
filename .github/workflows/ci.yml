@@ -16,4 +16,6 @@ jobs:
           node-version: 20
       - run: npm install --no-audit --no-fund
       - run: node --check server/index.js
+      - run: node --check server/smoke-test.js
+      - run: node server/smoke-test.js
       - run: npm run build
