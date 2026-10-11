@@ -84,6 +84,13 @@ try {
   assert.equal(createStudent.status, 201, 'admin should create a student');
   const studentData = await createStudent.json();
 
+  const grade = await request('/grades', {
+    method: 'POST', headers,
+    body: JSON.stringify({ studentId: studentData.student.id, subject: 'Bahasa Inggris', assignmentNo: 1, score: 88 })
+  });
+  assert.equal(grade.status, 200, 'admin should save an assignment score');
+  assert.equal((await grade.json()).score.score, 88, 'assignment score should persist');
+
   const attendance = await request('/attendance', {
     method: 'POST', headers,
     body: JSON.stringify({ className: 'VII CI TEST', date: '2026-10-11', records: { [studentData.student.id]: 'PRESENT' } })
