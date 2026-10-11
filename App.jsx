@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -29,6 +30,11 @@ export default function App() {
   const [students, setStudents] = useState([]);
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [journals, setJournals] = useState([]);
+  const [assignmentScores, setAssignmentScores] = useState([]);
+  const [attendanceSaveStatus, setAttendanceSaveStatus] = useState('saved');
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [savingGradesFor, setSavingGradesFor] = useState('');
+  const [gradeDrafts, setGradeDrafts] = useState({});
   const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'SMP NEGERI 2 BAJUIN', academicYear: '2026/2027' });
 
   // Teacher Feature States
@@ -44,7 +50,7 @@ export default function App() {
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
 
   // Admin Feature States
-  const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: ['VII A'] });
+  const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
   const [newClass, setNewClass] = useState({ name: '', grade: 'VII', homeroomTeacher: '' });
   const [newStudent, setNewStudent] = useState({ name: '', nisn: '', class: 'VII A', gender: 'L' });
 
@@ -67,6 +73,10 @@ export default function App() {
       setClassesList(data.classes || []);
       setStudents(data.students || []);
       setJournals(data.journals || []);
+      setAssignmentScores(data.assignmentScores || []);
+      const drafts = {};
+      (data.assignmentScores || []).forEach(g => { drafts[g.studentId] = { ...(drafts[g.studentId] || {}), [g.assignmentNo]: g.score == null ? '' : String(g.score) }; });
+      setGradeDrafts(drafts);
       if (data.settings) setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' }));
       const attendanceMap = {};
       (data.attendanceRecords || []).forEach(r => {
@@ -170,27 +180,28 @@ export default function App() {
   };
 
   // Persist attendance first; update the UI only after server confirmation.
-  const handleStatusChange = async (studentId, status) => {
-    const updatedRecord = { ...currentAttendance, [studentId]: status };
-    try {
-      const response = await fetch(API_BASE_URL + '/attendance', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord }) });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message || 'Presensi gagal disimpan.');
-      setCurrentAttendance(updatedRecord);
-      setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: updatedRecord }));
-    } catch (err) { alert(err.message || 'Presensi gagal disimpan.'); }
+  const handleStatusChange = (studentId, status) => {
+    setCurrentAttendance(prev => ({ ...prev, [studentId]: status }));
+    setAttendanceSaveStatus('unsaved');
   };
 
-  const handleMarkAllPresent = async () => {
-    const updatedRecord = {};
-    students.filter(s => s.class === selectedClass).forEach(s => { updatedRecord[s.id] = 'PRESENT'; });
+  const handleSaveAttendance = async () => {
+    setSavingAttendance(true); setAttendanceSaveStatus('saving');
     try {
-      const response = await fetch(API_BASE_URL + '/attendance', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord }) });
+      const response = await fetch(API_BASE_URL + '/attendance', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: currentAttendance }) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Presensi gagal disimpan.');
-      setCurrentAttendance(updatedRecord);
-      setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: updatedRecord }));
-    } catch (err) { alert(err.message || 'Presensi gagal disimpan.'); }
+      setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: { ...currentAttendance } }));
+      setAttendanceSaveStatus('saved');
+      alert('Presensi kelas ' + selectedClass + ' tanggal ' + attendanceDate + ' berhasil disimpan (' + Object.keys(currentAttendance).length + ' siswa).');
+    } catch (err) { setAttendanceSaveStatus('error'); alert(err.message || 'Presensi gagal disimpan.'); }
+    finally { setSavingAttendance(false); }
+  };
+
+  const handleMarkAllPresent = () => {
+    const updatedRecord = {};
+    students.filter(s => s.class === selectedClass).forEach(s => { updatedRecord[s.id] = 'PRESENT'; });
+    setCurrentAttendance(updatedRecord); setAttendanceSaveStatus('unsaved');
   };
   // Journal Handlers
   const handleAutoGenerateJournal = () => {
@@ -232,14 +243,15 @@ export default function App() {
   };
   const handleAddTeacher = async (e) => {
     e.preventDefault();
-    if (!newTeacher.name.trim() || !newTeacher.username.trim() || newTeacher.password.length < 12) { alert('Nama, username, dan password minimal 12 karakter wajib diisi.'); return; }
+    if (!newTeacher.name.trim() || !newTeacher.username.trim() || newTeacher.password.length < 12 || !newTeacher.assignedClasses.length) { alert('Nama, username, password minimal 12 karakter, dan minimal satu kelas pengampuan wajib diisi.'); return; }
     try {
       const response = await fetch(API_BASE_URL + '/teachers', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTeacher) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Akun guru gagal dibuat.');
       setUsers(prev => [...prev, data.user]);
       alert('Akun guru berhasil dibuat.');
-      setNewTeacher({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: ['VII A'] });
+      await fetchBootstrapData();
+      setNewTeacher({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
     } catch (err) { alert(err.message || 'Akun guru gagal dibuat.'); }
   };
   const handleAddClass = async (e) => {
@@ -249,8 +261,8 @@ export default function App() {
       const response = await fetch(API_BASE_URL + '/classes', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newClass) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Kelas gagal ditambahkan.');
-      setClassesList(prev => [...prev, { ...data.class, totalStudents: 0 }]);
-      alert('Rombel kelas berhasil ditambahkan.');
+      await fetchBootstrapData();
+      alert(data.restored ? 'Kelas lama berhasil diaktifkan kembali.' : 'Rombel kelas berhasil ditambahkan.');
       setNewClass({ name: '', grade: 'VII', homeroomTeacher: '' });
     } catch (err) { alert(err.message || 'Kelas gagal ditambahkan.'); }
   };
@@ -261,8 +273,8 @@ export default function App() {
       const response = await fetch(API_BASE_URL + '/students', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newStudent) });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Siswa gagal ditambahkan.');
-      setStudents(prev => [...prev, { ...data.student, attendanceRate: null, assignmentScore: null, statusFlag: 'GOOD' }]);
-      alert('Data siswa berhasil disimpan.');
+      await fetchBootstrapData();
+      alert(data.restored ? 'Data siswa lama berhasil diaktifkan kembali.' : 'Data siswa berhasil disimpan.');
       setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
     } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
   };
@@ -319,6 +331,35 @@ export default function App() {
       if (!response.ok || !data.success) throw new Error(data.message || 'Status akun gagal diperbarui.');
       await fetchBootstrapData();
     } catch (err) { alert(err.message || 'Status akun gagal diperbarui.'); }
+  };
+
+  const handleEditTeacher = async (teacher) => {
+    const name=window.prompt('Nama guru:',teacher.name); if(name===null)return;
+    const nip=window.prompt('NIP:',teacher.nip||''); if(nip===null)return;
+    const subject=window.prompt('Mata pelajaran (salin salah satu):\\n'+SUBJECT_OPTIONS.join('\\n'),teacher.subject||SUBJECT_OPTIONS[0]); if(subject===null)return;
+    const classesText=window.prompt('Kelas yang diampu, pisahkan dengan koma:\\n'+classesList.map(x=>x.name).join(', '),(teacher.assignedClasses||[]).join(', ')); if(classesText===null)return;
+    const assignedClasses=classesText.split(',').map(x=>x.trim()).filter(x=>classesList.some(k=>k.name===x));
+    if(!SUBJECT_OPTIONS.includes(subject)){alert('Mata pelajaran harus dipilih dari daftar yang tersedia.');return;}
+    try{const response=await fetch(API_BASE_URL+'/users/'+teacher.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),nip:nip.trim(),subject,assignedClasses})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data guru gagal diperbarui.');await fetchBootstrapData();alert('Data guru berhasil diperbarui.');}catch(err){alert(err.message||'Data guru gagal diperbarui.');}
+  };
+  const handleEditClass = async (klass) => {
+    const name=window.prompt('Nama kelas:',klass.name);if(name===null)return;
+    const grade=window.prompt('Tingkat kelas (VII, VIII, atau IX):',klass.grade);if(grade===null)return;
+    const homeroomTeacher=window.prompt('Nama wali kelas:',klass.homeroomTeacher||'');if(homeroomTeacher===null)return;
+    if(!['VII','VIII','IX'].includes(grade.trim().toUpperCase())){alert('Tingkat kelas harus VII, VIII, atau IX.');return;}
+    try{const response=await fetch(API_BASE_URL+'/classes/'+klass.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),grade:grade.trim().toUpperCase(),homeroomTeacher:homeroomTeacher.trim()})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data kelas gagal diperbarui.');await fetchBootstrapData();alert('Data kelas berhasil diperbarui.');}catch(err){alert(err.message||'Data kelas gagal diperbarui.');}
+  };
+  const handleEditStudent = async (student) => {
+    const name=window.prompt('Nama siswa:',student.name);if(name===null)return;
+    const nisn=window.prompt('NISN:',student.nisn);if(nisn===null)return;
+    const className=window.prompt('Nama kelas tepat seperti daftar:\\n'+classesList.map(x=>x.name).join(', '),student.class);if(className===null)return;
+    const gender=window.prompt('Jenis kelamin (L/P):',student.gender||'L');if(gender===null)return;
+    if(!classesList.some(x=>x.name===className.trim())||!['L','P'].includes(gender.trim().toUpperCase())){alert('Kelas atau jenis kelamin tidak valid.');return;}
+    try{const response=await fetch(API_BASE_URL+'/students/'+student.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),nisn:nisn.trim(),class:className.trim(),gender:gender.trim().toUpperCase()})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data siswa gagal diperbarui.');await fetchBootstrapData();alert('Data siswa berhasil diperbarui.');}catch(err){alert(err.message||'Data siswa gagal diperbarui.');}
+  };
+  const handleSaveStudentGrades = async (student) => {
+    setSavingGradesFor(student.id);
+    try{for(let assignmentNo=1;assignmentNo<=4;assignmentNo+=1){const raw=gradeDrafts[student.id]?.[assignmentNo]??'',score=raw===''?null:Number(raw);if(score!==null&&(!Number.isFinite(score)||score<0||score>100))throw new Error('Nilai tugas harus antara 0 sampai 100.');const response=await fetch(API_BASE_URL+'/grades',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({studentId:student.id,subject:currentUser.subject||'Umum',assignmentNo,score})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Nilai tugas gagal disimpan.');}await fetchBootstrapData();alert('Nilai Tugas 1–4 untuk '+student.name+' berhasil disimpan.');}catch(err){alert(err.message||'Nilai tugas gagal disimpan.');}finally{setSavingGradesFor('');}
   };
 
   // Helper Lists
