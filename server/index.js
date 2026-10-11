@@ -117,7 +117,7 @@ app.get('/api/bootstrap',auth,async(req,res,next)=>{
   const students=allStudents.filter(s=>visibleIds.has(s.class_id)).map(s=>({id:s.id,nisn:s.nisn,name:s.name,class:s.class_name,gender:s.gender,status:'ACTIVE',attendanceRate:null,assignmentScore:null,statusFlag:'GOOD'}));
   const journals=allJournals.filter(j=>req.user.role!=='TEACHER'||j.teacher_id===req.user.id).map(j=>({id:j.id,teacherUsername:j.teacher_username,teacherName:j.teacher_name,class:j.class_name,date:j.date,month:j.date.slice(5,7),topic:j.topic,method:j.method,pulse:j.pulse,text:j.text}));
   const attendanceRecords=allAttendance.filter(a=>visibleIds.has(a.class_id)).map(a=>({class:a.class_name,date:a.date,student_id:a.student_id,status:a.status}));
-  const users=allUsers.filter(u=>req.user.role==='ADMIN'||u.id===req.user.id).map(publicUser);
+  const users=allUsers.filter(u=>req.user.role==='ADMIN'||req.user.role==='LEADER'||u.id===req.user.id).map(publicUser);
   res.json({success:true,users,classes:visibleClasses.map(c=>({id:c.id,name:c.name,grade:c.grade,totalStudents:students.filter(s=>s.class===c.name).length,homeroomTeacher:c.homeroom_teacher})),students,journals,attendanceRecords,settings:Object.assign({schoolName:'UPTD SMPN 2 BAJUIN',academicYear:'2026/2027'},Object.fromEntries(settingsRows))});
  } catch(e){next(e);}
 });
