@@ -24,6 +24,12 @@ In Firebase Console for `kelasplusgemi`:
 - `students/{studentId}`: `name`, `nisn`, `classId`, `gender`, `active`.
 - `attendanceRecords/{recordId}`: `studentId`, `classId`, `date`, `status`, `recordedBy`.
 - `journals/{journalId}`: `teacherId`, `classId`, `date`, `topic`, `method`, `text`.
+## Target Firestore collections
+- `users/{uid}`: `name`, `username`, `role` (ADMIN / LEADER / TEACHER), `subject`, `assignedClasses`, `active`.
+- `classes/{classId}`: `name`, `grade`, `homeroomTeacher`, `active`.
+- `students/{studentId}`: `name`, `nisn`, `classId`, `gender`, `active`.
+- `attendanceRecords/{recordId}`: `studentId`, `classId`, `date`, `status`, `recordedBy`.
+- `journals/{journalId}`: `teacherId`, `classId`, `date`, `topic`, `method`, `text`.
 - `assignmentTasks/{taskId}` and `teacherAssignmentScores/{scoreId}`.
 - `appSettings/{settingId}` and `auditLogs/{logId}`.
 - `userCredentials/{uid}`: password hash and login metadata; backend-only.

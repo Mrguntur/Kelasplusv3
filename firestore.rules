@@ -31,6 +31,8 @@ service cloud.firestore {
       allow read: if collection != 'users' && collection != 'userCredentials' && collection != 'sessions' && activeUser()
         && role() in ['ADMIN', 'LEADER', 'TEACHER'];
       allow write: if false;
+        && role() in ['ADMIN', 'LEADER', 'TEACHER'];
+      allow write: if false;
     }
   }
 }
