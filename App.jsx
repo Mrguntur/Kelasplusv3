@@ -298,15 +298,14 @@ export default function App() {
   const downloadStudentTemplate = () => {
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([
-      ['Nama Siswa', 'NISN', 'Kelas', 'Jenis Kelamin'],
-      ['Contoh: Ahmad Fauzi', '0001234567', 'VII A', 'L']
+      ['Nama Siswa', 'NISN', 'Kelas', 'Jenis Kelamin']
     ]);
     sheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
-    sheet['!autofilter'] = { ref: 'A1:D2' };
+    sheet['!autofilter'] = { ref: 'A1:D1' };
     XLSX.utils.book_append_sheet(workbook, sheet, 'Data Siswa');
     const guide = XLSX.utils.aoa_to_sheet([
       ['PETUNJUK TEMPLATE IMPOR SISWA'],
-      ['1. Hapus baris contoh sebelum mengisi data siswa sebenarnya.'],
+      ['1. Tambahkan data siswa mulai baris kedua; jangan mengubah judul kolom.'],
       ['2. Kolom wajib: Nama Siswa, NISN, Kelas, Jenis Kelamin.'],
       ['3. Format Jenis Kelamin: L untuk Laki-laki, P untuk Perempuan.'],
       ['4. Kelas harus sama persis dengan nama kelas yang sudah dibuat di KELAS+, contoh VII A.'],
