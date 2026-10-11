@@ -371,6 +371,63 @@ export default function App() {
     try{const response=await fetch(API_BASE_URL+'/students/'+student.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),nisn:nisn.trim(),class:className.trim(),gender:gender.trim().toUpperCase()})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data siswa gagal diperbarui.');await fetchBootstrapData();alert('Data siswa berhasil diperbarui.');}catch(err){alert(err.message||'Data siswa gagal diperbarui.');}
   };
   const teacherLearningTasks = assignmentTasks.filter(t => t.teacherId === currentUser?.id && t.subject === (currentUser?.subject || 'Umum')).sort((a,b) => a.assignmentNo-b.assignmentNo);
+  const escapeReportHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const generatePdfReport = kind => {
+    const className = reportClass || selectedClass || teacherAssignedClasses[0] || '';
+    const from = reportFromDate || reportToDate, to = reportToDate || reportFromDate;
+    if (!className || className === 'ALL') { alert('Pilih satu kelas untuk laporan PDF.'); return; }
+    if (!from || !to || from > to) { alert('Rentang tanggal laporan tidak valid.'); return; }
+    const e = escapeReportHtml, inPeriod = date => date >= from && date <= to;
+    const printedAt = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    const classStudents = students.filter(s => s.class === className).sort((a,b)=>a.name.localeCompare(b.name,'id'));
+    let title = '', headers = '', rows = '', summary = '';
+    if (kind === 'journal') {
+      title = 'LAPORAN JURNAL MENGAJAR';
+      const data = journals.filter(j => j.class === className && inPeriod(j.date)).sort((a,b)=>a.date.localeCompare(b.date));
+      headers = '<th>No.</th><th>Tanggal</th><th>Materi / Topik</th><th>Metode</th><th>Catatan / Refleksi</th>';
+      rows = data.map((j,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(j.date)+'</td><td>'+e(j.topic)+'</td><td>'+e(j.method||'-')+'</td><td>'+e(j.text||'-')+'</td></tr>').join('');
+      summary = 'Jumlah entri jurnal: '+data.length;
+    } else if (kind === 'attendance') {
+      title = 'REKAPITULASI ABSENSI SISWA';
+      const data = [];
+      Object.entries(attendanceRecords).forEach(([key, record]) => {
+        const prefix = className + '_';
+        if (!key.startsWith(prefix)) return;
+        const date = key.slice(prefix.length);
+        if (!inPeriod(date)) return;
+        classStudents.forEach(student => { if (record[student.id]) data.push({date,student,status:record[student.id]}); });
+      });
+      data.sort((a,b)=>a.date.localeCompare(b.date)||a.student.name.localeCompare(b.student.name,'id'));
+      const counts = {PRESENT:0,LATE:0,SICK:0,PERMISSION:0,ABSENT:0};
+      data.forEach(r=>{if(counts[r.status]!==undefined)counts[r.status]++;});
+      const statusNames = {PRESENT:'Hadir',LATE:'Terlambat',SICK:'Sakit',PERMISSION:'Izin',ABSENT:'Alpa'};
+      headers = '<th>No.</th><th>Tanggal</th><th>Nama Siswa</th><th>NISN</th><th>Status</th>';
+      rows = data.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(r.date)+'</td><td>'+e(r.student.name)+'</td><td>'+e(r.student.nisn||'-')+'</td><td>'+e(statusNames[r.status]||r.status)+'</td></tr>').join('');
+      summary = 'Hadir: '+counts.PRESENT+' · Terlambat: '+counts.LATE+' · Sakit: '+counts.SICK+' · Izin: '+counts.PERMISSION+' · Alpa: '+counts.ABSENT;
+    } else {
+      title = 'REKAPITULASI NILAI TUGAS';
+      const tasks = teacherLearningTasks.slice().sort((a,b)=>a.assignmentNo-b.assignmentNo);
+      headers = '<th>No.</th><th>Nama Siswa</th><th>NISN</th>'+tasks.map(t=>'<th>'+e(t.title)+'</th>').join('')+'<th>Rata-rata</th>';
+      rows = classStudents.map((student,i)=>{
+        const values = tasks.map(task=>{
+          const found = assignmentScores.find(g=>g.studentId===student.id&&g.teacherId===currentUser.id&&g.subject===(currentUser.subject||'Umum')&&g.assignmentNo===task.assignmentNo);
+          return found&&found.score!==null&&found.score!==undefined?Number(found.score):null;
+        });
+        const valid=values.filter(v=>v!==null), average=valid.length?valid.reduce((sum,v)=>sum+v,0)/valid.length:null;
+        return '<tr><td>'+(i+1)+'</td><td>'+e(student.name)+'</td><td>'+e(student.nisn||'-')+'</td>'+values.map(v=>'<td>'+(v===null?'-':e(v.toLocaleString('id-ID',{maximumFractionDigits:2})))+'</td>').join('')+'<td><b>'+(average===null?'-':e(average.toLocaleString('id-ID',{maximumFractionDigits:2})))+'</b></td></tr>';
+      }).join('');
+      summary = 'Jumlah siswa: '+classStudents.length+' · Jumlah tugas aktif: '+tasks.length;
+    }
+    if (!rows) rows = '<tr><td colspan="12" style="text-align:center;padding:18px;color:#64748b">Tidak ada data pada periode ini.</td></tr>';
+    const win = window.open('', '_blank');
+    if (!win) { alert('Popup diblokir browser. Izinkan popup untuk KELAS+, lalu coba lagi.'); return; }
+    const orientation = kind === 'grades' ? 'landscape' : 'portrait';
+    const documentHtml = '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>'+e(title)+' - '+e(className)+'</title><style>@page{size:A4 '+orientation+';margin:14mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;font-size:10pt;line-height:1.45;margin:0}.header{text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:16px}.brand{font-size:17pt;font-weight:800;color:#1e3a8a}.school{font-size:12pt;font-weight:700;margin-top:3px}.sub{font-size:8.5pt;color:#475569;margin-top:3px}.title{text-align:center;font-size:13pt;font-weight:800;margin:18px 0 12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;margin-bottom:12px;font-size:9pt}.meta strong{display:inline-block;min-width:110px}.summary{padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;margin:12px 0;font-size:9pt}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:8.5pt}thead{display:table-header-group}tr{break-inside:avoid}th{background:#1e3a8a;color:white;font-weight:700;text-align:center}th,td{border:1px solid #cbd5e1;padding:6px 7px;vertical-align:top}tbody tr:nth-child(even){background:#f8fafc}td:first-child{text-align:center}.sign{display:flex;justify-content:space-between;gap:30px;margin-top:34px;page-break-inside:avoid}.sign div{text-align:center;width:45%;font-size:9pt}.space{height:55px}.foot{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:8pt;color:#64748b;display:flex;justify-content:space-between}@media screen{body{padding:16px}.paper{max-width:1100px;margin:auto}}@media print{.no-print{display:none}}</style></head><body><main class="paper"><header class="header"><div class="brand">KELAS+</div><div class="school">'+e(systemSettings.schoolName||'UPTD SMPN 2 BAJUIN')+'</div><div class="sub">Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas</div></header><div class="title">'+e(title)+'</div><section class="meta"><div><strong>Kelas</strong>: '+e(className)+'</div><div><strong>Mata Pelajaran</strong>: '+e(currentUser.subject||'-')+'</div><div><strong>Periode</strong>: '+e(from)+' s.d. '+e(to)+'</div><div><strong>Tanggal Cetak</strong>: '+e(printedAt)+'</div><div><strong>Guru</strong>: '+e(currentUser.name||'-')+'</div><div><strong>Tahun Pelajaran</strong>: '+e(systemSettings.academicYear||'2026/2027')+'</div></section><div class="summary">'+e(summary)+'</div><table><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table><section class="sign"><div>Mengetahui,<br>Kepala Sekolah<div class="space"></div><b>( ........................................ )</b><br>NIP. ....................................</div><div>Bajuin, '+e(new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}))+'<br>Guru Mata Pelajaran<div class="space"></div><b>'+e(currentUser.name||'........................................')+'</b><br>NIP. '+e(currentUser.nip||'....................................')+'</div></section><footer class="foot"><span>KELAS+ · '+e(title)+'</span><span>Dicetak: '+e(printedAt)+'</span></footer><div class="no-print" style="text-align:center;margin:24px"><button onclick="window.print()" style="background:#1e3a8a;color:white;border:0;padding:10px 18px;border-radius:6px;font-weight:bold;cursor:pointer">Cetak / Simpan sebagai PDF</button></div></main></body></html>';
+    win.document.write(documentHtml);
+    win.document.close();
+    setTimeout(()=>{win.focus();win.print();},400);
+  };
+
   const handleAddLearningTask = async () => {
     const title = window.prompt('Nama tugas baru:', 'Tugas ' + (teacherLearningTasks.length + 1));
     if (title === null) return;
