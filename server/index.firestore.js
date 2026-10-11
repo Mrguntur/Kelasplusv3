@@ -194,7 +194,7 @@ app.get('/api/bootstrap', auth, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 app.get('/api/users', auth, allow('ADMIN','LEADER'), async (req,res,next) => {
-  try { res.json({ success:true, users:(await list('users')).sort((a,b)=>a.name.localeCompare(b.name)).map(publicUser) ); }
+  try { res.json({ success:true, users:(await list('users')).sort((a,b)=>a.name.localeCompare(b.name)).map(publicUser) }); }
   catch(error) { next(error); }
 });
 app.post('/api/teachers', auth, allow('ADMIN'), async (req,res,next) => {
