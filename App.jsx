@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   Home, Users, Calendar, BookOpen, AlertTriangle, FileText, 
   Bot, Settings, CheckCircle, Clock, Plus, BarChart2, ChevronRight, 
@@ -8,7 +9,8 @@ import {
   Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -29,6 +31,15 @@ export default function App() {
   const [students, setStudents] = useState([]);
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [journals, setJournals] = useState([]);
+  const [assignmentScores, setAssignmentScores] = useState([]);
+  const [assignmentTasks, setAssignmentTasks] = useState([]);
+  const [reportClass, setReportClass] = useState('');
+  const [reportFromDate, setReportFromDate] = useState('2026-10-01');
+  const [reportToDate, setReportToDate] = useState('2026-10-11');
+  const [attendanceSaveStatus, setAttendanceSaveStatus] = useState('saved');
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [savingGradesFor, setSavingGradesFor] = useState('');
+  const [gradeDrafts, setGradeDrafts] = useState({});
   const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'SMP NEGERI 2 BAJUIN', academicYear: '2026/2027' });
 
   // Teacher Feature States
@@ -42,11 +53,17 @@ export default function App() {
   const [journalFilterMonth, setJournalFilterMonth] = useState('ALL');
   const [mapClassFilter, setMapClassFilter] = useState('ALL');
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [learningTaskCount, setLearningTaskCount] = useState(4);
+  const [adminStudentPageSize, setAdminStudentPageSize] = useState(10);
+  const [adminStudentPage, setAdminStudentPage] = useState(1);
 
   // Admin Feature States
-  const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: ['VII A'] });
+  const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
   const [newClass, setNewClass] = useState({ name: '', grade: 'VII', homeroomTeacher: '' });
   const [newStudent, setNewStudent] = useState({ name: '', nisn: '', class: 'VII A', gender: 'L' });
+  const [studentImportRows, setStudentImportRows] = useState([]);
+  const [studentImportFileName, setStudentImportFileName] = useState('');
+  const [studentImportBusy, setStudentImportBusy] = useState(false);
 
   // AI Assistant States
   const [aiSubject, setAiSubject] = useState('Bahasa Inggris');
@@ -57,66 +74,61 @@ export default function App() {
 
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
 
-  // Load Data from Backend Express Server
+  // Load school data only after a valid server session exists.
   const fetchBootstrapData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/bootstrap`);
+      const response = await fetch(`${API_BASE_URL}/bootstrap`, { credentials: 'include' });
       const data = await response.json();
-      if (data.success) {
-        setUsers(data.users || []);
-        setClassesList(data.classes || []);
-        setStudents(data.students || []);
-        setJournals(data.journals || []);
-        if (data.settings) setSystemSettings(data.settings);
-
-        const attendanceMap = {};
-        (data.attendanceRecords || []).forEach(r => {
-          const key = `${r.class}_${r.date}`;
-          if (!attendanceMap[key]) attendanceMap[key] = {};
-          attendanceMap[key][r.student_id] = r.status;
-        });
-        setAttendanceRecords(attendanceMap);
-        setIsServerOnline(true);
-      }
+      if (!response.ok || !data.success) throw new Error(data.message || 'Gagal memuat data aplikasi.');
+      setUsers(data.users || []);
+      setClassesList(data.classes || []);
+      setStudents(data.students || []);
+      setJournals(data.journals || []);
+      setAssignmentScores(data.assignmentScores || []);
+      setAssignmentTasks(data.assignmentTasks || []);
+      setLearningTaskCount(Math.max(0, ...(data.assignmentTasks || []).filter(t => t.teacherId === currentUser?.id).map(t => Number(t.assignmentNo) || 0)));
+      const drafts = {};
+      (data.assignmentScores || []).forEach(g => { drafts[g.studentId] = { ...(drafts[g.studentId] || {}), [g.assignmentNo]: g.score == null ? '' : String(g.score) }; });
+      setGradeDrafts(drafts);
+      if (data.settings) setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' }));
+      const attendanceMap = {};
+      (data.attendanceRecords || []).forEach(r => {
+        const key = `${r.class}_${r.date}`;
+        if (!attendanceMap[key]) attendanceMap[key] = {};
+        attendanceMap[key][r.student_id] = r.status;
+      });
+      setAttendanceRecords(attendanceMap);
+      setIsServerOnline(true);
     } catch (err) {
-      console.warn("Backend server offline, using client fallback storage:", err);
       setIsServerOnline(false);
-      // Fallback Seed Data
-      setUsers([
-        { id: 'u_admin', username: 'Admin.smpn2bajuin', password: 'Qwerty123456', name: 'Administrator Sekolah', role: 'ADMIN', subject: 'Administrator', assignedClasses: ['ALL'], avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
-        { id: 'u_t1', username: 'ratna.guru', password: 'password123', name: 'Ibu Ratna Pertiwi, S.Pd.', nip: '198503152010012003', role: 'TEACHER', subject: 'Bahasa Inggris', assignedClasses: ['VII A', 'VIII A'], avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-        { id: 'u_t2', username: 'fauzi.guru', password: 'password123', name: 'Bapak Ahmad Fauzi, M.Pd.', nip: '198207102008011005', role: 'TEACHER', subject: 'Matematika', assignedClasses: ['VII B', 'VIII A'], avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150' }
-      ]);
-      setClassesList([
-        { id: 'c1', name: 'VII A', grade: 'VII', totalStudents: 32, homeroomTeacher: 'Ibu Ratna Pertiwi, S.Pd.' },
-        { id: 'c2', name: 'VII B', grade: 'VII', totalStudents: 30, homeroomTeacher: 'Bapak Ahmad Fauzi, M.Pd.' },
-        { id: 'c3', name: 'VIII A', grade: 'VIII', totalStudents: 31, homeroomTeacher: 'Ibu Siti Aminah, S.Si.' }
-      ]);
-      setStudents([
-        { id: 's1', nisn: '20260101', name: 'Ahmad Rizky', class: 'VII A', gender: 'L', status: 'ACTIVE', attendanceRate: 96, assignmentScore: 92, statusFlag: 'GOOD' },
-        { id: 's2', nisn: '20260102', name: 'Budi Saputra', class: 'VII A', gender: 'L', status: 'ACTIVE', attendanceRate: 88, assignmentScore: 68, statusFlag: 'MONITOR' },
-        { id: 's3', nisn: '20260103', name: 'Citra Nabila', class: 'VII A', gender: 'P', status: 'ACTIVE', attendanceRate: 79, assignmentScore: 54, statusFlag: 'NEEDS_FOLLOW_UP' },
-        { id: 's4', nisn: '20260104', name: 'Dewa Pratama', class: 'VII A', gender: 'L', status: 'ACTIVE', attendanceRate: 92, assignmentScore: 85, statusFlag: 'GOOD' }
-      ]);
-      setJournals([
-        { id: 'j1', teacherUsername: 'ratna.guru', class: 'VII A', date: '2026-10-05', month: '10', topic: 'Greetings & Self Introduction', method: 'Role Play Berpasangan', pulse: 'VERY_ACTIVE', text: 'Siswa antusias melakukan percakapan di depan kelas secara berpasangan.' }
-      ]);
+      setLoginError(err.message || 'Server tidak dapat dihubungi.');
     }
   };
 
   useEffect(() => {
-    fetchBootstrapData();
+    let cancelled = false;
+    fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (!cancelled && data && data.success) setCurrentUser(data.user); })
+      .catch(() => { if (!cancelled) setIsServerOnline(false); });
+    return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (currentUser) fetchBootstrapData();
+  }, [currentUser]);
+  
   // Update attendance view for selected class/date
   useEffect(() => {
     const key = `${selectedClass}_${attendanceDate}`;
     if (attendanceRecords[key]) {
       setCurrentAttendance(attendanceRecords[key]);
+      setAttendanceSaveStatus('saved');
     } else {
       const initial = {};
       students.filter(s => s.class === selectedClass).forEach(s => { initial[s.id] = 'PRESENT'; });
       setCurrentAttendance(initial);
+      setAttendanceSaveStatus('unsaved');
     }
   }, [selectedClass, attendanceDate, students, attendanceRecords]);
 
@@ -140,81 +152,74 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Login Authentication
+  // Login is server-authoritative; no client-side/demo credential fallback.
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoadingAuth(true);
     setLoginError('');
-
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUsername, password: loginPassword })
       });
       const data = await response.json();
-      if (data.success) {
-        setCurrentUser(data.user);
-        setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
-        setIsLoadingAuth(false);
-        return;
-      } else {
-        setLoginError(data.message || 'Kredensial login tidak valid!');
-      }
+      if (!response.ok || !data.success) throw new Error(data.message || 'Login gagal.');
+      setCurrentUser(data.user);
+      setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
     } catch (err) {
-      // Offline fallback
-      const found = users.find(u => u.username === loginUsername && u.password === loginPassword);
-      if (found) {
-        setCurrentUser(found);
-        setActiveTab(found.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
-      } else {
-        setLoginError('Username atau Password tidak terdaftar!');
-      }
+      setLoginError(err.message || 'Server tidak dapat dihubungi. Pastikan backend berjalan.');
+    } finally {
+      setIsLoadingAuth(false);
     }
-    setIsLoadingAuth(false);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setLoginUsername('');
-    setLoginPassword('');
-    setLoginError('');
-  };
-
-  // Attendance Handlers
-  const handleStatusChange = async (studentId, status) => {
-    const updatedRecord = { ...currentAttendance, [studentId]: status };
-    setCurrentAttendance(updatedRecord);
-
-    const key = `${selectedClass}_${attendanceDate}`;
-    setAttendanceRecords({ ...attendanceRecords, [key]: updatedRecord });
-
+  const handleLogout = async () => {
     try {
-      await fetch(`${API_BASE_URL}/attendance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord })
-      });
+      await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (err) {
-      console.warn("Backend offline, updating locally:", err);
+      console.warn('Logout request failed:', err);
+    } finally {
+      setCurrentUser(null);
+      setUsers([]);
+      setClassesList([]);
+      setStudents([]);
+      setAttendanceRecords({});
+      setJournals([]);
+      setAssignmentScores([]);
+      setAssignmentTasks([]);
+      setLoginUsername('');
+      setLoginPassword('');
+      setLoginError('');
+      setActiveTab('dashboard');
     }
+  };
+
+  // Persist attendance first; update the UI only after server confirmation.
+  const handleStatusChange = (studentId, status) => {
+    setCurrentAttendance(prev => ({ ...prev, [studentId]: status }));
+    setAttendanceSaveStatus('unsaved');
+  };
+
+  const handleSaveAttendance = async () => {
+    setSavingAttendance(true); setAttendanceSaveStatus('saving');
+    try {
+      const response = await fetch(API_BASE_URL + '/attendance', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: currentAttendance }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Presensi gagal disimpan.');
+      setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: { ...currentAttendance } }));
+      setAttendanceSaveStatus('saved');
+      alert('Presensi kelas ' + selectedClass + ' tanggal ' + attendanceDate + ' berhasil disimpan (' + Object.keys(currentAttendance).length + ' siswa).');
+    } catch (err) { setAttendanceSaveStatus('error'); alert(err.message || 'Presensi gagal disimpan.'); }
+    finally { setSavingAttendance(false); }
   };
 
   const handleMarkAllPresent = () => {
     const updatedRecord = {};
     students.filter(s => s.class === selectedClass).forEach(s => { updatedRecord[s.id] = 'PRESENT'; });
-    setCurrentAttendance(updatedRecord);
-
-    const key = `${selectedClass}_${attendanceDate}`;
-    setAttendanceRecords({ ...attendanceRecords, [key]: updatedRecord });
-
-    fetch(`${API_BASE_URL}/attendance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ className: selectedClass, date: attendanceDate, records: updatedRecord })
-    }).catch(err => console.warn(err));
+    setCurrentAttendance(updatedRecord); setAttendanceSaveStatus('unsaved');
   };
-
   // Journal Handlers
   const handleAutoGenerateJournal = () => {
     if (!journalTopic) {
@@ -226,210 +231,367 @@ export default function App() {
   };
 
   const handleSaveJournal = async () => {
-    if (!journalTopic) {
-      alert("Harap masukkan topik pembelajaran!");
-      return;
-    }
-    const newEntry = {
-      id: `j_${Date.now()}`,
-      teacherUsername: currentUser.username,
-      class: selectedClass,
-      date: attendanceDate,
-      month: attendanceDate.split('-')[1] || '10',
-      topic: journalTopic,
-      method: journalMethod || 'Tatap Muka Interaktif',
-      pulse: 'VERY_ACTIVE',
-      text: smartDraft || `Materi: ${journalTopic}. ${journalNote}`
-    };
-
-    setJournals([newEntry, ...journals]);
-
+    if (!journalTopic.trim()) { alert('Harap masukkan topik pembelajaran!'); return; }
     try {
-      await fetch(`${API_BASE_URL}/journals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEntry)
-      });
-      alert("✓ Jurnal Mengajar Berhasil Disimpan!");
-    } catch (err) {
-      alert("✓ Jurnal tersimpan di memori browser!");
-    }
-
-    setJournalTopic('');
-    setJournalMethod('');
-    setJournalNote('');
-    setSmartDraft('');
+      const payload = { class: selectedClass, date: attendanceDate, topic: journalTopic.trim(), method: journalMethod || 'Tatap Muka Interaktif', pulse: 'VERY_ACTIVE', text: smartDraft || ('Materi: ' + journalTopic + '. ' + journalNote) };
+      const response = await fetch(API_BASE_URL + '/journals', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Jurnal gagal disimpan.');
+      await fetchBootstrapData();
+      alert('Jurnal mengajar berhasil disimpan.');
+      setJournalTopic(''); setJournalMethod(''); setJournalNote(''); setSmartDraft('');
+    } catch (err) { alert(err.message || 'Jurnal gagal disimpan.'); }
   };
-
-  // Gemini AI Assistant Call
+  // AI requests go through the backend so the API key never reaches the browser.
   const handleGenerateAiActivities = async () => {
-    setIsGeneratingAi(true);
-    setAiRecommendations(null);
-
-    const apiKey = systemSettings.geminiApiKey?.trim();
-    if (apiKey) {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Anda adalah konsultan pedagogi SMP. Buatkan 3 rekomendasi skenario mengajar interaktif untuk:
-Mata Pelajaran: ${aiSubject}
-Topik: ${aiTopic}
-Kondisi Kelas: ${aiCondition}
-
-Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "title", "type", "duration", "objective", "steps" (array string).`
-              }]
-            }]
-          })
-        });
-
-        const data = await response.json();
-        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          const rawText = data.candidates[0].content.parts[0].text;
-          const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-          if (jsonMatch) {
-            setAiRecommendations(JSON.parse(jsonMatch[0]));
-            setIsGeneratingAi(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("Gemini API Error, fallback logic activated:", err);
-      }
-    }
-
-    // Fallback Recommendations
-    setTimeout(() => {
-      setAiRecommendations([
-        {
-          id: 1,
-          title: `Simulasi Role-Play Berpasangan (${aiSubject})`,
-          type: "Aktivitas Interaktif Kontekstual",
-          duration: "15 Menit",
-          objective: `Meningkatkan keberanian siswa pasif dalam memahami materi ${aiTopic}.`,
-          steps: [
-            "Bagi kelas menjadi kelompok berpasangan.",
-            "Berikan kartu situasi percakapan/masalah pendek.",
-            "Setiap pasangan mempraktikkan selama 2 menit dan mendapat masukan dari rekan."
-          ]
-        },
-        {
-          id: 2,
-          title: "Gallery Walk & Peer Feedback",
-          type: "Studi Kelompok Kompak",
-          duration: "20 Menit",
-          objective: "Mendorong kolaborasi dan penyampaian gagasan secara visual.",
-          steps: [
-            "Tempelkan 4 lembar kertas besar di dinding kelas.",
-            "Kelompok siswa menuliskan poin kunci materi.",
-            "Setiap kelompok rotasi memberikan catatan masukan berwarna."
-          ]
-        }
-      ]);
-      setIsGeneratingAi(false);
-    }, 600);
+    setIsGeneratingAi(true); setAiRecommendations(null);
+    try {
+      const response = await fetch(API_BASE_URL + '/ai/teaching-recommendations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject: aiSubject, topic: aiTopic, condition: aiCondition }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Rekomendasi AI gagal dibuat.');
+      setAiRecommendations(data.recommendations);
+    } catch (err) { alert(err.message || 'Layanan AI tidak tersedia.'); }
+    finally { setIsGeneratingAi(false); }
   };
-
   // Admin Operations
   const handleSaveGeminiApiKey = async (e) => {
     e.preventDefault();
-    try {
-      await fetch(`${API_BASE_URL}/settings/gemini-key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: systemSettings.geminiApiKey })
-      });
-      alert("✓ Gemini API Key Terpusat Berhasil Disimpan!");
-    } catch (err) {
-      alert("✓ API Key tersimpan!");
-    }
+    alert('Demi keamanan, kunci Gemini harus dikonfigurasi pada environment backend oleh pengelola aplikasi.');
   };
-
   const handleAddTeacher = async (e) => {
     e.preventDefault();
-    if (!newTeacher.name || !newTeacher.username) return;
-    const added = {
-      id: `u_${Date.now()}`,
-      name: newTeacher.name,
-      nip: newTeacher.nip || '-',
-      subject: newTeacher.subject,
-      username: newTeacher.username,
-      password: newTeacher.password || 'password123',
-      role: 'TEACHER',
-      assignedClasses: newTeacher.assignedClasses,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
-    };
-
-    setUsers([...users, added]);
-
+    if (!newTeacher.name.trim() || !newTeacher.username.trim() || newTeacher.password.length < 12 || !newTeacher.assignedClasses.length) { alert('Nama, username, password minimal 12 karakter, dan minimal satu kelas pengampuan wajib diisi.'); return; }
     try {
-      await fetch(`${API_BASE_URL}/teachers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(added)
-      });
-      alert("✓ Akun Guru Baru Berhasil Dibuat!");
-    } catch (err) {
-      alert("✓ Akun Guru Tersimpan!");
-    }
-
-    setNewTeacher({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: ['VII A'] });
+      const response = await fetch(API_BASE_URL + '/teachers', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTeacher) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Akun guru gagal dibuat.');
+      setUsers(prev => [...prev, data.user]);
+      alert('Akun guru berhasil dibuat.');
+      await fetchBootstrapData();
+      setNewTeacher({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
+    } catch (err) { alert(err.message || 'Akun guru gagal dibuat.'); }
   };
-
   const handleAddClass = async (e) => {
     e.preventDefault();
-    if (!newClass.name) return;
-    const added = { id: `c_${Date.now()}`, name: newClass.name, grade: newClass.grade, totalStudents: 30, homeroomTeacher: newClass.homeroomTeacher || 'Belum Ditentukan' };
-    setClassesList([...classesList, added]);
-
+    if (!newClass.name.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/classes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(added)
-      });
-      alert("✓ Rombel Kelas Baru Berhasil Ditambahkan!");
-    } catch (err) {
-      alert("✓ Rombel Kelas Tersimpan!");
-    }
-
-    setNewClass({ name: '', grade: 'VII', homeroomTeacher: '' });
+      const response = await fetch(API_BASE_URL + '/classes', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newClass) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Kelas gagal ditambahkan.');
+      await fetchBootstrapData();
+      alert(data.restored ? 'Kelas lama berhasil diaktifkan kembali.' : 'Rombel kelas berhasil ditambahkan.');
+      setNewClass({ name: '', grade: 'VII', homeroomTeacher: '' });
+    } catch (err) { alert(err.message || 'Kelas gagal ditambahkan.'); }
   };
-
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (!newStudent.name || !newStudent.nisn) return;
-    const added = { id: `s_${Date.now()}`, nisn: newStudent.nisn, name: newStudent.name, class: newStudent.class, gender: newStudent.gender, status: 'ACTIVE', attendanceRate: 100, assignmentScore: 80, statusFlag: 'GOOD' };
-    setStudents([...students, added]);
-
+    if (!newStudent.name.trim() || !newStudent.nisn.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/students`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(added)
-      });
-      alert("✓ Data Siswa Baru Berhasil Disimpan!");
-    } catch (err) {
-      alert("✓ Siswa Tersimpan!");
+      const response = await fetch(API_BASE_URL + '/students', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newStudent) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Siswa gagal ditambahkan.');
+      await fetchBootstrapData();
+      alert(data.restored ? 'Data siswa lama berhasil diaktifkan kembali.' : 'Data siswa berhasil disimpan.');
+      setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
+    } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
+  };
+  const downloadStudentTemplate = () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['Nama Siswa', 'NISN', 'Kelas', 'Jenis Kelamin']
+    ]);
+    sheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
+    sheet['!autofilter'] = { ref: 'A1:D1' };
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Data Siswa');
+    const guide = XLSX.utils.aoa_to_sheet([
+      ['PETUNJUK TEMPLATE IMPOR SISWA'],
+      ['1. Tambahkan data siswa mulai baris kedua; jangan mengubah judul kolom.'],
+      ['2. Kolom wajib: Nama Siswa, NISN, Kelas, Jenis Kelamin.'],
+      ['3. Format Jenis Kelamin: L untuk Laki-laki, P untuk Perempuan.'],
+      ['4. Kelas harus sama persis dengan nama kelas yang sudah dibuat di KELAS+, contoh VII A.'],
+      ['5. Isi NISN sebagai TEKS agar angka nol di depan tidak hilang.'],
+      ['6. Jangan mengubah nama kolom pada baris pertama.'],
+      ['7. NISN yang sudah terdaftar tidak akan diimpor ulang.']
+    ]);
+    guide['!cols'] = [{ wch: 100 }];
+    XLSX.utils.book_append_sheet(workbook, guide, 'Petunjuk');
+    XLSX.writeFile(workbook, 'Template_Impor_Siswa_KELAS_Plus.xlsx');
+  };
+  const handleStudentExcelSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setStudentImportRows([]);
+    setStudentImportFileName(file.name);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error('File Excel tidak memiliki lembar data.');
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      if (!rawRows.length) throw new Error('Belum ada baris data. Isi template lalu unggah kembali.');
+      const normalize = value => String(value || '').trim().toLowerCase().replace(/[ _-]+/g, '');
+      const existingNisn = new Set(students.map(s => String(s.nisn || '').trim()));
+      const seenNisn = new Set();
+      const parsed = rawRows.map((row, index) => {
+        const columns = {};
+        Object.entries(row).forEach(([key, value]) => { columns[normalize(key)] = value; });
+        const name = String(columns.namasiswa || columns.nama || '').trim();
+        const nisn = String(columns.nisn || '').trim().replace(/\.0$/, '');
+        const className = String(columns.kelas || '').trim();
+        const genderRaw = String(columns.jenisKelamin || columns.jeniskelamin || columns.gender || columns.l || '').trim().toUpperCase();
+        const gender = ['P', 'PEREMPUAN'].includes(genderRaw) ? 'P' : ['L', 'LAKI-LAKI', 'LAKILAKI'].includes(genderRaw) ? 'L' : '';
+        let error = '';
+        if (!name || !nisn || !className) error = 'Nama, NISN, dan kelas wajib diisi.';
+        else if (!/^\d{5,20}$/.test(nisn)) error = 'NISN harus berupa 5–20 digit angka; format kolom NISN sebagai teks.';
+        else if (!classesList.some(c => c.name.toLowerCase() === className.toLowerCase())) error = 'Kelas "' + className + '" belum dibuat di KELAS+.';
+        else if (!gender) error = 'Jenis kelamin harus L atau P.';
+        else if (existingNisn.has(nisn)) error = 'NISN sudah ada di data KELAS+.';
+        else if (seenNisn.has(nisn)) error = 'NISN duplikat di dalam file.';
+        if (nisn) seenNisn.add(nisn);
+        return { rowNumber: index + 2, name, nisn, class: classesList.find(c => c.name.toLowerCase() === className.toLowerCase())?.name || className, gender, error };
+      }).filter(row => row.name || row.nisn || row.class);
+      if (!parsed.length) throw new Error('Tidak ditemukan baris data siswa yang dapat dibaca.');
+      setStudentImportRows(parsed);
+    } catch (error) {
+      setStudentImportRows([]);
+      alert(error.message || 'File Excel gagal dibaca. Gunakan format .xlsx atau .xls.');
+    } finally {
+      event.target.value = '';
     }
-
-    setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
+  };
+  const handleImportStudents = async () => {
+    const validRows = studentImportRows.filter(row => !row.error);
+    if (!validRows.length) { alert('Tidak ada baris valid untuk diimpor. Perbaiki data Excel lalu unggah kembali.'); return; }
+    if (!window.confirm('Impor ' + validRows.length + ' siswa ke KELAS+? Baris yang tidak valid akan dilewati.')) return;
+    setStudentImportBusy(true);
+    let success = 0;
+    const failures = [];
+    try {
+      for (const row of validRows) {
+        try {
+          const response = await fetch(API_BASE_URL + '/students', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: row.name, nisn: row.nisn, class: row.class, gender: row.gender }) });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.message || 'Gagal menyimpan');
+          success += 1;
+        } catch (error) { failures.push(row.name + ' (' + row.nisn + '): ' + error.message); }
+      }
+      await fetchBootstrapData();
+      setStudentImportRows([]);
+      setStudentImportFileName('');
+      const skipped = studentImportRows.filter(row => row.error).length;
+      alert('Impor selesai. Berhasil: ' + success + '. Gagal disimpan: ' + failures.length + '. Baris dilewati karena validasi: ' + skipped + (failures.length ? '\n\nRincian gagal:\n' + failures.slice(0, 10).join('\n') : ''));
+    } finally { setStudentImportBusy(false); }
   };
 
-  // Helper Lists
+  const handleUserRoleChange = async (userId, role) => {
+    try {
+      const response = await fetch(API_BASE_URL + '/users/' + userId, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Peran akun gagal diperbarui.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Peran akun gagal diperbarui.'); }
+  };
+
+  const handleResetUserPassword = async (userId) => {
+    const password = window.prompt('Masukkan password baru minimal 12 karakter:');
+    if (!password) return;
+    if (password.length < 12) { alert('Password minimal 12 karakter.'); return; }
+    try {
+      const response = await fetch(API_BASE_URL + '/users/' + userId + '/reset-password', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Reset password gagal.');
+      alert('Password berhasil direset. Sesi akun tersebut akan berakhir.');
+    } catch (err) { alert(err.message || 'Reset password gagal.'); }
+  };
+
+  const handleDeactivateStudent = async (student) => {
+    if (!window.confirm('Nonaktifkan data siswa ' + student.name + '?')) return;
+    try {
+      const response = await fetch(API_BASE_URL + '/students/' + student.id, { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Data siswa gagal dinonaktifkan.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Data siswa gagal dinonaktifkan.'); }
+  };
+
+  const handleDeactivateClass = async (klass) => {
+    if (!window.confirm('Nonaktifkan kelas ' + klass.name + '? Kelas harus kosong terlebih dahulu.')) return;
+    try {
+      const response = await fetch(API_BASE_URL + '/classes/' + klass.id, { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Kelas gagal dinonaktifkan.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Kelas gagal dinonaktifkan.'); }
+  };
+
+  const handleToggleUserActive = async (user) => {
+    if (user.id === currentUser.id && user.active) { alert('Akun yang sedang digunakan tidak dapat dinonaktifkan.'); return; }
+    const action = user.active ? 'menonaktifkan' : 'mengaktifkan kembali';
+    if (!window.confirm('Yakin ingin ' + action + ' akun ' + user.username + '?')) return;
+    try {
+      const response = user.active
+        ? await fetch(API_BASE_URL + '/users/' + user.id, { method: 'DELETE', credentials: 'include' })
+        : await fetch(API_BASE_URL + '/users/' + user.id, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: true }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Status akun gagal diperbarui.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Status akun gagal diperbarui.'); }
+  };
+
+  const handleEditTeacher = async (teacher) => {
+    const name=window.prompt('Nama guru:',teacher.name); if(name===null)return;
+    const nip=window.prompt('NIP:',teacher.nip||''); if(nip===null)return;
+    const subject=window.prompt('Mata pelajaran (salin salah satu):\\n'+SUBJECT_OPTIONS.join('\\n'),teacher.subject||SUBJECT_OPTIONS[0]); if(subject===null)return;
+    const classesText=window.prompt('Kelas yang diampu, pisahkan dengan koma:\\n'+classesList.map(x=>x.name).join(', '),(teacher.assignedClasses||[]).join(', ')); if(classesText===null)return;
+    const assignedClasses=classesText.split(',').map(x=>x.trim()).filter(x=>classesList.some(k=>k.name===x));
+    if(!SUBJECT_OPTIONS.includes(subject)){alert('Mata pelajaran harus dipilih dari daftar yang tersedia.');return;}
+    try{const response=await fetch(API_BASE_URL+'/users/'+teacher.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),nip:nip.trim(),subject,assignedClasses})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data guru gagal diperbarui.');await fetchBootstrapData();alert('Data guru berhasil diperbarui.');}catch(err){alert(err.message||'Data guru gagal diperbarui.');}
+  };
+  const handleEditClass = async (klass) => {
+    const name=window.prompt('Nama kelas:',klass.name);if(name===null)return;
+    const grade=window.prompt('Tingkat kelas (VII, VIII, atau IX):',klass.grade);if(grade===null)return;
+    const homeroomTeacher=window.prompt('Nama wali kelas:',klass.homeroomTeacher||'');if(homeroomTeacher===null)return;
+    if(!['VII','VIII','IX'].includes(grade.trim().toUpperCase())){alert('Tingkat kelas harus VII, VIII, atau IX.');return;}
+    try{const response=await fetch(API_BASE_URL+'/classes/'+klass.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),grade:grade.trim().toUpperCase(),homeroomTeacher:homeroomTeacher.trim()})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data kelas gagal diperbarui.');await fetchBootstrapData();alert('Data kelas berhasil diperbarui.');}catch(err){alert(err.message||'Data kelas gagal diperbarui.');}
+  };
+  const handleEditStudent = async (student) => {
+    const name=window.prompt('Nama siswa:',student.name);if(name===null)return;
+    const nisn=window.prompt('NISN:',student.nisn);if(nisn===null)return;
+    const className=window.prompt('Nama kelas tepat seperti daftar:\\n'+classesList.map(x=>x.name).join(', '),student.class);if(className===null)return;
+    const gender=window.prompt('Jenis kelamin (L/P):',student.gender||'L');if(gender===null)return;
+    if(!classesList.some(x=>x.name===className.trim())||!['L','P'].includes(gender.trim().toUpperCase())){alert('Kelas atau jenis kelamin tidak valid.');return;}
+    try{const response=await fetch(API_BASE_URL+'/students/'+student.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),nisn:nisn.trim(),class:className.trim(),gender:gender.trim().toUpperCase()})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data siswa gagal diperbarui.');await fetchBootstrapData();alert('Data siswa berhasil diperbarui.');}catch(err){alert(err.message||'Data siswa gagal diperbarui.');}
+  };
+  const teacherLearningTasks = assignmentTasks.filter(t => t.teacherId === currentUser?.id && t.subject === (currentUser?.subject || 'Umum')).sort((a,b) => a.assignmentNo-b.assignmentNo);
+  const escapeReportHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const generatePdfReport = kind => {
+    const className = reportClass || selectedClass || teacherAssignedClasses[0] || '';
+    const from = reportFromDate || reportToDate, to = reportToDate || reportFromDate;
+    if (!className || className === 'ALL') { alert('Pilih satu kelas untuk laporan PDF.'); return; }
+    if (!from || !to || from > to) { alert('Rentang tanggal laporan tidak valid.'); return; }
+    const e = escapeReportHtml, inPeriod = date => date >= from && date <= to;
+    const printedAt = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    const classStudents = students.filter(s => s.class === className).sort((a,b)=>a.name.localeCompare(b.name,'id'));
+    let title = '', headers = '', rows = '', summary = '';
+    if (kind === 'journal') {
+      title = 'LAPORAN JURNAL MENGAJAR';
+      const data = journals.filter(j => j.class === className && inPeriod(j.date)).sort((a,b)=>a.date.localeCompare(b.date));
+      headers = '<th>No.</th><th>Tanggal</th><th>Materi / Topik</th><th>Metode</th><th>Catatan / Refleksi</th>';
+      rows = data.map((j,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(j.date)+'</td><td>'+e(j.topic)+'</td><td>'+e(j.method||'-')+'</td><td>'+e(j.text||'-')+'</td></tr>').join('');
+      summary = 'Jumlah entri jurnal: '+data.length;
+    } else if (kind === 'attendance') {
+      title = 'REKAPITULASI ABSENSI SISWA';
+      const data = [];
+      Object.entries(attendanceRecords).forEach(([key, record]) => {
+        const prefix = className + '_';
+        if (!key.startsWith(prefix)) return;
+        const date = key.slice(prefix.length);
+        if (!inPeriod(date)) return;
+        classStudents.forEach(student => { if (record[student.id]) data.push({date,student,status:record[student.id]}); });
+      });
+      data.sort((a,b)=>a.date.localeCompare(b.date)||a.student.name.localeCompare(b.student.name,'id'));
+      const counts = {PRESENT:0,LATE:0,SICK:0,PERMISSION:0,ABSENT:0};
+      data.forEach(r=>{if(counts[r.status]!==undefined)counts[r.status]++;});
+      const statusNames = {PRESENT:'Hadir',LATE:'Terlambat',SICK:'Sakit',PERMISSION:'Izin',ABSENT:'Alpa'};
+      headers = '<th>No.</th><th>Tanggal</th><th>Nama Siswa</th><th>NISN</th><th>Status</th>';
+      rows = data.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(r.date)+'</td><td>'+e(r.student.name)+'</td><td>'+e(r.student.nisn||'-')+'</td><td>'+e(statusNames[r.status]||r.status)+'</td></tr>').join('');
+      summary = 'Hadir: '+counts.PRESENT+' · Terlambat: '+counts.LATE+' · Sakit: '+counts.SICK+' · Izin: '+counts.PERMISSION+' · Alpa: '+counts.ABSENT;
+    } else {
+      title = 'REKAPITULASI NILAI TUGAS';
+      const tasks = teacherLearningTasks.slice().sort((a,b)=>a.assignmentNo-b.assignmentNo);
+      headers = '<th>No.</th><th>Nama Siswa</th><th>NISN</th>'+tasks.map(t=>'<th>'+e(t.title)+'</th>').join('')+'<th>Rata-rata</th>';
+      rows = classStudents.map((student,i)=>{
+        const values = tasks.map(task=>{
+          const found = assignmentScores.find(g=>g.studentId===student.id&&g.teacherId===currentUser.id&&g.subject===(currentUser.subject||'Umum')&&g.assignmentNo===task.assignmentNo);
+          return found&&found.score!==null&&found.score!==undefined?Number(found.score):null;
+        });
+        const valid=values.filter(v=>v!==null), average=valid.length?valid.reduce((sum,v)=>sum+v,0)/valid.length:null;
+        return '<tr><td>'+(i+1)+'</td><td>'+e(student.name)+'</td><td>'+e(student.nisn||'-')+'</td>'+values.map(v=>'<td>'+(v===null?'-':e(v.toLocaleString('id-ID',{maximumFractionDigits:2})))+'</td>').join('')+'<td><b>'+(average===null?'-':e(average.toLocaleString('id-ID',{maximumFractionDigits:2})))+'</b></td></tr>';
+      }).join('');
+      summary = 'Jumlah siswa: '+classStudents.length+' · Jumlah tugas aktif: '+tasks.length;
+    }
+    if (!rows) rows = '<tr><td colspan="12" style="text-align:center;padding:18px;color:#64748b">Tidak ada data pada periode ini.</td></tr>';
+    const win = window.open('', '_blank');
+    if (!win) { alert('Popup diblokir browser. Izinkan popup untuk KELAS+, lalu coba lagi.'); return; }
+    const orientation = kind === 'grades' ? 'landscape' : 'portrait';
+    const documentHtml = '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>'+e(title)+' - '+e(className)+'</title><style>@page{size:A4 '+orientation+';margin:14mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;font-size:10pt;line-height:1.45;margin:0}.header{text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:16px}.brand{font-size:17pt;font-weight:800;color:#1e3a8a}.school{font-size:12pt;font-weight:700;margin-top:3px}.sub{font-size:8.5pt;color:#475569;margin-top:3px}.title{text-align:center;font-size:13pt;font-weight:800;margin:18px 0 12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;margin-bottom:12px;font-size:9pt}.meta strong{display:inline-block;min-width:110px}.summary{padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;margin:12px 0;font-size:9pt}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:8.5pt}thead{display:table-header-group}tr{break-inside:avoid}th{background:#1e3a8a;color:white;font-weight:700;text-align:center}th,td{border:1px solid #cbd5e1;padding:6px 7px;vertical-align:top}tbody tr:nth-child(even){background:#f8fafc}td:first-child{text-align:center}.sign{display:flex;justify-content:space-between;gap:30px;margin-top:34px;page-break-inside:avoid}.sign div{text-align:center;width:45%;font-size:9pt}.space{height:55px}.foot{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:8pt;color:#64748b;display:flex;justify-content:space-between}@media screen{body{padding:16px}.paper{max-width:1100px;margin:auto}}@media print{.no-print{display:none}}</style></head><body><main class="paper"><header class="header"><div class="brand">KELAS+</div><div class="school">'+e(systemSettings.schoolName||'UPTD SMPN 2 BAJUIN')+'</div><div class="sub">Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas</div></header><div class="title">'+e(title)+'</div><section class="meta"><div><strong>Kelas</strong>: '+e(className)+'</div><div><strong>Mata Pelajaran</strong>: '+e(currentUser.subject||'-')+'</div><div><strong>Periode</strong>: '+e(kind === 'grades' ? 'Tugas aktif per tanggal cetak' : from + ' s.d. ' + to)+'</div><div><strong>Tanggal Cetak</strong>: '+e(printedAt)+'</div><div><strong>Guru</strong>: '+e(currentUser.name||'-')+'</div><div><strong>Tahun Pelajaran</strong>: '+e(systemSettings.academicYear||'2026/2027')+'</div></section><div class="summary">'+e(summary)+'</div><table><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table><section class="sign"><div>Mengetahui,<br>Kepala Sekolah<div class="space"></div><b>( ........................................ )</b><br>NIP. ....................................</div><div>Bajuin, '+e(new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}))+'<br>Guru Mata Pelajaran<div class="space"></div><b>'+e(currentUser.name||'........................................')+'</b><br>NIP. '+e(currentUser.nip||'....................................')+'</div></section><footer class="foot"><span>KELAS+ · '+e(title)+'</span><span>Dicetak: '+e(printedAt)+'</span></footer><div class="no-print" style="text-align:center;margin:24px"><button onclick="window.print()" style="background:#1e3a8a;color:white;border:0;padding:10px 18px;border-radius:6px;font-weight:bold;cursor:pointer">Cetak / Simpan sebagai PDF</button></div></main></body></html>';
+    win.document.write(documentHtml);
+    win.document.close();
+    setTimeout(()=>{win.focus();win.print();},400);
+  };
+
+  const handleAddLearningTask = async () => {
+    const title = window.prompt('Nama tugas baru:', 'Tugas ' + (teacherLearningTasks.length + 1));
+    if (title === null) return;
+    if (!title.trim()) { alert('Nama tugas tidak boleh kosong.'); return; }
+    try {
+      const response = await fetch(API_BASE_URL + '/tasks', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title.trim() }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Tugas gagal ditambahkan.');
+      await fetchBootstrapData();
+      alert('Tugas berhasil ditambahkan khusus untuk akun Anda.');
+    } catch (err) { alert(err.message || 'Tugas gagal ditambahkan.'); }
+  };
+  const handleDeleteLearningTask = async (task) => {
+    if (teacherLearningTasks.length <= 1) { alert('Minimal harus ada satu tugas aktif.'); return; }
+    if (!window.confirm('Hapus "' + task.title + '"? Nilai siswa pada tugas ini juga akan dihapus. Tindakan ini tidak dapat dibatalkan.')) return;
+    try {
+      const response = await fetch(API_BASE_URL + '/tasks/' + encodeURIComponent(task.id), { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Tugas gagal dihapus.');
+      await fetchBootstrapData();
+      alert('Tugas dan nilai terkait berhasil dihapus.');
+    } catch (err) { alert(err.message || 'Tugas gagal dihapus.'); }
+  };
+  const handleSaveStudentGrades = async (student) => {
+    setSavingGradesFor(student.id);
+    try {
+      for (const task of teacherLearningTasks) {
+        const raw = gradeDrafts[student.id]?.[task.assignmentNo] ?? '';
+        const score = raw === '' ? null : Number(raw);
+        if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) throw new Error('Nilai tugas harus antara 0 sampai 100.');
+        const response = await fetch(API_BASE_URL + '/grades', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: student.id, subject: currentUser.subject || 'Umum', assignmentNo: task.assignmentNo, score }) });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Nilai tugas gagal disimpan.');
+      }
+      await fetchBootstrapData();
+      alert('Nilai ' + teacherLearningTasks.length + ' tugas untuk ' + student.name + ' berhasil disimpan.');
+    } catch (err) { alert(err.message || 'Nilai tugas gagal disimpan.'); }
+    finally { setSavingGradesFor(''); }
+  };
+
+  // Student monitoring indicators are calculated from saved attendance and grade records.
   const teacherAssignedClasses = currentUser?.role === 'TEACHER' ? (currentUser.assignedClasses || []) : classesList.map(c => c.name);
-  const filteredStudents = students.filter(s => {
+  const getStudentMetrics = (student) => {
+    const records = Object.entries(attendanceRecords).filter(([key, row]) => key.startsWith(student.class + '_') && Object.prototype.hasOwnProperty.call(row, student.id)).map(([, row]) => row[student.id]);
+    const attendanceRate = records.length ? Math.round(records.filter(status => status === 'PRESENT').length / records.length * 100) : null;
+    const subjectGrades = assignmentScores.filter(g => g.studentId === student.id && g.score !== null && g.score !== undefined && (currentUser?.role !== 'TEACHER' || (g.teacherId === currentUser.id && g.subject === (currentUser.subject || 'Umum'))));
+    const averageScore = subjectGrades.length ? Math.round(subjectGrades.reduce((sum, g) => sum + Number(g.score), 0) / subjectGrades.length) : null;
+    let statusFlag = 'NO_DATA';
+    if (attendanceRate !== null || averageScore !== null) {
+      const attendance = attendanceRate === null ? 100 : attendanceRate;
+      const score = averageScore === null ? 100 : averageScore;
+      if (attendance < 60 || score < 50) statusFlag = 'WATCH';
+      else if (attendance < 75 || score < 65) statusFlag = 'NEEDS_SUPPORT';
+      else if (attendance < 90 || score < 75) statusFlag = 'GOOD';
+      else statusFlag = 'VERY_GOOD';
+    }
+    return { ...student, attendanceRate, averageScore, statusFlag };
+  };
+  const studentsWithMetrics = students.map(getStudentMetrics);
+  const filteredStudents = studentsWithMetrics.filter(s => {
     if (currentUser?.role === 'TEACHER') {
       if (!teacherAssignedClasses.includes(s.class) && !teacherAssignedClasses.includes('ALL')) return false;
-      if (mapClassFilter !== 'ALL' && s.class !== mapClassFilter) return false;
-    } else {
-      if (mapClassFilter !== 'ALL' && s.class !== mapClassFilter) return false;
     }
-    return s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || s.nisn.includes(studentSearchTerm);
+    if (mapClassFilter !== 'ALL' && s.class !== mapClassFilter) return false;
+    return s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(s.nisn || '').includes(studentSearchTerm);
   });
+  const leaderLearningStudents = [...studentsWithMetrics].sort((a, b) => {
+    const priority = { WATCH: 0, NEEDS_SUPPORT: 1, GOOD: 2, VERY_GOOD: 3, NO_DATA: 4 };
+    return priority[a.statusFlag] - priority[b.statusFlag] || (a.class || '').localeCompare(b.class || '') || a.name.localeCompare(b.name);
+  });
+  const adminStudentPageCount = Math.max(1, Math.ceil(students.length / adminStudentPageSize));
+  const paginatedAdminStudents = students.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
 
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
@@ -472,7 +634,7 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                   type={showPassword ? "text" : "password"}
                   placeholder="Masukkan Password..."
                   value={loginPassword}
-                  onChange={e => setShowPassword(!showPassword)}
+                  onChange={e => setLoginPassword(e.target.value)}
                   required
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium pr-9"
                 />
@@ -494,25 +656,9 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
               {isLoadingAuth ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Masuk Sekarang'}
             </button>
 
-            <div className="pt-4 border-t border-slate-100 text-center space-y-2">
-              <p className="text-[10px] text-slate-400 font-bold uppercase">Uji Coba Kredensial Instan:</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setLoginUsername('ratna.guru'); setLoginPassword('password123'); }}
-                  className="flex-1 py-1.5 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-lg hover:bg-slate-200 border border-slate-200"
-                >
-                  Guru Demo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setLoginUsername('Admin.smpn2bajuin'); setLoginPassword('Qwerty123456'); }}
-                  className="flex-1 py-1.5 bg-slate-800 text-white text-[11px] font-bold rounded-lg hover:bg-slate-900"
-                >
-                  Admin Demo
-                </button>
-              </div>
-            </div>
+            <p className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-500">
+              Gunakan akun yang dibuat oleh administrator sekolah.
+            </p>
           </form>
         </div>
       </div>
@@ -562,6 +708,9 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                 <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Users className="w-4 h-4 text-amber-400" /> Learning Map
                 </button>
+                <button onClick={() => { setActiveTab('reports'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'reports' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Printer className="w-4 h-4 text-purple-400" /> Laporan & PDF
+                </button>
                 <button onClick={() => { setActiveTab('ai'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'ai' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Bot className="w-4 h-4 text-cyan-400" /> AI Assistant
                 </button>
@@ -571,28 +720,33 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
               </>
             )}
 
-            {currentUser.role === 'ADMIN' && (
+            {currentUser.role === 'LEADER' && (
               <>
-                <button onClick={() => { setActiveTab('admin_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <BarChart2 className="w-4 h-4 text-emerald-400" /> Dashboard Performa
+                <button onClick={() => { setActiveTab('leader_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'leader_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <BarChart2 className="w-4 h-4 text-amber-400" /> Dashboard Leader
                 </button>
-                <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Users className="w-4 h-4 text-amber-400" /> Manajemen Guru
-                </button>
-                <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Layers className="w-4 h-4 text-purple-400" /> Tambah Rombel Kelas
-                </button>
-                <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <UserPlus className="w-4 h-4 text-cyan-400" /> Data Siswa & Import
-                </button>
-                <button onClick={() => { setActiveTab('admin_api'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_api' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Key className="w-4 h-4 text-amber-400" /> Google API Key
-                </button>
+                <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Daftar Guru</button>
+                <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Daftar Kelas</button>
+                <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-emerald-400" /> Daftar Siswa</button>
+                <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><BookOpen className="w-4 h-4 text-cyan-400" /> Learning Map Sekolah</button>
                 <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Admin
+                  <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Profil
                 </button>
               </>
             )}
+
+            {currentUser.role === 'ADMIN' && (
+              <>
+                <button onClick={() => { setActiveTab('admin_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><BarChart2 className="w-4 h-4 text-emerald-400" /> Dashboard Performa</button>
+                <button onClick={() => { setActiveTab('admin_users'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_users' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-cyan-400" /> Manajemen Akun</button>
+                <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Manajemen Guru</button>
+                <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Manajemen Kelas</button>
+                <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-cyan-400" /> Manajemen Siswa</button>
+                <button onClick={() => { setActiveTab('admin_api'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_api' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Key className="w-4 h-4 text-amber-400" /> Konfigurasi AI</button>
+                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Settings className="w-4 h-4 text-slate-400" /> Pengaturan Admin</button>
+              </>
+            )}
+
           </nav>
         </div>
 
@@ -617,34 +771,16 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
         {currentUser.role === 'TEACHER' && activeTab === 'dashboard' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1>
-                <p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran SMPN 2 Bajuin | Tahun 2026/2027</p>
-              </div>
-              <button onClick={() => setActiveTab('attendance')} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" /> Input Presensi Hari Ini
-              </button>
+              <div><h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1><p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran UPTD SMPN 2 Bajuin · Tahun {systemSettings.academicYear}</p></div>
+              <button onClick={() => setActiveTab('attendance')} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
             </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Kelas Pengampuan</span>
-                <p className="text-2xl font-black text-blue-800 mt-1">{teacherAssignedClasses.length} Kelas</p>
-                <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ {teacherAssignedClasses.join(', ')}</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Rata-rata Kehadiran</span>
-                <p className="text-2xl font-black text-emerald-600 mt-1">96.5%</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Jurnal Terisi</span>
-                <p className="text-2xl font-black text-purple-600 mt-1">{journals.length} Jurnal</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Status API Gemini</span>
-                <p className="text-2xl font-black text-amber-500 mt-1">{systemSettings.geminiApiKey ? 'Aktif' : 'Standar'}</p>
-              </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Kelas Pengampuan</span><p className="text-2xl font-black text-blue-800 mt-1">{teacherAssignedClasses.length}</p><p className="text-[10px] text-slate-500 mt-1">{teacherAssignedClasses.join(', ') || 'Belum ditentukan'}</p></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jumlah Siswa Diampu</span><p className="text-2xl font-black text-emerald-600 mt-1">{students.filter(s => teacherAssignedClasses.includes('ALL') || teacherAssignedClasses.includes(s.class)).length}</p></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jurnal Tersimpan</span><p className="text-2xl font-black text-purple-600 mt-1">{journals.length}</p><button onClick={() => setActiveTab('journal')} className="text-[10px] text-blue-800 font-bold mt-2">Buka Smart Journal →</button></div>
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Status Asisten AI</span><p className="text-sm font-black text-cyan-700 mt-2">{isServerOnline ? 'Backend terhubung' : 'Backend belum terhubung'}</p><button onClick={() => setActiveTab('ai')} className="text-[10px] text-blue-800 font-bold mt-2">Buka AI Assistant →</button></div>
             </div>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><h2 className="font-bold text-slate-800">Langkah cepat</h2><div className="flex flex-wrap gap-3 mt-4"><button onClick={() => setActiveTab('attendance')} className="px-4 py-2 rounded-xl bg-blue-50 text-blue-800 text-xs font-bold">Absensi Cepat</button><button onClick={() => setActiveTab('journal')} className="px-4 py-2 rounded-xl bg-purple-50 text-purple-800 text-xs font-bold">Isi Smart Journal</button><button onClick={() => setActiveTab('students')} className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold">Input Nilai Tugas</button></div></div>
           </div>
         )}
 
@@ -705,11 +841,9 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
-              <div className="p-4 bg-slate-50 flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</span>
-                <button onClick={handleMarkAllPresent} className="px-3.5 py-1.5 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">
-                  ✓ Tandai Semua Hadir
-                </button>
+              <div className="p-4 bg-slate-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <div><p className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</p><p className={`text-[11px] font-bold mt-1 ${attendanceSaveStatus === 'saved' ? 'text-emerald-700' : attendanceSaveStatus === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>{attendanceSaveStatus === 'saved' ? '✓ Presensi tersimpan di database' : attendanceSaveStatus === 'saving' ? 'Menyimpan presensi…' : attendanceSaveStatus === 'error' ? 'Gagal menyimpan — silakan coba lagi' : '● Ada perubahan yang belum disimpan'}</p></div>
+                <div className="flex flex-wrap gap-2"><button onClick={handleMarkAllPresent} className="px-3.5 py-2 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">✓ Tandai Semua Hadir</button><button onClick={handleSaveAttendance} disabled={savingAttendance || attendanceSaveStatus === 'saved'} className="px-4 py-2 bg-emerald-700 text-white text-xs font-bold rounded-xl hover:bg-emerald-800 disabled:opacity-50 transition">{savingAttendance ? 'Menyimpan…' : 'Simpan / Kumpulkan Absen'}</button></div>
               </div>
 
               {students.filter(s => s.class === selectedClass).map((std, idx) => (
@@ -723,13 +857,13 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                   </div>
 
                   <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                    {['PRESENT', 'SICK', 'EXCUSED', 'ABSENT'].map(st => {
+                    {['PRESENT', 'SICK', 'PERMISSION', 'ABSENT'].map(st => {
                       const isActive = currentAttendance[std.id] === st;
-                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', EXCUSED: 'Izin', ABSENT: 'Alpa' }[st];
+                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', PERMISSION: 'Izin', ABSENT: 'Alpa' }[st];
                       let activeStyle = '';
                       if (st === 'PRESENT') activeStyle = 'bg-emerald-600 text-white font-bold shadow-sm';
                       if (st === 'SICK') activeStyle = 'bg-amber-500 text-white font-bold shadow-sm';
-                      if (st === 'EXCUSED') activeStyle = 'bg-blue-600 text-white font-bold shadow-sm';
+                      if (st === 'PERMISSION') activeStyle = 'bg-blue-600 text-white font-bold shadow-sm';
                       if (st === 'ABSENT') activeStyle = 'bg-rose-600 text-white font-bold shadow-sm';
 
                       return (
@@ -807,51 +941,80 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
         {/* TEACHER - LEARNING MAP */}
         {currentUser.role === 'TEACHER' && activeTab === 'students' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1>
-                <p className="text-xs text-slate-500 mt-1">Pemantauan pencapaian akademik dan karakter siswa</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Cari nama siswa..."
-                  value={studentSearchTerm}
-                  onChange={e => setStudentSearchTerm(e.target.value)}
-                  className="p-2 bg-white border border-slate-300 rounded-xl text-xs"
-                />
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+              <div><h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1><p className="text-xs text-slate-500 mt-1">Pilih kelas yang diampu, pantau kehadiran, rata-rata nilai, dan status siswa.</p></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-bold text-slate-600">Kelas</label>
+                <select value={mapClassFilter} onChange={e => { setMapClassFilter(e.target.value); setStudentSearchTerm(''); }} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold">
+                  <option value="ALL">Semua kelas yang diampu</option>{teacherAssignedClasses.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>Kelas {c}</option>)}
+                </select>
+                <input type="text" placeholder="Cari nama/NISN..." value={studentSearchTerm} onChange={e => setStudentSearchTerm(e.target.value)} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs" />
+                <button onClick={handleAddLearningTask} className="px-3 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold">+ Tambah Tugas</button>
               </div>
             </div>
-
+            <p className="text-xs text-slate-500">Mata pelajaran: <b>{currentUser.subject || 'yang diampu'}</b> · {teacherLearningTasks.length} tugas aktif milik akun Anda · Nilai 0–100.</p>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[500px]">
-                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
-                  <tr>
-                    <th className="p-3">Nama Siswa</th>
-                    <th className="p-3">Kelas</th>
-                    <th className="p-3 text-center">Tingkat Kehadiran</th>
-                    <th className="p-3 text-center">Nilai Tugas</th>
-                    <th className="p-3 text-center">Status Pemantauan</th>
-                  </tr>
-                </thead>
+              <table className="w-full text-left text-xs min-w-[900px]">
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3 text-center">Kehadiran</th>{teacherLearningTasks.map(task=><th key={task.id} className="p-3 text-center"><div>{task.title}</div><div className="text-[10px] normal-case text-slate-400 mt-1">Tugas {task.assignmentNo}</div><button type="button" title={'Hapus '+task.title} disabled={teacherLearningTasks.length<=1} onClick={()=>handleDeleteLearningTask(task)} className="mt-1 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-rose-50 text-rose-700 normal-case disabled:opacity-30"><Trash2 className="w-3 h-3"/> Hapus</button></th>)}<th className="p-3 text-center">Rata-rata</th><th className="p-3 text-center">Simpan</th><th className="p-3 text-center">Status</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredStudents.map(std => (
-                    <tr key={std.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold text-slate-800">{std.name}</td>
-                      <td className="p-3 font-bold text-blue-800">{std.class}</td>
-                      <td className="p-3 text-center font-mono">{std.attendanceRate}%</td>
-                      <td className="p-3 text-center font-mono">{std.assignmentScore}</td>
-                      <td className="p-3 text-center">
-                        {std.statusFlag === 'GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
-                        {std.statusFlag === 'NEEDS_FOLLOW_UP' && <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">⚠️ Pendampingan</span>}
-                        {std.statusFlag === 'MONITOR' && <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">🟡 Pemantauan</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredStudents.map(std => <tr key={std.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold text-slate-800">{std.name}</td><td className="p-3 font-bold text-blue-800">{std.class}</td>
+                    <td className="p-3 text-center font-mono">{std.attendanceRate == null ? 'Belum ada data' : std.attendanceRate + '%'}</td>
+                    {teacherLearningTasks.map(task=><td key={task.id} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={'Nilai '+task.title+' '+std.name} value={gradeDrafts[std.id]?.[task.assignmentNo] ?? ''} onChange={e=>setGradeDrafts(prev=>({...prev,[std.id]:{...(prev[std.id]||{}),[task.assignmentNo]:e.target.value}}))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
+                    <td className="p-3 text-center font-bold">{std.averageScore == null ? '—' : std.averageScore+'%'}</td>
+                    <td className="p-2 text-center"><button onClick={()=>handleSaveStudentGrades(std)} disabled={savingGradesFor===std.id} className="px-3 py-2 rounded-lg bg-blue-800 text-white font-bold disabled:opacity-50">{savingGradesFor===std.id?'Menyimpan…':'Simpan'}</button></td>
+                    <td className="p-3 text-center whitespace-nowrap">
+                      {std.statusFlag==='VERY_GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
+                      {std.statusFlag==='GOOD' && <span className="px-2.5 py-1 bg-orange-100 text-orange-800 text-[10px] font-bold rounded-full">🟠 Baik</span>}
+                      {std.statusFlag==='NEEDS_SUPPORT' && <span className="px-2.5 py-1 bg-yellow-100 text-yellow-900 text-[10px] font-bold rounded-full">🟡 Perlu Pendampingan</span>}
+                      {std.statusFlag==='WATCH' && <span className="px-2.5 py-1 bg-amber-100 text-red-700 text-[10px] font-bold rounded-full">⚠️ Butuh Pengawasan</span>}
+                      {std.statusFlag==='NO_DATA' && <span className="px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">Belum Ada Data</span>}
+                    </td>
+                  </tr>)}
+                  {!filteredStudents.length && <tr><td colSpan={teacherLearningTasks.length+6} className="p-6 text-center text-slate-500">Tidak ada siswa untuk kelas/pencarian ini.</td></tr>}
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+        {/* TEACHER - REPORTS AND PDF EXPORT */}
+        {currentUser.role === 'TEACHER' && activeTab === 'reports' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><Printer className="w-6 h-6 text-purple-700" /> Laporan & Ekspor PDF</h1><p className="text-xs text-slate-500 mt-1">Cetak rekap jurnal, absensi, dan nilai secara terpisah dengan format siap arsip.</p></div>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Kelas</label><select value={reportClass || selectedClass} onChange={e=>setReportClass(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{teacherAssignedClasses.filter(c=>c!=='ALL').map(c=><option key={c} value={c}>Kelas {c}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Awal</label><input type="date" value={reportFromDate} onChange={e=>setReportFromDate(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"/></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Akhir</label><input type="date" value={reportToDate} onChange={e=>setReportToDate(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"/></div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center mb-3"><FileText className="w-5 h-5"/></div><h2 className="font-extrabold text-slate-900">Jurnal Mengajar</h2><p className="text-xs text-slate-500 mt-2 mb-4">Tanggal, materi, metode, dan catatan refleksi jurnal pada periode terpilih.</p><button onClick={()=>generatePdfReport('journal')} className="w-full py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Cetak / Simpan PDF</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-3"><CheckCircle className="w-5 h-5"/></div><h2 className="font-extrabold text-slate-900">Rekap Absensi</h2><p className="text-xs text-slate-500 mt-2 mb-4">Daftar siswa, tanggal kehadiran, status, serta ringkasan hadir, terlambat, sakit, izin, dan alpa.</p><button onClick={()=>generatePdfReport('attendance')} className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Cetak / Simpan PDF</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center mb-3"><BarChart2 className="w-5 h-5"/></div><h2 className="font-extrabold text-slate-900">Rekap Nilai Tugas</h2><p className="text-xs text-slate-500 mt-2 mb-4">Tabel nilai tiap siswa, tugas aktif milik Anda, dan rata-rata nilai.</p><button onClick={()=>generatePdfReport('grades')} className="w-full py-2.5 rounded-xl bg-blue-800 hover:bg-blue-900 text-white text-xs font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Cetak / Simpan PDF</button></div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><b>Petunjuk:</b> pilih kelas dan rentang tanggal, lalu klik salah satu laporan. Pada dialog cetak browser, pilih <b>Simpan sebagai PDF (Save as PDF)</b>. Setiap laporan dibuat terpisah dan dilengkapi tanggal cetak serta ruang tanda tangan.</div>
+          </div>
+        )}
+
+        {/* LEADER - SCHOOL-WIDE LEARNING MAP */}
+        {currentUser.role === 'LEADER' && activeTab === 'students' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Learning Map Sekolah</h1><p className="text-xs text-slate-500 mt-1">Seluruh kelas dipantau bersama. Siswa yang butuh pengawasan ditampilkan paling atas.</p></div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                {key:'WATCH',label:'Butuh Pengawasan',color:'text-red-700'},
+                {key:'NEEDS_SUPPORT',label:'Perlu Pendampingan',color:'text-yellow-700'},
+                {key:'GOOD',label:'Baik',color:'text-orange-700'},
+                {key:'VERY_GOOD',label:'Sangat Baik',color:'text-emerald-700'}
+              ].map(item=><div key={item.key} className="bg-white p-4 rounded-xl border border-slate-200"><p className="text-xs text-slate-500">{item.label}</p><p className={'text-2xl font-black '+item.color}>{leaderLearningStudents.filter(s=>s.statusFlag===item.key).length}</p></div>)}
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[780px]">
+              <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3">Kehadiran</th><th className="p-3">Rata-rata Tugas</th><th className="p-3">Status Perhatian</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{leaderLearningStudents.map(std=><tr key={std.id} className={std.statusFlag==='WATCH'?'bg-amber-50':std.statusFlag==='NEEDS_SUPPORT'?'bg-yellow-50':'hover:bg-slate-50'}>
+                <td className="p-3 font-bold">{std.name}</td><td className="p-3">{std.class}</td><td className="p-3">{std.attendanceRate==null?'Belum ada data':std.attendanceRate+'%'}</td><td className="p-3">{std.averageScore==null?'Belum ada nilai':std.averageScore+'%'}</td>
+                <td className="p-3 whitespace-nowrap">
+                  {std.statusFlag==='VERY_GOOD'&&<span>🟢 Sangat Baik</span>}{std.statusFlag==='GOOD'&&<span>🟠 Baik</span>}{std.statusFlag==='NEEDS_SUPPORT'&&<span>🟡 Perlu Pendampingan</span>}{std.statusFlag==='WATCH'&&<span>⚠️ Butuh Pengawasan</span>}{std.statusFlag==='NO_DATA'&&<span className="text-slate-500">Belum Ada Data</span>}
+                </td></tr>)}</tbody>
+            </table></div>
           </div>
         )}
 
@@ -871,7 +1034,7 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
-                  <input type="text" value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" />
+                  <select value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select>
                 </div>
 
                 <div>
@@ -928,53 +1091,69 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
           </div>
         )}
 
+
+        {/* LEADER - OVERVIEW */}
+        {currentUser.role === 'LEADER' && activeTab === 'leader_overview' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Dashboard Leader</h1><p className="text-xs text-slate-500 mt-1">Ringkasan guru, kelas, dan siswa. Buka daftar lengkap melalui tombol Selengkapnya.</p></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Guru Aktif</p><p className="text-2xl font-black text-blue-800">{users.filter(u => u.role === 'TEACHER' && u.active).length} Guru</p><div className="mt-3 space-y-2">{users.filter(u => u.role === 'TEACHER' && u.active).slice(0,5).map(u => <p key={u.id} className="text-xs text-slate-700">{u.name} <span className="text-slate-400">· {u.subject || 'Mapel belum diisi'}</span></p>)}</div><button onClick={() => setActiveTab('admin_teachers')} className="mt-4 text-xs font-bold text-blue-800 hover:underline">Selengkapnya: Daftar Guru →</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Kelas Aktif</p><p className="text-2xl font-black text-purple-600">{classesList.length} Kelas</p><div className="mt-3 space-y-2">{classesList.slice(0,5).map(k => <p key={k.id} className="text-xs text-slate-700">Kelas {k.name} <span className="text-slate-400">· {students.filter(s => s.class === k.name).length} siswa</span></p>)}</div><button onClick={() => setActiveTab('admin_classes')} className="mt-4 text-xs font-bold text-purple-700 hover:underline">Selengkapnya: Daftar Kelas →</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Siswa Aktif</p><p className="text-2xl font-black text-emerald-600">{students.length} Siswa</p><div className="mt-3 space-y-2">{students.slice(0,5).map(s => <p key={s.id} className="text-xs text-slate-700">{s.name} <span className="text-slate-400">· {s.class}</span></p>)}</div><button onClick={() => setActiveTab('admin_students')} className="mt-4 text-xs font-bold text-emerald-700 hover:underline">Selengkapnya: Daftar Siswa →</button></div>
+            </div>
+          </div>
+        )}
+
         {/* ADMIN - OVERVIEW */}
         {currentUser.role === 'ADMIN' && activeTab === 'admin_overview' && (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900">Dashboard Performa Sekolah</h1>
-              <p className="text-xs text-slate-500 mt-1">Ringkasan status akademik dan penggunaan sistem</p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Total Guru</span>
-                <p className="text-2xl font-black text-blue-800 mt-1">{users.filter(u => u.role === 'TEACHER').length} Guru</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Total Rombel</span>
-                <p className="text-2xl font-black text-purple-600 mt-1">{classesList.length} Kelas</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Total Siswa</span>
-                <p className="text-2xl font-black text-emerald-600 mt-1">{students.length} Siswa</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs text-slate-500 font-medium">Kehadiran Rata-rata</span>
-                <p className="text-2xl font-black text-amber-500 mt-1">96.8%</p>
-              </div>
+            <div><h1 className="text-2xl font-black text-slate-900">Dashboard Performa Sekolah</h1><p className="text-xs text-slate-500 mt-1">Ringkasan akun guru, kelas, dan siswa UPTD SMPN 2 Bajuin.</p></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Guru Aktif</p><p className="text-2xl font-black text-blue-800">{users.filter(u => u.role === 'TEACHER' && u.active).length} Guru</p><div className="mt-3 space-y-2">{users.filter(u => u.role === 'TEACHER' && u.active).slice(0,5).map(u => <p key={u.id} className="text-xs text-slate-700">{u.name} <span className="text-slate-400">· {u.subject || 'Mapel belum diisi'}</span></p>)}</div><button onClick={() => setActiveTab('admin_teachers')} className="mt-4 text-xs font-bold text-blue-800 hover:underline">Selengkapnya: Manajemen Guru →</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Kelas Aktif</p><p className="text-2xl font-black text-purple-600">{classesList.length} Kelas</p><div className="mt-3 space-y-2">{classesList.slice(0,5).map(k => <p key={k.id} className="text-xs text-slate-700">Kelas {k.name} <span className="text-slate-400">· {students.filter(s => s.class === k.name).length} siswa</span></p>)}</div><button onClick={() => setActiveTab('admin_classes')} className="mt-4 text-xs font-bold text-purple-700 hover:underline">Selengkapnya: Manajemen Kelas →</button></div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p className="text-xs text-slate-500">Total Siswa Aktif</p><p className="text-2xl font-black text-emerald-600">{students.length} Siswa</p><div className="mt-3 space-y-2">{students.slice(0,5).map(s => <p key={s.id} className="text-xs text-slate-700">{s.name} <span className="text-slate-400">· {s.class}</span></p>)}</div><button onClick={() => setActiveTab('admin_students')} className="mt-4 text-xs font-bold text-emerald-700 hover:underline">Selengkapnya: Manajemen Siswa →</button></div>
             </div>
           </div>
         )}
 
         {/* ADMIN - MANAJEMEN GURU */}
-        {currentUser.role === 'ADMIN' && activeTab === 'admin_teachers' && (
+        {currentUser.role === 'ADMIN' && activeTab === 'admin_users' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Manajemen Akun</h1><p className="text-xs text-slate-500 mt-1">Atur peran, reset password, dan aktif/nonaktifkan akun. Izin tetap divalidasi oleh server.</p></div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[760px]">
+                <thead className="bg-slate-100 text-slate-600 uppercase"><tr><th className="p-3">Nama</th><th className="p-3">Username</th><th className="p-3">Peran</th><th className="p-3">Status</th><th className="p-3">Tindakan</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map(u => <tr key={u.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold text-slate-800">{u.name}</td><td className="p-3 font-mono">{u.username}</td><td className="p-3">{u.role}</td>
+                    <td className="p-3"><span className={`px-2 py-1 rounded-full font-bold ${u.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{u.active ? 'Aktif' : 'Nonaktif'}</span></td>
+                    <td className="p-3"><div className="flex flex-wrap gap-2">
+                      {(u.role === 'TEACHER' || u.role === 'LEADER') && u.active && <button onClick={() => handleUserRoleChange(u.id, u.role === 'TEACHER' ? 'LEADER' : 'TEACHER')} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Jadikan {u.role === 'TEACHER' ? 'Leader' : 'Guru'}</button>}
+                      {u.active && <button onClick={() => handleResetUserPassword(u.id)} className="px-2 py-1 rounded bg-amber-50 text-amber-800 font-bold">Reset Password</button>}
+                      <button onClick={() => handleToggleUserActive(u)} disabled={u.id === currentUser.id && u.active} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold disabled:opacity-40">{u.active ? 'Nonaktifkan' : 'Aktifkan'}</button>
+                    </div></td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'LEADER') && activeTab === 'admin_teachers' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-blue-800" /> Tambah Akun Guru Baru
               </h2>
-              <form onSubmit={handleAddTeacher} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {currentUser.role === 'ADMIN' && <form onSubmit={handleAddTeacher} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <input type="text" placeholder="Nama Guru & Gelar" value={newTeacher.name} onChange={e => setNewTeacher({...newTeacher, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
                 <input type="text" placeholder="NIP" value={newTeacher.nip} onChange={e => setNewTeacher({...newTeacher, nip: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
-                <input type="text" placeholder="Mata Pelajaran" value={newTeacher.subject} onChange={e => setNewTeacher({...newTeacher, subject: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
+                <select value={newTeacher.subject} onChange={e => setNewTeacher({...newTeacher, subject: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required>{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select>
                 <input type="text" placeholder="Username Login" value={newTeacher.username} onChange={e => setNewTeacher({...newTeacher, username: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <input type="password" placeholder="Password Login" value={newTeacher.password} onChange={e => setNewTeacher({...newTeacher, password: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
-                  + Simpan Guru
-                </button>
-              </form>
+                <input type="password" minLength="12" placeholder="Password Login (min. 12 karakter)" value={newTeacher.password} onChange={e => setNewTeacher({...newTeacher, password: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
+                <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold text-slate-700 mb-2">Kelas yang diampu (pilih satu atau lebih)</p><div className="flex flex-wrap gap-3">{classesList.map(klass => <label key={klass.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={newTeacher.assignedClasses.includes(klass.name)} onChange={e => setNewTeacher(prev => ({...prev, assignedClasses: e.target.checked ? [...prev.assignedClasses, klass.name] : prev.assignedClasses.filter(x => x !== klass.name)}))} />{klass.name}</label>)}</div></div>
+                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Guru</button>
+              </form>}
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
@@ -984,7 +1163,7 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                     <th className="p-3">Nama Guru</th>
                     <th className="p-3">Mata Pelajaran</th>
                     <th className="p-3">Username</th>
-                    <th className="p-3">Kelas Pengampuan</th>
+                    <th className="p-3">Kelas Pengampuan</th>{currentUser.role === 'ADMIN' && <th className="p-3">Tindakan</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -993,7 +1172,8 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                       <td className="p-3 font-bold text-slate-800">{t.name}</td>
                       <td className="p-3 font-bold text-blue-800">{t.subject}</td>
                       <td className="p-3 font-mono text-purple-700">{t.username}</td>
-                      <td className="p-3 font-bold text-emerald-600">{(t.assignedClasses || []).join(', ')}</td>
+                      <td className="p-3 font-bold text-emerald-600">{(t.assignedClasses || []).join(', ') || 'Belum ditentukan'}</td>
+                      {currentUser.role === 'ADMIN' && <td className="p-3"><button onClick={() => handleEditTeacher(t)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button></td>}
                     </tr>
                   ))}
                 </tbody>
@@ -1002,74 +1182,69 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
           </div>
         )}
 
-        {/* ADMIN - ROMBEL KELAS */}
-        {currentUser.role === 'ADMIN' && activeTab === 'admin_classes' && (
+                {/* ADMIN - ROMBEL KELAS */}
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'LEADER') && activeTab === 'admin_classes' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Tambah Rombel Kelas Baru</h2>
-              <form onSubmit={handleAddClass} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <input type="text" placeholder="Nama Kelas (VII C)" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <select value={newClass.grade} onChange={e => setNewClass({...newClass, grade: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">
-                  <option value="VII">Tingkat VII</option>
-                  <option value="VIII">Tingkat VIII</option>
-                  <option value="IX">Tingkat IX</option>
-                </select>
-                <input type="text" placeholder="Nama Wali Kelas" value={newClass.homeroomTeacher} onChange={e => setNewClass({...newClass, homeroomTeacher: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
-                  + Simpan Rombel
-                </button>
-              </form>
+              {currentUser.role === 'ADMIN' && <form onSubmit={handleAddClass} className="grid grid-cols-1 sm:grid-cols-4 gap-3"><input type="text" placeholder="Nama Kelas (VII C)" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><select value={newClass.grade} onChange={e => setNewClass({...newClass, grade: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold"><option value="VII">Tingkat VII</option><option value="VIII">Tingkat VIII</option><option value="IX">Tingkat IX</option></select><input type="text" placeholder="Nama Wali Kelas" value={newClass.homeroomTeacher} onChange={e => setNewClass({...newClass, homeroomTeacher: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" /><button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Rombel</button></form>}
             </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Kelas</th><th className="p-3">Tingkat</th><th className="p-3">Jumlah Siswa</th><th className="p-3">Wali Kelas</th>{currentUser.role === 'ADMIN' && <th className="p-3">Tindakan</th>}</tr></thead><tbody className="divide-y divide-slate-100">
+              {classesList.map(c => <tr key={c.id}><td className="p-3 font-bold">{c.name}</td><td className="p-3">{c.grade}</td><td className="p-3">{students.filter(st => st.class === c.name).length}</td><td className="p-3">{c.homeroomTeacher || 'Belum ditentukan'}</td>{currentUser.role === 'ADMIN' && <td className="p-3"><div className="flex gap-2"><button onClick={() => handleEditClass(c)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button><button onClick={() => handleDeactivateClass(c)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></div></td>}</tr>)}
+            </tbody></table></div>
           </div>
         )}
 
-        {/* ADMIN - DATA SISWA */}
-        {currentUser.role === 'ADMIN' && activeTab === 'admin_students' && (
+                {/* ADMIN - DATA SISWA */}
+        {(currentUser.role === 'ADMIN' || currentUser.role === 'LEADER') && activeTab === 'admin_students' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Tambah Data Siswa Baru</h2>
-              <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">
-                  <option value="VII A">Kelas VII A</option>
-                  <option value="VII B">Kelas VII B</option>
-                  <option value="VIII A">Kelas VIII A</option>
-                </select>
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
-                  + Simpan Siswa
-                </button>
-              </form>
+              {currentUser.role === 'ADMIN' && <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-5 gap-3"><input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" required>{classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}</select><select value={newStudent.gender} onChange={e => setNewStudent({...newStudent, gender:e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select><button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Siswa</button></form>}
+            </div>
+            {currentUser.role === 'ADMIN' && <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-emerald-700"/> Impor Siswa dari Excel</h2><p className="text-xs text-slate-500 mt-1">Tambahkan banyak siswa sekaligus melalui file Excel. Data diperiksa terlebih dahulu sebelum disimpan.</p></div>
+                <button type="button" onClick={downloadStudentTemplate} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold"><Download className="w-4 h-4"/> Unduh Template Excel</button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                <div><label className="block text-xs font-bold text-slate-700 mb-1">Pilih file Excel (.xlsx / .xls)</label><input type="file" accept=".xlsx,.xls" onChange={handleStudentExcelSelected} className="block w-full text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-bold border border-slate-300 rounded-xl p-2"/></div>
+                {studentImportRows.length > 0 && <button type="button" disabled={studentImportBusy || !studentImportRows.some(row=>!row.error)} onClick={handleImportStudents} className="px-5 py-2.5 rounded-xl bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-xs font-bold">{studentImportBusy ? 'Mengimpor...' : 'Impor '+studentImportRows.filter(row=>!row.error).length+' Siswa Valid'}</button>}
+              </div>
+              <p className="text-[11px] text-slate-500">Kolom wajib: Nama Siswa, NISN, Kelas, Jenis Kelamin (L/P). Pastikan nama kelas sudah terdaftar. NISN yang sudah ada dan baris tidak valid akan dilewati.</p>
+              {studentImportRows.length > 0 && <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs"><span className="font-bold text-slate-800">{studentImportFileName}</span><span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-800">{studentImportRows.filter(row=>!row.error).length} valid</span><span className="px-2 py-1 rounded-full bg-rose-50 text-rose-800">{studentImportRows.filter(row=>row.error).length} perlu diperbaiki</span></div>
+                <div className="max-h-80 overflow-auto border border-slate-200 rounded-xl"><table className="w-full min-w-[700px] text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-slate-600"><tr><th className="p-2">Baris</th><th className="p-2">Nama Siswa</th><th className="p-2">NISN</th><th className="p-2">Kelas</th><th className="p-2">Jenis Kelamin</th><th className="p-2">Status Validasi</th></tr></thead><tbody className="divide-y divide-slate-100">{studentImportRows.map((row,i)=><tr key={row.rowNumber+'-'+i} className={row.error?'bg-rose-50/70':''}><td className="p-2">{row.rowNumber}</td><td className="p-2 font-semibold">{row.name||'-'}</td><td className="p-2 font-mono">{row.nisn||'-'}</td><td className="p-2">{row.class||'-'}</td><td className="p-2">{row.gender||'-'}</td><td className={'p-2 '+(row.error?'text-rose-700':'text-emerald-700')}>{row.error||'Siap diimpor'}</td></tr>)}</tbody></table></div>
+              </div>}
+            </div>}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-2 text-xs"><span className="font-bold text-slate-600">Tampilkan</span><select value={adminStudentPageSize} onChange={e=>{setAdminStudentPageSize(Number(e.target.value));setAdminStudentPage(1);}} className="p-2 border border-slate-300 rounded-lg font-bold">{[10,15,20,25,50].map(n=><option key={n} value={n}>{n} siswa</option>)}</select><span className="text-slate-500">per halaman · Total {students.length} siswa</span></div>
+              <div className="text-xs text-slate-500">Halaman {Math.min(adminStudentPage,adminStudentPageCount)} dari {adminStudentPageCount}</div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">No.</th><th className="p-3">Nama Siswa</th><th className="p-3">NISN</th><th className="p-3">Kelas</th><th className="p-3">Jenis Kelamin</th>{currentUser.role==='ADMIN'&&<th className="p-3">Tindakan</th>}</tr></thead><tbody className="divide-y divide-slate-100">
+              {paginatedAdminStudents.map((student,index) => <tr key={student.id}><td className="p-3 text-slate-500">{(adminStudentPage-1)*adminStudentPageSize+index+1}</td><td className="p-3 font-bold">{student.name}</td><td className="p-3 font-mono">{student.nisn}</td><td className="p-3">{student.class}</td><td className="p-3">{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</td>{currentUser.role==='ADMIN'&&<td className="p-3"><div className="flex gap-2"><button onClick={() => handleEditStudent(student)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button><button onClick={() => handleDeactivateStudent(student)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></div></td>}</tr>)}
+              {!paginatedAdminStudents.length&&<tr><td colSpan={currentUser.role==='ADMIN'?6:5} className="p-6 text-center text-slate-500">Belum ada data siswa.</td></tr>}
+            </tbody></table></div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">Menampilkan {students.length?((adminStudentPage-1)*adminStudentPageSize+1):0}–{Math.min(adminStudentPage*adminStudentPageSize,students.length)} dari {students.length} siswa</p>
+              <div className="flex flex-wrap gap-1 items-center">
+                <button disabled={adminStudentPage<=1} onClick={()=>setAdminStudentPage(p=>Math.max(1,p-1))} className="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-40">Sebelumnya</button>
+                {Array.from({length:adminStudentPageCount},(_,i)=>i+1).filter(p=>p===1||p===adminStudentPageCount||Math.abs(p-adminStudentPage)<=1).map((p,i,arr)=><React.Fragment key={p}>{i>0&&p-arr[i-1]>1&&<span className="px-1 text-slate-400">…</span>}<button onClick={()=>setAdminStudentPage(p)} className={'min-w-9 px-3 py-2 rounded-lg border text-xs font-bold '+(p===adminStudentPage?'bg-blue-800 text-white border-blue-800':'border-slate-300 text-slate-700')}>{p}</button></React.Fragment>)}
+                <button disabled={adminStudentPage>=adminStudentPageCount} onClick={()=>setAdminStudentPage(p=>Math.min(adminStudentPageCount,p+1))} className="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-40">Berikutnya</button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* ADMIN - GEMINI API KEY */}
+                {/* ADMIN - AI CONFIGURATION */}
         {currentUser.role === 'ADMIN' && activeTab === 'admin_api' && (
           <div className="space-y-6 max-w-2xl">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                <Key className="w-6 h-6 text-amber-500" /> Central Google Gemini API Key
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">Pengaturan API Key Gemini terpusat untuk seluruh Guru</p>
+            <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><Key className="w-6 h-6 text-amber-500" /> Konfigurasi AI Server</h1>
+              <p className="text-xs text-slate-500 mt-1">Kunci API tidak dimasukkan melalui browser demi menjaga keamanan.</p></div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <p className="text-sm text-slate-700">Pengelola teknis perlu mengatur <code>GEMINI_API_KEY</code> pada file <code>.env</code> di server backend, lalu memulai ulang layanan API.</p>
+              <p className="text-xs text-slate-500">Jangan tempelkan kunci API di chat, GitHub, atau kolom browser. Jika belum dikonfigurasi, fitur AI akan memberi tahu bahwa layanan belum tersedia.</p>
             </div>
-
-            <form onSubmit={handleSaveGeminiApiKey} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Google Gemini API Key</label>
-                <input
-                  type="password"
-                  placeholder="AIzaSy..."
-                  value={systemSettings.geminiApiKey || ''}
-                  onChange={e => setSystemSettings({ ...systemSettings, geminiApiKey: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-
-              <button type="submit" className="py-2.5 px-6 bg-blue-800 text-white font-bold text-xs rounded-xl hover:bg-blue-900 transition">
-                Simpan API Key Terpusat
-              </button>
-            </form>
           </div>
         )}
 
