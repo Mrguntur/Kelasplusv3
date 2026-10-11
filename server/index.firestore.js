@@ -244,7 +244,7 @@ app.post('/api/students', auth, allow('ADMIN'), async (req,res,next) => {
     await audit(req.user,'CREATE','student',studentId); res.status(201).json({success:true,student:{id:studentId,nisn,name,class:className,gender,status:'ACTIVE'}});
   } catch(error) { next(error); }
 });
-app.post('/api/attendance', auth, async (req,res,next) => {
+app.post('/api/attendance', auth, allow('ADMIN','TEACHER'), async (req,res,next) => {
   try {
     const b=req.body||{}, className=clean(b.className), date=b.date, records=b.records;
     if(!className||!validDate(date)||!records||typeof records!=='object'||Array.isArray(records)) return fail(res,400,'Data presensi tidak valid.');
@@ -302,7 +302,7 @@ app.delete('/api/tasks/:id', auth, allow('TEACHER'), async (req,res,next) => {
     await audit(req.user,'DELETE','assignment_task',task.id,{subject:task.subject,assignmentNo:task.assignmentNo}); res.json({success:true});
   } catch(error) { next(error); }
 });
-app.post('/api/journals', auth, async (req,res,next) => {
+app.post('/api/journals', auth, allow('ADMIN','TEACHER'), async (req,res,next) => {
   try {
     const b=req.body||{}, className=clean(b.class), date=b.date, topic=clean(b.topic);
     if(!className||!validDate(date)||!topic) return fail(res,400,'Kelas, tanggal, dan topik wajib diisi.');
