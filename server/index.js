@@ -59,7 +59,9 @@ async function audit(user, action, type, id, details) {
 async function auth(req,res,next) {
  try {
   const token = (req.headers.authorization || '').startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';
-  const cookieHeader = req.headers.cookie || '';\n  const cookiePart = cookieHeader.split(';').map(x => x.trim()).find(x => x.startsWith(COOKIE + '='));\n  const raw = cookiePart ? decodeURIComponent(cookiePart.slice(COOKIE.length + 1)) : token;
+  const cookieHeader = req.headers.cookie || '';
+  const cookiePart = cookieHeader.split(';').map(x => x.trim()).find(x => x.startsWith(COOKIE + '='));
+  const raw = cookiePart ? decodeURIComponent(cookiePart.slice(COOKIE.length + 1)) : token;
   if (!raw) return fail(res,401,'Silakan login terlebih dahulu.');
   const digest = crypto.createHash('sha256').update(raw).digest('hex');
   const row = await db.get('SELECT s.id AS sid,s.expires_at,u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.active=1',digest,Date.now());
