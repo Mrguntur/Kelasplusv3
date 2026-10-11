@@ -31,6 +31,10 @@ export default function App() {
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [journals, setJournals] = useState([]);
   const [assignmentScores, setAssignmentScores] = useState([]);
+  const [assignmentTasks, setAssignmentTasks] = useState([]);
+  const [reportClass, setReportClass] = useState('');
+  const [reportFromDate, setReportFromDate] = useState('2026-10-01');
+  const [reportToDate, setReportToDate] = useState('2026-10-11');
   const [attendanceSaveStatus, setAttendanceSaveStatus] = useState('saved');
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingGradesFor, setSavingGradesFor] = useState('');
@@ -77,7 +81,8 @@ export default function App() {
       setStudents(data.students || []);
       setJournals(data.journals || []);
       setAssignmentScores(data.assignmentScores || []);
-      setLearningTaskCount(Math.max(4, ...(data.assignmentScores || []).map(g => Number(g.assignmentNo) || 0)));
+      setAssignmentTasks(data.assignmentTasks || []);
+      setLearningTaskCount(Math.max(0, ...(data.assignmentTasks || []).filter(t => t.teacherId === currentUser?.id).map(t => Number(t.assignmentNo) || 0)));
       const drafts = {};
       (data.assignmentScores || []).forEach(g => { drafts[g.studentId] = { ...(drafts[g.studentId] || {}), [g.assignmentNo]: g.score == null ? '' : String(g.score) }; });
       setGradeDrafts(drafts);
@@ -178,6 +183,8 @@ export default function App() {
       setStudents([]);
       setAttendanceRecords({});
       setJournals([]);
+      setAssignmentScores([]);
+      setAssignmentTasks([]);
       setLoginUsername('');
       setLoginPassword('');
       setLoginError('');
@@ -363,9 +370,45 @@ export default function App() {
     if(!classesList.some(x=>x.name===className.trim())||!['L','P'].includes(gender.trim().toUpperCase())){alert('Kelas atau jenis kelamin tidak valid.');return;}
     try{const response=await fetch(API_BASE_URL+'/students/'+student.id,{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),nisn:nisn.trim(),class:className.trim(),gender:gender.trim().toUpperCase()})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Data siswa gagal diperbarui.');await fetchBootstrapData();alert('Data siswa berhasil diperbarui.');}catch(err){alert(err.message||'Data siswa gagal diperbarui.');}
   };
+  const teacherLearningTasks = assignmentTasks.filter(t => t.teacherId === currentUser?.id && t.subject === (currentUser?.subject || 'Umum')).sort((a,b) => a.assignmentNo-b.assignmentNo);
+  const handleAddLearningTask = async () => {
+    const title = window.prompt('Nama tugas baru:', 'Tugas ' + (teacherLearningTasks.length + 1));
+    if (title === null) return;
+    if (!title.trim()) { alert('Nama tugas tidak boleh kosong.'); return; }
+    try {
+      const response = await fetch(API_BASE_URL + '/tasks', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title.trim() }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Tugas gagal ditambahkan.');
+      await fetchBootstrapData();
+      alert('Tugas berhasil ditambahkan khusus untuk akun Anda.');
+    } catch (err) { alert(err.message || 'Tugas gagal ditambahkan.'); }
+  };
+  const handleDeleteLearningTask = async (task) => {
+    if (teacherLearningTasks.length <= 1) { alert('Minimal harus ada satu tugas aktif.'); return; }
+    if (!window.confirm('Hapus "' + task.title + '"? Nilai siswa pada tugas ini juga akan dihapus. Tindakan ini tidak dapat dibatalkan.')) return;
+    try {
+      const response = await fetch(API_BASE_URL + '/tasks/' + encodeURIComponent(task.id), { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Tugas gagal dihapus.');
+      await fetchBootstrapData();
+      alert('Tugas dan nilai terkait berhasil dihapus.');
+    } catch (err) { alert(err.message || 'Tugas gagal dihapus.'); }
+  };
   const handleSaveStudentGrades = async (student) => {
     setSavingGradesFor(student.id);
-    try{for(let assignmentNo=1;assignmentNo<=learningTaskCount;assignmentNo+=1){const raw=gradeDrafts[student.id]?.[assignmentNo]??'',score=raw===''?null:Number(raw);if(score!==null&&(!Number.isFinite(score)||score<0||score>100))throw new Error('Nilai tugas harus antara 0 sampai 100.');const response=await fetch(API_BASE_URL+'/grades',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({studentId:student.id,subject:currentUser.subject||'Umum',assignmentNo,score})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Nilai tugas gagal disimpan.');}await fetchBootstrapData();alert('Nilai '+learningTaskCount+' tugas untuk '+student.name+' berhasil disimpan.');}catch(err){alert(err.message||'Nilai tugas gagal disimpan.');}finally{setSavingGradesFor('');}
+    try {
+      for (const task of teacherLearningTasks) {
+        const raw = gradeDrafts[student.id]?.[task.assignmentNo] ?? '';
+        const score = raw === '' ? null : Number(raw);
+        if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) throw new Error('Nilai tugas harus antara 0 sampai 100.');
+        const response = await fetch(API_BASE_URL + '/grades', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: student.id, subject: currentUser.subject || 'Umum', assignmentNo: task.assignmentNo, score }) });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Nilai tugas gagal disimpan.');
+      }
+      await fetchBootstrapData();
+      alert('Nilai ' + teacherLearningTasks.length + ' tugas untuk ' + student.name + ' berhasil disimpan.');
+    } catch (err) { alert(err.message || 'Nilai tugas gagal disimpan.'); }
+    finally { setSavingGradesFor(''); }
   };
 
   // Student monitoring indicators are calculated from saved attendance and grade records.
@@ -373,7 +416,7 @@ export default function App() {
   const getStudentMetrics = (student) => {
     const records = Object.entries(attendanceRecords).filter(([key, row]) => key.startsWith(student.class + '_') && Object.prototype.hasOwnProperty.call(row, student.id)).map(([, row]) => row[student.id]);
     const attendanceRate = records.length ? Math.round(records.filter(status => status === 'PRESENT').length / records.length * 100) : null;
-    const subjectGrades = assignmentScores.filter(g => g.studentId === student.id && g.score !== null && g.score !== undefined && (currentUser?.role !== 'TEACHER' || g.subject === (currentUser.subject || 'Umum')));
+    const subjectGrades = assignmentScores.filter(g => g.studentId === student.id && g.score !== null && g.score !== undefined && (currentUser?.role !== 'TEACHER' || (g.teacherId === currentUser.id && g.subject === (currentUser.subject || 'Umum'))));
     const averageScore = subjectGrades.length ? Math.round(subjectGrades.reduce((sum, g) => sum + Number(g.score), 0) / subjectGrades.length) : null;
     let statusFlag = 'NO_DATA';
     if (attendanceRate !== null || averageScore !== null) {
