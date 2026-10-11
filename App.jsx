@@ -83,6 +83,15 @@ export default function App() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (!cancelled && data && data.success) setCurrentUser(data.user); })
+      .catch(() => { if (!cancelled) setIsServerOnline(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (currentUser) fetchBootstrapData();
   }, [currentUser]);
   
