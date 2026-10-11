@@ -905,32 +905,15 @@ export default function App() {
           </div>
         )}
 
-        {/* ADMIN - GEMINI API KEY */}
+                {/* ADMIN - AI CONFIGURATION */}
         {currentUser.role === 'ADMIN' && activeTab === 'admin_api' && (
           <div className="space-y-6 max-w-2xl">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                <Key className="w-6 h-6 text-amber-500" /> Central Google Gemini API Key
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">Pengaturan API Key Gemini terpusat untuk seluruh Guru</p>
+            <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><Key className="w-6 h-6 text-amber-500" /> Konfigurasi AI Server</h1>
+              <p className="text-xs text-slate-500 mt-1">Kunci API tidak dimasukkan melalui browser demi menjaga keamanan.</p></div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <p className="text-sm text-slate-700">Pengelola teknis perlu mengatur <code>GEMINI_API_KEY</code> pada file <code>.env</code> di server backend, lalu memulai ulang layanan API.</p>
+              <p className="text-xs text-slate-500">Jangan tempelkan kunci API di chat, GitHub, atau kolom browser. Jika belum dikonfigurasi, fitur AI akan memberi tahu bahwa layanan belum tersedia.</p>
             </div>
-
-            <form onSubmit={handleSaveGeminiApiKey} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Google Gemini API Key</label>
-                <input
-                  type="password"
-                  placeholder="AIzaSy..."
-                  value={systemSettings.geminiApiKey || ''}
-                  onChange={e => setSystemSettings({ ...systemSettings, geminiApiKey: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-
-              <button type="submit" className="py-2.5 px-6 bg-blue-800 text-white font-bold text-xs rounded-xl hover:bg-blue-900 transition">
-                Simpan API Key Terpusat
-              </button>
-            </form>
           </div>
         )}
 
