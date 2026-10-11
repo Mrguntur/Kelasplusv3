@@ -140,18 +140,18 @@ app.post('/api/teachers',auth,allow('ADMIN'),async(req,res,next)=>{
   const assigned=Array.isArray(b.assignedClasses)?b.assignedClasses:[];
   const id=crypto.randomUUID();await db.run('INSERT INTO users(id,username,password_hash,name,nip,role,subject,assigned_classes) VALUES(?,?,?,?,?,?,?,?)',id,username,hashPassword(password),name,String(b.nip||''),'TEACHER',String(b.subject||''),JSON.stringify(assigned));
   const row=await db.get('SELECT * FROM users WHERE id=?',id);await audit(req.user,'CREATE','user',id);res.status(201).json({success:true,user:publicUser(row)});
- } catch(e){if(e.code==='SQLITE_CONSTRAINT_UNIQUE')return fail(res,409,'Username sudah digunakan.');next(e);}
+ } catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Username sudah digunakan.');next(e);}
 });
 app.post('/api/classes',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const b=req.body||{},name=String(b.name||'').trim(),grade=String(b.grade||'');if(!name||!['VII','VIII','IX'].includes(grade))return fail(res,400,'Nama kelas dan tingkat tidak valid.');
  const id=crypto.randomUUID();await db.run('INSERT INTO classes(id,name,grade,homeroom_teacher) VALUES(?,?,?,?)',id,name,grade,String(b.homeroomTeacher||''));await audit(req.user,'CREATE','class',id);res.status(201).json({success:true,class:{id,name,grade,homeroomTeacher:b.homeroomTeacher||''}});
- }catch(e){if(e.code==='SQLITE_CONSTRAINT_UNIQUE')return fail(res,409,'Nama kelas sudah digunakan.');next(e);}
+ }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Nama kelas sudah digunakan.');next(e);}
 });
 app.post('/api/students',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const b=req.body||{},name=String(b.name||'').trim(),nisn=String(b.nisn||'').trim(),className=String(b.class||'');if(!name||!nisn||!className||!['L','P'].includes(b.gender||'L'))return fail(res,400,'Nama, NISN, kelas, dan jenis kelamin wajib valid.');
  const c=await db.get('SELECT * FROM classes WHERE name=? AND active=1',className);if(!c)return fail(res,400,'Kelas tidak ditemukan.');const id=crypto.randomUUID();
  await db.run('INSERT INTO students(id,nisn,name,class_id,gender) VALUES(?,?,?,?,?)',id,nisn,name,c.id,b.gender||'L');await audit(req.user,'CREATE','student',id);res.status(201).json({success:true,student:{id,nisn,name,class:className,gender:b.gender||'L',status:'ACTIVE'}});
- }catch(e){if(e.code==='SQLITE_CONSTRAINT_UNIQUE')return fail(res,409,'NISN sudah terdaftar.');next(e);}
+ }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'NISN sudah terdaftar.');next(e);}
 });
 app.post('/api/attendance',auth,async(req,res,next)=>{
  try {const b=req.body||{},className=String(b.className||''),date=b.date,records=b.records;
@@ -197,7 +197,7 @@ app.delete('/api/users/:id',auth,allow('ADMIN'),async(req,res,next)=>{
 app.patch('/api/classes/:id',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const old=await db.get('SELECT * FROM classes WHERE id=?',req.params.id);if(!old)return fail(res,404,'Kelas tidak ditemukan.');const b=req.body||{},name=String(b.name===undefined?old.name:b.name).trim(),grade=b.grade||old.grade;if(!name||!['VII','VIII','IX'].includes(grade))return fail(res,400,'Data kelas tidak valid.');
  await db.run('UPDATE classes SET name=?,grade=?,homeroom_teacher=? WHERE id=?',name,grade,String(b.homeroomTeacher===undefined?old.homeroom_teacher:b.homeroomTeacher),old.id);await audit(req.user,'UPDATE','class',old.id);res.json({success:true});
- }catch(e){if(e.code==='SQLITE_CONSTRAINT_UNIQUE')return fail(res,409,'Nama kelas sudah digunakan.');next(e);}
+ }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'Nama kelas sudah digunakan.');next(e);}
 });
 app.delete('/api/classes/:id',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const usage=await db.get('SELECT COUNT(*) n FROM students WHERE class_id=? AND active=1',req.params.id);if(usage.n)return fail(res,409,'Kelas masih memiliki siswa aktif.');const result=await db.run('UPDATE classes SET active=0 WHERE id=?',req.params.id);if(!result.changes)return fail(res,404,'Kelas tidak ditemukan.');await audit(req.user,'DEACTIVATE','class',req.params.id);res.json({success:true});}catch(e){next(e);}
@@ -205,7 +205,7 @@ app.delete('/api/classes/:id',auth,allow('ADMIN'),async(req,res,next)=>{
 app.patch('/api/students/:id',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const old=await db.get('SELECT * FROM students WHERE id=?',req.params.id);if(!old)return fail(res,404,'Siswa tidak ditemukan.');const b=req.body||{};let classId=old.class_id;if(b.class){const c=await db.get('SELECT id FROM classes WHERE name=? AND active=1',b.class);if(!c)return fail(res,400,'Kelas tidak ditemukan.');classId=c.id;}
  await db.run('UPDATE students SET name=?,nisn=?,gender=?,class_id=?,active=? WHERE id=?',String(b.name===undefined?old.name:b.name).trim(),String(b.nisn===undefined?old.nisn:b.nisn).trim(),b.gender||old.gender,classId,b.active===undefined?old.active:(b.active?1:0),old.id);await audit(req.user,'UPDATE','student',old.id);res.json({success:true});
- }catch(e){if(e.code==='SQLITE_CONSTRAINT_UNIQUE')return fail(res,409,'NISN sudah digunakan.');next(e);}
+ }catch(e){if(e.code==='SQLITE_CONSTRAINT' && /UNIQUE constraint failed/.test(e.message))return fail(res,409,'NISN sudah digunakan.');next(e);}
 });
 app.delete('/api/students/:id',auth,allow('ADMIN'),async(req,res,next)=>{
  try {const result=await db.run('UPDATE students SET active=0 WHERE id=?',req.params.id);if(!result.changes)return fail(res,404,'Siswa tidak ditemukan.');await audit(req.user,'DEACTIVATE','student',req.params.id);res.json({success:true});}catch(e){next(e);}
