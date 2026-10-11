@@ -48,6 +48,9 @@ export default function App() {
   const [journalFilterMonth, setJournalFilterMonth] = useState('ALL');
   const [mapClassFilter, setMapClassFilter] = useState('ALL');
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [learningTaskCount, setLearningTaskCount] = useState(4);
+  const [adminStudentPageSize, setAdminStudentPageSize] = useState(10);
+  const [adminStudentPage, setAdminStudentPage] = useState(1);
 
   // Admin Feature States
   const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
@@ -74,6 +77,7 @@ export default function App() {
       setStudents(data.students || []);
       setJournals(data.journals || []);
       setAssignmentScores(data.assignmentScores || []);
+      setLearningTaskCount(Math.max(4, ...(data.assignmentScores || []).map(g => Number(g.assignmentNo) || 0)));
       const drafts = {};
       (data.assignmentScores || []).forEach(g => { drafts[g.studentId] = { ...(drafts[g.studentId] || {}), [g.assignmentNo]: g.score == null ? '' : String(g.score) }; });
       setGradeDrafts(drafts);
@@ -361,20 +365,41 @@ export default function App() {
   };
   const handleSaveStudentGrades = async (student) => {
     setSavingGradesFor(student.id);
-    try{for(let assignmentNo=1;assignmentNo<=4;assignmentNo+=1){const raw=gradeDrafts[student.id]?.[assignmentNo]??'',score=raw===''?null:Number(raw);if(score!==null&&(!Number.isFinite(score)||score<0||score>100))throw new Error('Nilai tugas harus antara 0 sampai 100.');const response=await fetch(API_BASE_URL+'/grades',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({studentId:student.id,subject:currentUser.subject||'Umum',assignmentNo,score})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Nilai tugas gagal disimpan.');}await fetchBootstrapData();alert('Nilai Tugas 1–4 untuk '+student.name+' berhasil disimpan.');}catch(err){alert(err.message||'Nilai tugas gagal disimpan.');}finally{setSavingGradesFor('');}
+    try{for(let assignmentNo=1;assignmentNo<=learningTaskCount;assignmentNo+=1){const raw=gradeDrafts[student.id]?.[assignmentNo]??'',score=raw===''?null:Number(raw);if(score!==null&&(!Number.isFinite(score)||score<0||score>100))throw new Error('Nilai tugas harus antara 0 sampai 100.');const response=await fetch(API_BASE_URL+'/grades',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({studentId:student.id,subject:currentUser.subject||'Umum',assignmentNo,score})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'Nilai tugas gagal disimpan.');}await fetchBootstrapData();alert('Nilai '+learningTaskCount+' tugas untuk '+student.name+' berhasil disimpan.');}catch(err){alert(err.message||'Nilai tugas gagal disimpan.');}finally{setSavingGradesFor('');}
   };
 
-  // Helper Lists
+  // Student monitoring indicators are calculated from saved attendance and grade records.
   const teacherAssignedClasses = currentUser?.role === 'TEACHER' ? (currentUser.assignedClasses || []) : classesList.map(c => c.name);
-  const filteredStudents = students.filter(s => {
+  const getStudentMetrics = (student) => {
+    const records = Object.entries(attendanceRecords).filter(([key, row]) => key.startsWith(student.class + '_') && Object.prototype.hasOwnProperty.call(row, student.id)).map(([, row]) => row[student.id]);
+    const attendanceRate = records.length ? Math.round(records.filter(status => status === 'PRESENT').length / records.length * 100) : null;
+    const subjectGrades = assignmentScores.filter(g => g.studentId === student.id && g.score !== null && g.score !== undefined && (currentUser?.role !== 'TEACHER' || g.subject === (currentUser.subject || 'Umum')));
+    const averageScore = subjectGrades.length ? Math.round(subjectGrades.reduce((sum, g) => sum + Number(g.score), 0) / subjectGrades.length) : null;
+    let statusFlag = 'NO_DATA';
+    if (attendanceRate !== null || averageScore !== null) {
+      const attendance = attendanceRate === null ? 100 : attendanceRate;
+      const score = averageScore === null ? 100 : averageScore;
+      if (attendance < 60 || score < 50) statusFlag = 'WATCH';
+      else if (attendance < 75 || score < 65) statusFlag = 'NEEDS_SUPPORT';
+      else if (attendance < 90 || score < 75) statusFlag = 'GOOD';
+      else statusFlag = 'VERY_GOOD';
+    }
+    return { ...student, attendanceRate, averageScore, statusFlag };
+  };
+  const studentsWithMetrics = students.map(getStudentMetrics);
+  const filteredStudents = studentsWithMetrics.filter(s => {
     if (currentUser?.role === 'TEACHER') {
       if (!teacherAssignedClasses.includes(s.class) && !teacherAssignedClasses.includes('ALL')) return false;
-      if (mapClassFilter !== 'ALL' && s.class !== mapClassFilter) return false;
-    } else {
-      if (mapClassFilter !== 'ALL' && s.class !== mapClassFilter) return false;
     }
-    return s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || s.nisn.includes(studentSearchTerm);
+    if (mapClassFilter !== 'ALL' && s.class !== mapClassFilter) return false;
+    return s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(s.nisn || '').includes(studentSearchTerm);
   });
+  const leaderLearningStudents = [...studentsWithMetrics].sort((a, b) => {
+    const priority = { WATCH: 0, NEEDS_SUPPORT: 1, GOOD: 2, VERY_GOOD: 3, NO_DATA: 4 };
+    return priority[a.statusFlag] - priority[b.statusFlag] || (a.class || '').localeCompare(b.class || '') || a.name.localeCompare(b.name);
+  });
+  const adminStudentPageCount = Math.max(1, Math.ceil(students.length / adminStudentPageSize));
+  const paginatedAdminStudents = students.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
 
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
@@ -508,7 +533,7 @@ export default function App() {
                 <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Daftar Guru</button>
                 <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Daftar Kelas</button>
                 <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-emerald-400" /> Daftar Siswa</button>
-                <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><BookOpen className="w-4 h-4 text-cyan-400" /> Learning Map</button>
+                <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><BookOpen className="w-4 h-4 text-cyan-400" /> Learning Map Sekolah</button>
                 <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Profil
                 </button>
@@ -721,50 +746,62 @@ export default function App() {
         {/* TEACHER - LEARNING MAP */}
         {currentUser.role === 'TEACHER' && activeTab === 'students' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1>
-                <p className="text-xs text-slate-500 mt-1">Pemantauan siswa dan input nilai Tugas 1–4 untuk mata pelajaran {currentUser.subject || 'yang diampu'}. Nilai 0–100.</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Cari nama siswa..."
-                  value={studentSearchTerm}
-                  onChange={e => setStudentSearchTerm(e.target.value)}
-                  className="p-2 bg-white border border-slate-300 rounded-xl text-xs"
-                />
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+              <div><h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1><p className="text-xs text-slate-500 mt-1">Pilih kelas yang diampu, pantau kehadiran, rata-rata nilai, dan status siswa.</p></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-bold text-slate-600">Kelas</label>
+                <select value={mapClassFilter} onChange={e => { setMapClassFilter(e.target.value); setStudentSearchTerm(''); }} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold">
+                  <option value="ALL">Semua kelas yang diampu</option>{teacherAssignedClasses.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>Kelas {c}</option>)}
+                </select>
+                <input type="text" placeholder="Cari nama/NISN..." value={studentSearchTerm} onChange={e => setStudentSearchTerm(e.target.value)} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs" />
+                <button onClick={() => setLearningTaskCount(n => n + 1)} className="px-3 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold">+ Tambah Tugas</button>
               </div>
             </div>
-
+            <p className="text-xs text-slate-500">Mata pelajaran: <b>{currentUser.subject || 'yang diampu'}</b> · {learningTaskCount} tugas aktif · Nilai 0–100. Rata-rata dihitung dari nilai tugas yang sudah disimpan.</p>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[500px]">
-                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
-                  <tr>
-                    <th className="p-3">Nama Siswa</th>
-                    <th className="p-3">Kelas</th>
-                    <th className="p-3 text-center">Kehadiran</th><th className="p-3 text-center">Tugas 1</th><th className="p-3 text-center">Tugas 2</th><th className="p-3 text-center">Tugas 3</th><th className="p-3 text-center">Tugas 4</th><th className="p-3 text-center">Simpan Nilai</th><th className="p-3 text-center">Status</th>
-                  </tr>
-                </thead>
+              <table className="w-full text-left text-xs min-w-[900px]">
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3 text-center">Kehadiran</th>{Array.from({length:learningTaskCount},(_,i)=><th key={i+1} className="p-3 text-center">Tugas {i+1}</th>)}<th className="p-3 text-center">Rata-rata</th><th className="p-3 text-center">Simpan</th><th className="p-3 text-center">Status</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredStudents.map(std => (
-                    <tr key={std.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold text-slate-800">{std.name}</td>
-                      <td className="p-3 font-bold text-blue-800">{std.class}</td>
-                      <td className="p-3 text-center font-mono">{std.attendanceRate == null ? '—' : std.attendanceRate + '%'}</td>
-                      {[1,2,3,4].map(no => <td key={no} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={`Nilai tugas ${no} ${std.name}`} value={gradeDrafts[std.id]?.[no] ?? ''} onChange={e => setGradeDrafts(prev => ({ ...prev, [std.id]: { ...(prev[std.id] || {}), [no]: e.target.value } }))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
-                      <td className="p-2 text-center"><button onClick={() => handleSaveStudentGrades(std)} disabled={savingGradesFor === std.id || currentUser.role === 'LEADER'} className="px-3 py-2 rounded-lg bg-blue-800 text-white font-bold disabled:opacity-50">{savingGradesFor === std.id ? '…' : 'Simpan'}</button></td>
-                      <td className="p-3 text-center">
-                        {std.statusFlag === 'GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
-                        {std.statusFlag === 'NEEDS_FOLLOW_UP' && <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">⚠️ Pendampingan</span>}
-                        {std.statusFlag === 'MONITOR' && <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">🟡 Pemantauan</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredStudents.map(std => <tr key={std.id} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold text-slate-800">{std.name}</td><td className="p-3 font-bold text-blue-800">{std.class}</td>
+                    <td className="p-3 text-center font-mono">{std.attendanceRate == null ? 'Belum ada data' : std.attendanceRate + '%'}</td>
+                    {Array.from({length:learningTaskCount},(_,i)=>i+1).map(no=><td key={no} className="p-2 text-center"><input type="number" min="0" max="100" step="0.01" aria-label={'Nilai tugas '+no+' '+std.name} value={gradeDrafts[std.id]?.[no] ?? ''} onChange={e=>setGradeDrafts(prev=>({...prev,[std.id]:{...(prev[std.id]||{}),[no]:e.target.value}}))} className="w-16 p-2 text-center border border-slate-300 rounded-lg" placeholder="—" /></td>)}
+                    <td className="p-3 text-center font-bold">{std.averageScore == null ? '—' : std.averageScore+'%'}</td>
+                    <td className="p-2 text-center"><button onClick={()=>handleSaveStudentGrades(std)} disabled={savingGradesFor===std.id} className="px-3 py-2 rounded-lg bg-blue-800 text-white font-bold disabled:opacity-50">{savingGradesFor===std.id?'Menyimpan…':'Simpan'}</button></td>
+                    <td className="p-3 text-center whitespace-nowrap">
+                      {std.statusFlag==='VERY_GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
+                      {std.statusFlag==='GOOD' && <span className="px-2.5 py-1 bg-orange-100 text-orange-800 text-[10px] font-bold rounded-full">🟠 Baik</span>}
+                      {std.statusFlag==='NEEDS_SUPPORT' && <span className="px-2.5 py-1 bg-yellow-100 text-yellow-900 text-[10px] font-bold rounded-full">🟡 Perlu Pendampingan</span>}
+                      {std.statusFlag==='WATCH' && <span className="px-2.5 py-1 bg-amber-100 text-red-700 text-[10px] font-bold rounded-full">⚠️ Butuh Pengawasan</span>}
+                      {std.statusFlag==='NO_DATA' && <span className="px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">Belum Ada Data</span>}
+                    </td>
+                  </tr>)}
+                  {!filteredStudents.length && <tr><td colSpan={learningTaskCount+6} className="p-6 text-center text-slate-500">Tidak ada siswa untuk kelas/pencarian ini.</td></tr>}
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+        {/* LEADER - SCHOOL-WIDE LEARNING MAP */}
+        {currentUser.role === 'LEADER' && activeTab === 'students' && (
+          <div className="space-y-6">
+            <div><h1 className="text-2xl font-black text-slate-900">Learning Map Sekolah</h1><p className="text-xs text-slate-500 mt-1">Seluruh kelas dipantau bersama. Siswa yang butuh pengawasan ditampilkan paling atas.</p></div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                {key:'WATCH',label:'Butuh Pengawasan',color:'text-red-700'},
+                {key:'NEEDS_SUPPORT',label:'Perlu Pendampingan',color:'text-yellow-700'},
+                {key:'GOOD',label:'Baik',color:'text-orange-700'},
+                {key:'VERY_GOOD',label:'Sangat Baik',color:'text-emerald-700'}
+              ].map(item=><div key={item.key} className="bg-white p-4 rounded-xl border border-slate-200"><p className="text-xs text-slate-500">{item.label}</p><p className={'text-2xl font-black '+item.color}>{leaderLearningStudents.filter(s=>s.statusFlag===item.key).length}</p></div>)}
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[780px]">
+              <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3">Kehadiran</th><th className="p-3">Rata-rata Tugas</th><th className="p-3">Status Perhatian</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{leaderLearningStudents.map(std=><tr key={std.id} className={std.statusFlag==='WATCH'?'bg-amber-50':std.statusFlag==='NEEDS_SUPPORT'?'bg-yellow-50':'hover:bg-slate-50'}>
+                <td className="p-3 font-bold">{std.name}</td><td className="p-3">{std.class}</td><td className="p-3">{std.attendanceRate==null?'Belum ada data':std.attendanceRate+'%'}</td><td className="p-3">{std.averageScore==null?'Belum ada nilai':std.averageScore+'%'}</td>
+                <td className="p-3 whitespace-nowrap">
+                  {std.statusFlag==='VERY_GOOD'&&<span>🟢 Sangat Baik</span>}{std.statusFlag==='GOOD'&&<span>🟠 Baik</span>}{std.statusFlag==='NEEDS_SUPPORT'&&<span>🟡 Perlu Pendampingan</span>}{std.statusFlag==='WATCH'&&<span>⚠️ Butuh Pengawasan</span>}{std.statusFlag==='NO_DATA'&&<span className="text-slate-500">Belum Ada Data</span>}
+                </td></tr>)}</tbody>
+            </table></div>
           </div>
         )}
 
@@ -952,9 +989,22 @@ export default function App() {
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Tambah Data Siswa Baru</h2>
               {currentUser.role === 'ADMIN' && <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-5 gap-3"><input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required /><select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" required>{classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}</select><select value={newStudent.gender} onChange={e => setNewStudent({...newStudent, gender:e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select><button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Siswa</button></form>}
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Nama Siswa</th><th className="p-3">NISN</th><th className="p-3">Kelas</th><th className="p-3">Jenis Kelamin</th><th className="p-3">Tindakan</th></tr></thead><tbody className="divide-y divide-slate-100">
-              {students.map(student => <tr key={student.id}><td className="p-3 font-bold">{student.name}</td><td className="p-3 font-mono">{student.nisn}</td><td className="p-3">{student.class}</td><td className="p-3">{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</td><td className="p-3">{currentUser.role === 'ADMIN' && <div className="flex gap-2"><button onClick={() => handleEditStudent(student)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button><button onClick={() => handleDeactivateStudent(student)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></div>}</td></tr>)}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-2 text-xs"><span className="font-bold text-slate-600">Tampilkan</span><select value={adminStudentPageSize} onChange={e=>{setAdminStudentPageSize(Number(e.target.value));setAdminStudentPage(1);}} className="p-2 border border-slate-300 rounded-lg font-bold">{[10,15,20,25,50].map(n=><option key={n} value={n}>{n} siswa</option>)}</select><span className="text-slate-500">per halaman · Total {students.length} siswa</span></div>
+              <div className="text-xs text-slate-500">Halaman {Math.min(adminStudentPage,adminStudentPageCount)} dari {adminStudentPageCount}</div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">No.</th><th className="p-3">Nama Siswa</th><th className="p-3">NISN</th><th className="p-3">Kelas</th><th className="p-3">Jenis Kelamin</th>{currentUser.role==='ADMIN'&&<th className="p-3">Tindakan</th>}</tr></thead><tbody className="divide-y divide-slate-100">
+              {paginatedAdminStudents.map((student,index) => <tr key={student.id}><td className="p-3 text-slate-500">{(adminStudentPage-1)*adminStudentPageSize+index+1}</td><td className="p-3 font-bold">{student.name}</td><td className="p-3 font-mono">{student.nisn}</td><td className="p-3">{student.class}</td><td className="p-3">{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</td>{currentUser.role==='ADMIN'&&<td className="p-3"><div className="flex gap-2"><button onClick={() => handleEditStudent(student)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 font-bold">Edit</button><button onClick={() => handleDeactivateStudent(student)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></div></td>}</tr>)}
+              {!paginatedAdminStudents.length&&<tr><td colSpan={currentUser.role==='ADMIN'?6:5} className="p-6 text-center text-slate-500">Belum ada data siswa.</td></tr>}
             </tbody></table></div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">Menampilkan {students.length?((adminStudentPage-1)*adminStudentPageSize+1):0}–{Math.min(adminStudentPage*adminStudentPageSize,students.length)} dari {students.length} siswa</p>
+              <div className="flex flex-wrap gap-1 items-center">
+                <button disabled={adminStudentPage<=1} onClick={()=>setAdminStudentPage(p=>Math.max(1,p-1))} className="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-40">Sebelumnya</button>
+                {Array.from({length:adminStudentPageCount},(_,i)=>i+1).filter(p=>p===1||p===adminStudentPageCount||Math.abs(p-adminStudentPage)<=1).map((p,i,arr)=><React.Fragment key={p}>{i>0&&p-arr[i-1]>1&&<span className="px-1 text-slate-400">…</span>}<button onClick={()=>setAdminStudentPage(p)} className={'min-w-9 px-3 py-2 rounded-lg border text-xs font-bold '+(p===adminStudentPage?'bg-blue-800 text-white border-blue-800':'border-slate-300 text-slate-700')}>{p}</button></React.Fragment>)}
+                <button disabled={adminStudentPage>=adminStudentPageCount} onClick={()=>setAdminStudentPage(p=>Math.min(adminStudentPageCount,p+1))} className="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-40">Berikutnya</button>
+              </div>
+            </div>
           </div>
         )}
 
