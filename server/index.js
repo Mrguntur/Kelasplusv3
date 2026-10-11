@@ -88,6 +88,12 @@ async function init() {
   await db.run('INSERT INTO classes(id,name,grade) VALUES(?,?,?)',crypto.randomUUID(),pair[0],pair[1]);
 }
 await init();
+await db.run('INSERT OR IGNORE INTO teacher_assignment_scores(id,student_id,subject,assignment_no,score,teacher_id,recorded_by,updated_at) SELECT id,student_id,subject,assignment_no,score,recorded_by,recorded_by,updated_at FROM assignment_scores');
+const initialTeachers = await db.all("SELECT id,subject FROM users WHERE role='TEACHER' AND active=1");
+for (const teacher of initialTeachers) {
+ const count = await db.get('SELECT COUNT(*) n FROM assignment_tasks WHERE teacher_id=? AND subject=?',teacher.id,teacher.subject || 'Umum');
+ if (!count.n) for (let assignmentNo=1; assignmentNo<=4; assignmentNo+=1) await db.run('INSERT OR IGNORE INTO assignment_tasks(id,teacher_id,subject,assignment_no,title) VALUES(?,?,?,?,?)',crypto.randomUUID(),teacher.id,teacher.subject || 'Umum',assignmentNo,'Tugas '+assignmentNo);
+}
 
 const loginAttempts = new Map();
 function loginRateLimit(req,res,next) {
