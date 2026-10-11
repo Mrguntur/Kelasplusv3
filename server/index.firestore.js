@@ -82,20 +82,22 @@ async function createFirebaseCustomToken(user) {
 }
 async function init() {
   const users = await list('users');
-  // The previous SQLite-backed version may already have written a profile-only
-  // users/{uid} document. Treat it as a profile, not as a usable login account.
-  if (!users.some(user => typeof user.passwordHash === 'string' && user.passwordHash.includes(':'))) {
+  const credentials = await list('userCredentials');
+  // Existing Firebase profile-only documents do not contain login credentials.
+  // Keep password hashes in a server-only collection, never in readable user profiles.
+  if (!credentials.some(credential => credential.role === 'ADMIN')) {
     const username = clean(process.env.INITIAL_ADMIN_USERNAME);
     const password = process.env.INITIAL_ADMIN_PASSWORD || '';
     if (!username || password.length < 12) {
-      throw new Error('Belum ada akun login di Firestore. Atur INITIAL_ADMIN_USERNAME dan INITIAL_ADMIN_PASSWORD (minimal 12 karakter) di .env.');
+      throw new Error('Belum ada akun Admin login di Firestore. Atur INITIAL_ADMIN_USERNAME dan INITIAL_ADMIN_PASSWORD (minimal 12 karakter) di .env.');
     }
     const existing = users.find(user => clean(user.username).toLowerCase() === username.toLowerCase());
     const adminId = existing?.id || id();
-    await setDoc('users', adminId, { username, usernameLower: username.toLowerCase(), passwordHash: hashPassword(password),
+    await setDoc('users', adminId, { username, usernameLower: username.toLowerCase(),
       name: existing?.name || 'Administrator Sekolah', nip: existing?.nip || '', role: 'ADMIN', subject: 'Administrator',
       assignedClasses: ['ALL'], avatar: existing?.avatar || '', active: true,
       createdAt: existing?.createdAt || nowIso(), updatedAt: nowIso() }, true);
+    await setDoc('userCredentials', adminId, { passwordHash: hashPassword(password), usernameLower: username.toLowerCase(), role: 'ADMIN', updatedAt: nowIso() }, true);
     console.log('Akun Admin login disiapkan di Firestore dari environment.');
   }
   const classes = await list('classes');
@@ -134,7 +136,8 @@ app.post('/api/login', loginRateLimit, async (req, res, next) => {
     const username = clean(req.body?.username), password = String(req.body?.password || '');
     if (!username || !password) return fail(res, 400, 'Username dan password wajib diisi.');
     const user = (await list('users')).find(u => (u.usernameLower || clean(u.username).toLowerCase()) === username.toLowerCase() && u.active);
-    if (!user || !verifyPassword(password, user.passwordHash)) {
+    const credential = user ? await getDoc('userCredentials', user.id) : null;
+    if (!user || !credential || !verifyPassword(password, credential.passwordHash)) {
       await new Promise(resolve => setTimeout(resolve, 250));
       return fail(res, 401, 'Username atau password tidak valid.');
     }
@@ -207,10 +210,11 @@ app.post('/api/teachers', auth, allow('ADMIN'), async (req,res,next) => {
     if(!name||!username||password.length<12) return fail(res,400,'Nama, username, dan password minimal 12 karakter wajib diisi.');
     if((await list('users')).some(u=>clean(u.username).toLowerCase()===username.toLowerCase())) return fail(res,409,'Username sudah digunakan.');
     const userId=id(), subject=clean(b.subject)||'Umum';
-    const user={ username, usernameLower:username.toLowerCase(), passwordHash:hashPassword(password), name, nip:clean(b.nip),
+    const user={ username, usernameLower:username.toLowerCase(), name, nip:clean(b.nip),
       role:'TEACHER', subject, assignedClasses:Array.isArray(b.assignedClasses)?b.assignedClasses:[], avatar:'', active:true,
       createdAt:nowIso(), updatedAt:nowIso() };
     await setDoc('users',userId,user);
+    await setDoc('userCredentials',userId,{passwordHash:hashPassword(password),usernameLower:username.toLowerCase(),role:'TEACHER',updatedAt:nowIso()});
     for(let assignmentNo=1;assignmentNo<=4;assignmentNo++) await col('assignmentTasks').doc(id()).set({ teacherId:userId, subject, assignmentNo, title:'Tugas '+assignmentNo, createdAt:nowIso() });
     await audit(req.user,'CREATE','user',userId);
     res.status(201).json({success:true,user:publicUser({id:userId,...user})});
@@ -337,7 +341,7 @@ app.post('/api/users/:id/reset-password', auth, allow('ADMIN'), async (req,res,n
   try {
     const password=String(req.body?.password||''); if(password.length<12) return fail(res,400,'Password minimal 12 karakter.');
     const user=await getDoc('users',req.params.id); if(!user) return fail(res,404,'Pengguna tidak ditemukan.');
-    await setDoc('users',user.id,{passwordHash:hashPassword(password),updatedAt:nowIso()},true);
+    await setDoc('userCredentials',user.id,{passwordHash:hashPassword(password),usernameLower:clean(user.username).toLowerCase(),role:user.role,updatedAt:nowIso()},true);
     const sessions=await list('sessions'), batch=db.batch();
     for(const session of sessions.filter(s=>s.userId===user.id&&!s.revokedAt)) batch.set(col('sessions').doc(session.id),{revokedAt:Date.now()},{merge:true});
     await batch.commit(); await audit(req.user,'RESET_PASSWORD','user',user.id); res.json({success:true});
