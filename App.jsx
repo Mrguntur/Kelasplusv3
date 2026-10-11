@@ -287,6 +287,26 @@ export default function App() {
     } catch (err) { alert(err.message || 'Reset password gagal.'); }
   };
 
+  const handleDeactivateStudent = async (student) => {
+    if (!window.confirm('Nonaktifkan data siswa ' + student.name + '?')) return;
+    try {
+      const response = await fetch(API_BASE_URL + '/students/' + student.id, { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Data siswa gagal dinonaktifkan.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Data siswa gagal dinonaktifkan.'); }
+  };
+
+  const handleDeactivateClass = async (klass) => {
+    if (!window.confirm('Nonaktifkan kelas ' + klass.name + '? Kelas harus kosong terlebih dahulu.')) return;
+    try {
+      const response = await fetch(API_BASE_URL + '/classes/' + klass.id, { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Kelas gagal dinonaktifkan.');
+      await fetchBootstrapData();
+    } catch (err) { alert(err.message || 'Kelas gagal dinonaktifkan.'); }
+  };
+
   const handleToggleUserActive = async (user) => {
     if (user.id === currentUser.id && user.active) { alert('Akun yang sedang digunakan tidak dapat dinonaktifkan.'); return; }
     const action = user.active ? 'menonaktifkan' : 'mengaktifkan kembali';
@@ -910,28 +930,25 @@ export default function App() {
           </div>
         )}
 
-        {/* ADMIN - ROMBEL KELAS */}
+                {/* ADMIN - ROMBEL KELAS */}
         {currentUser.role === 'ADMIN' && activeTab === 'admin_classes' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Tambah Rombel Kelas Baru</h2>
               <form onSubmit={handleAddClass} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <input type="text" placeholder="Nama Kelas (VII C)" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <select value={newClass.grade} onChange={e => setNewClass({...newClass, grade: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">
-                  <option value="VII">Tingkat VII</option>
-                  <option value="VIII">Tingkat VIII</option>
-                  <option value="IX">Tingkat IX</option>
-                </select>
+                <select value={newClass.grade} onChange={e => setNewClass({...newClass, grade: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold"><option value="VII">Tingkat VII</option><option value="VIII">Tingkat VIII</option><option value="IX">Tingkat IX</option></select>
                 <input type="text" placeholder="Nama Wali Kelas" value={newClass.homeroomTeacher} onChange={e => setNewClass({...newClass, homeroomTeacher: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
-                  + Simpan Rombel
-                </button>
+                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Rombel</button>
               </form>
             </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Kelas</th><th className="p-3">Tingkat</th><th className="p-3">Jumlah Siswa</th><th className="p-3">Wali Kelas</th><th className="p-3">Tindakan</th></tr></thead><tbody className="divide-y divide-slate-100">
+              {classesList.map(c => <tr key={c.id}><td className="p-3 font-bold">{c.name}</td><td className="p-3">{c.grade}</td><td className="p-3">{students.filter(st => st.class === c.name).length}</td><td className="p-3">{c.homeroomTeacher || 'Belum ditentukan'}</td><td className="p-3"><button onClick={() => handleDeactivateClass(c)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></td></tr>)}
+            </tbody></table></div>
           </div>
         )}
 
-        {/* ADMIN - DATA SISWA */}
+                {/* ADMIN - DATA SISWA */}
         {currentUser.role === 'ADMIN' && activeTab === 'admin_students' && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -939,14 +956,13 @@ export default function App() {
               <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <input type="text" placeholder="Nama Siswa" value={newStudent.name} onChange={e => setNewStudent({...newStudent, name: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
                 <input type="text" placeholder="NISN" value={newStudent.nisn} onChange={e => setNewStudent({...newStudent, nisn: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" required />
-                <select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">
-                  {classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}
-                </select>
-                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">
-                  + Simpan Siswa
-                </button>
+                <select value={newStudent.class} onChange={e => setNewStudent({...newStudent, class: e.target.value})} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">{classesList.map(c => <option key={c.id} value={c.name}>Kelas {c.name}</option>)}</select>
+                <button type="submit" className="py-2.5 bg-blue-800 text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-900 transition">+ Simpan Siswa</button>
               </form>
             </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">Nama Siswa</th><th className="p-3">NISN</th><th className="p-3">Kelas</th><th className="p-3">Jenis Kelamin</th><th className="p-3">Tindakan</th></tr></thead><tbody className="divide-y divide-slate-100">
+              {students.map(student => <tr key={student.id}><td className="p-3 font-bold">{student.name}</td><td className="p-3 font-mono">{student.nisn}</td><td className="p-3">{student.class}</td><td className="p-3">{student.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</td><td className="p-3"><button onClick={() => handleDeactivateStudent(student)} className="px-2 py-1 rounded bg-rose-50 text-rose-800 font-bold">Nonaktifkan</button></td></tr>)}
+            </tbody></table></div>
           </div>
         )}
 
