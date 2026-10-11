@@ -24,20 +24,33 @@ In Firebase Console for `kelasplusgemi`:
 - `students/{studentId}`: `name`, `nisn`, `classId`, `gender`, `active`.
 - `attendanceRecords/{recordId}`: `studentId`, `classId`, `date`, `status`, `recordedBy`.
 - `journals/{journalId}`: `teacherId`, `classId`, `date`, `topic`, `method`, `text`.
-- `assignmentTasks/{taskId}` and `assignmentScores/{scoreId}`.
+## Target Firestore collections
+- `users/{uid}`: `name`, `username`, `role` (ADMIN / LEADER / TEACHER), `subject`, `assignedClasses`, `active`.
+- `classes/{classId}`: `name`, `grade`, `homeroomTeacher`, `active`.
+- `students/{studentId}`: `name`, `nisn`, `classId`, `gender`, `active`.
+- `attendanceRecords/{recordId}`: `studentId`, `classId`, `date`, `status`, `recordedBy`.
+- `journals/{journalId}`: `teacherId`, `classId`, `date`, `topic`, `method`, `text`.
+- `assignmentTasks/{taskId}` and `teacherAssignmentScores/{scoreId}`.
+- `appSettings/{settingId}` and `auditLogs/{logId}`.
+- `userCredentials/{uid}`: password hash and login metadata; backend-only.
+- `sessions/{tokenHash}`: hashed session token, user ID, expiry, revocation; backend-only.
 
 Use Firebase Authentication UID as the user document ID. Never trust a role supplied by the browser.
 
 ## Security
-Do not deploy with Firestore test mode or unrestricted rules. The included `firestore.rules` is a deliberately restrictive starting baseline: it blocks client writes until validated role-aware rules are implemented. Provision the first admin and assign roles using a trusted Admin SDK environment or controlled administrative process. Test security rules before migrating real student records.
+Do not deploy with Firestore test mode or unrestricted rules. The included `firestore.rules` blocks all client writes and specifically denies client reads of `userCredentials` and `sessions`. The Express backend uses Firebase Admin SDK, so server routes must enforce roles and ownership checks. Test security rules before using real student records.
 
-## Migration status
-This commit adds the Firebase Web SDK, environment-based initialization, starter Firestore rules, and this guide. It does **not** yet replace the Express/SQLite authentication and API operations. Keep the current API enabled until login, data reads/writes, user provisioning, authorization, and migration of existing data have been implemented and tested. The application is not fully migrated yet.
+## Firestore backend branch status
+The `feat/firestore-primary-backend` branch adds a Firestore-first Express backend and points `dev:backend` and `start` at it. It stores user profiles, server-only password hashes, sessions, classes, students, attendance, journals, assignment tasks/scores, app settings, and audit logs in Firestore. The legacy SQLite backend file is retained but is no longer the configured entry point on this branch.
 
+This code has **not yet been validated end-to-end against the live Firebase project**. Before merging or deploying, test login and all Admin, Leader, and Teacher workflows. This branch does not import existing SQLite records; it initializes the starter classes if the Firestore classes collection is empty. The SQLite file is not deleted.
 
-## Username/password login with Firebase Authentication
-The login screen continues to accept the existing username and password. When the backend has `FIREBASE_SERVICE_ACCOUNT_JSON` configured, it verifies the existing credentials on the server, creates a Firebase custom token for the same internal user ID, and writes that user's trusted profile to `users/{uid}`. The browser exchanges the custom token using Firebase Authentication. This avoids exposing service-account credentials and does not let the browser choose its role.
+## Required backend environment
+Configure these values in the backend environment only:
+- `FIREBASE_SERVICE_ACCOUNT_JSON`: full service-account JSON for project `kelasplusgemi`.
+- `INITIAL_ADMIN_USERNAME`: initial Admin username.
+- `INITIAL_ADMIN_PASSWORD`: initial Admin password, at least 12 characters.
+- `FRONTEND_ORIGIN`: frontend origin, for example `http://localhost:5173`.
+- Optional: `GEMINI_API_KEY` and `GEMINI_MODEL` for AI recommendations.
 
-Configure `FIREBASE_SERVICE_ACCOUNT_JSON` as a **backend-only secret** in the hosting provider, using the full JSON contents of a service-account key for the same Firebase project. Never put it in `VITE_*` variables or commit it to GitHub. If this variable is absent, the app remains on the existing backend session flow; Firebase Authentication is not yet active for that deployment.
-
-**Migration status:** this is the first authentication bridge only. Existing school data reads/writes still use the Express/SQLite API. Firestore client writes remain denied by the restrictive rules until the data layer is migrated and role-specific rules are tested. Do not remove the existing backend or deploy permissive rules yet.
+Never place the service-account JSON in a `VITE_*` variable or commit it to GitHub. Password hashes are stored in `userCredentials`, not in user profile documents. The browser uses Firebase Authentication custom-token sign-in, while application data is accessed through the authenticated Express API. Keep client writes denied in Firestore rules.
