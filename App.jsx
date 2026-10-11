@@ -8,7 +8,7 @@ import {
   Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -57,57 +57,35 @@ export default function App() {
 
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
 
-  // Load Data from Backend Express Server
+  // Load school data only after a valid server session exists.
   const fetchBootstrapData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/bootstrap`);
+      const response = await fetch(`${API_BASE_URL}/bootstrap`, { credentials: 'include' });
       const data = await response.json();
-      if (data.success) {
-        setUsers(data.users || []);
-        setClassesList(data.classes || []);
-        setStudents(data.students || []);
-        setJournals(data.journals || []);
-        if (data.settings) setSystemSettings(data.settings);
-
-        const attendanceMap = {};
-        (data.attendanceRecords || []).forEach(r => {
-          const key = `${r.class}_${r.date}`;
-          if (!attendanceMap[key]) attendanceMap[key] = {};
-          attendanceMap[key][r.student_id] = r.status;
-        });
-        setAttendanceRecords(attendanceMap);
-        setIsServerOnline(true);
-      }
+      if (!response.ok || !data.success) throw new Error(data.message || 'Gagal memuat data aplikasi.');
+      setUsers(data.users || []);
+      setClassesList(data.classes || []);
+      setStudents(data.students || []);
+      setJournals(data.journals || []);
+      if (data.settings) setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' }));
+      const attendanceMap = {};
+      (data.attendanceRecords || []).forEach(r => {
+        const key = `${r.class}_${r.date}`;
+        if (!attendanceMap[key]) attendanceMap[key] = {};
+        attendanceMap[key][r.student_id] = r.status;
+      });
+      setAttendanceRecords(attendanceMap);
+      setIsServerOnline(true);
     } catch (err) {
-      console.warn("Backend server offline, using client fallback storage:", err);
       setIsServerOnline(false);
-      // Fallback Seed Data
-      setUsers([
-        { id: 'u_admin', username: 'Admin.smpn2bajuin', password: 'Qwerty123456', name: 'Administrator Sekolah', role: 'ADMIN', subject: 'Administrator', assignedClasses: ['ALL'], avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
-        { id: 'u_t1', username: 'ratna.guru', password: 'password123', name: 'Ibu Ratna Pertiwi, S.Pd.', nip: '198503152010012003', role: 'TEACHER', subject: 'Bahasa Inggris', assignedClasses: ['VII A', 'VIII A'], avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-        { id: 'u_t2', username: 'fauzi.guru', password: 'password123', name: 'Bapak Ahmad Fauzi, M.Pd.', nip: '198207102008011005', role: 'TEACHER', subject: 'Matematika', assignedClasses: ['VII B', 'VIII A'], avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150' }
-      ]);
-      setClassesList([
-        { id: 'c1', name: 'VII A', grade: 'VII', totalStudents: 32, homeroomTeacher: 'Ibu Ratna Pertiwi, S.Pd.' },
-        { id: 'c2', name: 'VII B', grade: 'VII', totalStudents: 30, homeroomTeacher: 'Bapak Ahmad Fauzi, M.Pd.' },
-        { id: 'c3', name: 'VIII A', grade: 'VIII', totalStudents: 31, homeroomTeacher: 'Ibu Siti Aminah, S.Si.' }
-      ]);
-      setStudents([
-        { id: 's1', nisn: '20260101', name: 'Ahmad Rizky', class: 'VII A', gender: 'L', status: 'ACTIVE', attendanceRate: 96, assignmentScore: 92, statusFlag: 'GOOD' },
-        { id: 's2', nisn: '20260102', name: 'Budi Saputra', class: 'VII A', gender: 'L', status: 'ACTIVE', attendanceRate: 88, assignmentScore: 68, statusFlag: 'MONITOR' },
-        { id: 's3', nisn: '20260103', name: 'Citra Nabila', class: 'VII A', gender: 'P', status: 'ACTIVE', attendanceRate: 79, assignmentScore: 54, statusFlag: 'NEEDS_FOLLOW_UP' },
-        { id: 's4', nisn: '20260104', name: 'Dewa Pratama', class: 'VII A', gender: 'L', status: 'ACTIVE', attendanceRate: 92, assignmentScore: 85, statusFlag: 'GOOD' }
-      ]);
-      setJournals([
-        { id: 'j1', teacherUsername: 'ratna.guru', class: 'VII A', date: '2026-10-05', month: '10', topic: 'Greetings & Self Introduction', method: 'Role Play Berpasangan', pulse: 'VERY_ACTIVE', text: 'Siswa antusias melakukan percakapan di depan kelas secara berpasangan.' }
-      ]);
+      setLoginError(err.message || 'Server tidak dapat dihubungi.');
     }
   };
 
   useEffect(() => {
-    fetchBootstrapData();
-  }, []);
-
+    if (currentUser) fetchBootstrapData();
+  }, [currentUser]);
+  
   // Update attendance view for selected class/date
   useEffect(() => {
     const key = `${selectedClass}_${attendanceDate}`;
@@ -140,45 +118,46 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Login Authentication
+  // Login is server-authoritative; no client-side/demo credential fallback.
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoadingAuth(true);
     setLoginError('');
-
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUsername, password: loginPassword })
       });
       const data = await response.json();
-      if (data.success) {
-        setCurrentUser(data.user);
-        setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
-        setIsLoadingAuth(false);
-        return;
-      } else {
-        setLoginError(data.message || 'Kredensial login tidak valid!');
-      }
+      if (!response.ok || !data.success) throw new Error(data.message || 'Login gagal.');
+      setCurrentUser(data.user);
+      setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
     } catch (err) {
-      // Offline fallback
-      const found = users.find(u => u.username === loginUsername && u.password === loginPassword);
-      if (found) {
-        setCurrentUser(found);
-        setActiveTab(found.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
-      } else {
-        setLoginError('Username atau Password tidak terdaftar!');
-      }
+      setLoginError(err.message || 'Server tidak dapat dihubungi. Pastikan backend berjalan.');
+    } finally {
+      setIsLoadingAuth(false);
     }
-    setIsLoadingAuth(false);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setLoginUsername('');
-    setLoginPassword('');
-    setLoginError('');
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch (err) {
+      console.warn('Logout request failed:', err);
+    } finally {
+      setCurrentUser(null);
+      setUsers([]);
+      setClassesList([]);
+      setStudents([]);
+      setAttendanceRecords({});
+      setJournals([]);
+      setLoginUsername('');
+      setLoginPassword('');
+      setLoginError('');
+      setActiveTab('dashboard');
+    }
   };
 
   // Attendance Handlers
@@ -472,7 +451,7 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
                   type={showPassword ? "text" : "password"}
                   placeholder="Masukkan Password..."
                   value={loginPassword}
-                  onChange={e => setShowPassword(!showPassword)}
+                  onChange={e => setLoginPassword(e.target.value)}
                   required
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium pr-9"
                 />
@@ -494,25 +473,9 @@ Keluarkaan JSON murni tanpa markdown, format Array Object dengan kunci: "id", "t
               {isLoadingAuth ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Masuk Sekarang'}
             </button>
 
-            <div className="pt-4 border-t border-slate-100 text-center space-y-2">
-              <p className="text-[10px] text-slate-400 font-bold uppercase">Uji Coba Kredensial Instan:</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setLoginUsername('ratna.guru'); setLoginPassword('password123'); }}
-                  className="flex-1 py-1.5 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-lg hover:bg-slate-200 border border-slate-200"
-                >
-                  Guru Demo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setLoginUsername('Admin.smpn2bajuin'); setLoginPassword('Qwerty123456'); }}
-                  className="flex-1 py-1.5 bg-slate-800 text-white text-[11px] font-bold rounded-lg hover:bg-slate-900"
-                >
-                  Admin Demo
-                </button>
-              </div>
-            </div>
+            <p className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-500">
+              Gunakan akun yang dibuat oleh administrator sekolah.
+            </p>
           </form>
         </div>
       </div>
