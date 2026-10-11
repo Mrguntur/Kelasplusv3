@@ -130,7 +130,8 @@ app.get('/api/bootstrap',auth,async(req,res,next)=>{
   const allAttendance=await db.all('SELECT a.*,c.name class_name FROM attendance_records a JOIN classes c ON c.id=a.class_id ORDER BY a.date DESC');
   const allJournals=await db.all('SELECT j.*,u.username teacher_username,u.name teacher_name,c.name class_name FROM journals j JOIN users u ON u.id=j.teacher_id JOIN classes c ON c.id=j.class_id ORDER BY j.date DESC LIMIT 1000');
   const allUsers=await db.all('SELECT * FROM users ORDER BY name');
-  const allGrades=await db.all('SELECT g.*,s.name student_name,s.nisn,s.class_id,c.name class_name FROM assignment_scores g JOIN students s ON s.id=g.student_id JOIN classes c ON c.id=s.class_id ORDER BY s.name,g.assignment_no');
+  const allGrades=await db.all('SELECT g.*,s.name student_name,s.nisn,s.class_id,c.name class_name FROM teacher_assignment_scores g JOIN students s ON s.id=g.student_id JOIN classes c ON c.id=s.class_id ORDER BY s.name,g.assignment_no');
+  const allTasks=await db.all('SELECT t.*,u.name teacher_name FROM assignment_tasks t JOIN users u ON u.id=t.teacher_id ORDER BY u.name,t.subject,t.assignment_no');
   const settingsRows=await db.all("SELECT key,value FROM app_settings WHERE key NOT LIKE '%key%'");
   const assigned=req.user.assignedClasses || [];
   const visibleClasses=allClasses.filter(c=>req.user.role!=='TEACHER'||assigned.includes('ALL')||assigned.includes(c.name));
@@ -139,8 +140,9 @@ app.get('/api/bootstrap',auth,async(req,res,next)=>{
   const journals=allJournals.filter(j=>req.user.role!=='TEACHER'||j.teacher_id===req.user.id).map(j=>({id:j.id,teacherUsername:j.teacher_username,teacherName:j.teacher_name,class:j.class_name,date:j.date,month:j.date.slice(5,7),topic:j.topic,method:j.method,pulse:j.pulse,text:j.text}));
   const attendanceRecords=allAttendance.filter(a=>visibleIds.has(a.class_id)).map(a=>({class:a.class_name,date:a.date,student_id:a.student_id,status:a.status}));
   const users=allUsers.filter(u=>req.user.role==='ADMIN'||req.user.role==='LEADER'||u.id===req.user.id).map(publicUser);
-  const assignmentScores=allGrades.filter(g=>visibleIds.has(g.class_id)).map(g=>({id:g.id,studentId:g.student_id,studentName:g.student_name,nisn:g.nisn,class:g.class_name,subject:g.subject,assignmentNo:g.assignment_no,score:g.score}));
-  res.json({success:true,users,classes:visibleClasses.map(c=>({id:c.id,name:c.name,grade:c.grade,totalStudents:students.filter(s=>s.class===c.name).length,homeroomTeacher:c.homeroom_teacher})),students,journals,attendanceRecords,assignmentScores,settings:Object.assign({schoolName:'UPTD SMPN 2 BAJUIN',academicYear:'2026/2027'},Object.fromEntries(settingsRows))});
+  const assignmentScores=allGrades.filter(g=>visibleIds.has(g.class_id)&&(req.user.role!=='TEACHER'||g.teacher_id===req.user.id)).map(g=>({id:g.id,studentId:g.student_id,studentName:g.student_name,nisn:g.nisn,class:g.class_name,subject:g.subject,assignmentNo:g.assignment_no,score:g.score,teacherId:g.teacher_id}));
+  const assignmentTasks=allTasks.filter(t=>req.user.role!=='TEACHER'||t.teacher_id===req.user.id).map(t=>({id:t.id,teacherId:t.teacher_id,teacherName:t.teacher_name,subject:t.subject,assignmentNo:t.assignment_no,title:t.title}));
+  res.json({success:true,users,classes:visibleClasses.map(c=>({id:c.id,name:c.name,grade:c.grade,totalStudents:students.filter(s=>s.class===c.name).length,homeroomTeacher:c.homeroom_teacher})),students,journals,attendanceRecords,assignmentScores,assignmentTasks,settings:Object.assign({schoolName:'UPTD SMPN 2 BAJUIN',academicYear:'2026/2027'},Object.fromEntries(settingsRows))});
  } catch(e){next(e);}
 });
 app.get('/api/users',auth,allow('ADMIN','LEADER'),async(req,res,next)=>{try{const rows=await db.all('SELECT * FROM users ORDER BY name');res.json({success:true,users:rows.map(publicUser)});}catch(e){next(e);}});
