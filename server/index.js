@@ -86,8 +86,19 @@ async function init() {
 }
 await init();
 
+const loginAttempts = new Map();
+function loginRateLimit(req,res,next) {
+ const key = req.ip || req.socket.remoteAddress || 'unknown';
+ const now = Date.now();
+ const previous = loginAttempts.get(key) || { count:0, resetAt:now + 15 * 60 * 1000 };
+ if (now > previous.resetAt) { previous.count = 0; previous.resetAt = now + 15 * 60 * 1000; }
+ previous.count += 1; loginAttempts.set(key,previous);
+ if (previous.count > 20) return fail(res,429,'Terlalu banyak percobaan login. Coba lagi setelah 15 menit.');
+ if (loginAttempts.size > 5000) for (const [k,v] of loginAttempts) if (now > v.resetAt) loginAttempts.delete(k);
+ next();
+}
 app.get('/api/health',(_req,res)=>res.json({success:true,status:'ok',database:'connected',timestamp:new Date().toISOString()}));
-app.post('/api/login',async(req,res,next)=>{
+app.post('/api/login',loginRateLimit,async(req,res,next)=>{
  try {
   const username=String(req.body && req.body.username || '').trim(), password=String(req.body && req.body.password || '');
   if(!username||!password)return fail(res,400,'Username dan password wajib diisi.');
