@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   Home, Users, Calendar, BookOpen, AlertTriangle, FileText, 
   Bot, Settings, CheckCircle, Clock, Plus, BarChart2, ChevronRight, 
@@ -60,6 +61,9 @@ export default function App() {
   const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
   const [newClass, setNewClass] = useState({ name: '', grade: 'VII', homeroomTeacher: '' });
   const [newStudent, setNewStudent] = useState({ name: '', nisn: '', class: 'VII A', gender: 'L' });
+  const [studentImportRows, setStudentImportRows] = useState([]);
+  const [studentImportFileName, setStudentImportFileName] = useState('');
+  const [studentImportBusy, setStudentImportBusy] = useState(false);
 
   // AI Assistant States
   const [aiSubject, setAiSubject] = useState('Bahasa Inggris');
@@ -291,6 +295,95 @@ export default function App() {
       setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
     } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
   };
+  const downloadStudentTemplate = () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['Nama Siswa', 'NISN', 'Kelas', 'Jenis Kelamin'],
+      ['Contoh: Ahmad Fauzi', '0001234567', 'VII A', 'L']
+    ]);
+    sheet['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
+    sheet['!autofilter'] = { ref: 'A1:D2' };
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Data Siswa');
+    const guide = XLSX.utils.aoa_to_sheet([
+      ['PETUNJUK TEMPLATE IMPOR SISWA'],
+      ['1. Hapus baris contoh sebelum mengisi data siswa sebenarnya.'],
+      ['2. Kolom wajib: Nama Siswa, NISN, Kelas, Jenis Kelamin.'],
+      ['3. Format Jenis Kelamin: L untuk Laki-laki, P untuk Perempuan.'],
+      ['4. Kelas harus sama persis dengan nama kelas yang sudah dibuat di KELAS+, contoh VII A.'],
+      ['5. Isi NISN sebagai TEKS agar angka nol di depan tidak hilang.'],
+      ['6. Jangan mengubah nama kolom pada baris pertama.'],
+      ['7. NISN yang sudah terdaftar tidak akan diimpor ulang.']
+    ]);
+    guide['!cols'] = [{ wch: 100 }];
+    XLSX.utils.book_append_sheet(workbook, guide, 'Petunjuk');
+    XLSX.writeFile(workbook, 'Template_Impor_Siswa_KELAS_Plus.xlsx');
+  };
+  const handleStudentExcelSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setStudentImportRows([]);
+    setStudentImportFileName(file.name);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error('File Excel tidak memiliki lembar data.');
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      if (!rawRows.length) throw new Error('Belum ada baris data. Isi template lalu unggah kembali.');
+      const normalize = value => String(value || '').trim().toLowerCase().replace(/[ _-]+/g, '');
+      const existingNisn = new Set(students.map(s => String(s.nisn || '').trim()));
+      const seenNisn = new Set();
+      const parsed = rawRows.map((row, index) => {
+        const columns = {};
+        Object.entries(row).forEach(([key, value]) => { columns[normalize(key)] = value; });
+        const name = String(columns.namasiswa || columns.nama || '').trim();
+        const nisn = String(columns.nisn || '').trim().replace(/\.0$/, '');
+        const className = String(columns.kelas || '').trim();
+        const genderRaw = String(columns.jenisKelamin || columns.jeniskelamin || columns.gender || columns.l || '').trim().toUpperCase();
+        const gender = ['P', 'PEREMPUAN'].includes(genderRaw) ? 'P' : ['L', 'LAKI-LAKI', 'LAKILAKI'].includes(genderRaw) ? 'L' : '';
+        let error = '';
+        if (!name || !nisn || !className) error = 'Nama, NISN, dan kelas wajib diisi.';
+        else if (!/^\d{5,20}$/.test(nisn)) error = 'NISN harus berupa 5–20 digit angka; format kolom NISN sebagai teks.';
+        else if (!classesList.some(c => c.name.toLowerCase() === className.toLowerCase())) error = 'Kelas "' + className + '" belum dibuat di KELAS+.';
+        else if (!gender) error = 'Jenis kelamin harus L atau P.';
+        else if (existingNisn.has(nisn)) error = 'NISN sudah ada di data KELAS+.';
+        else if (seenNisn.has(nisn)) error = 'NISN duplikat di dalam file.';
+        if (nisn) seenNisn.add(nisn);
+        return { rowNumber: index + 2, name, nisn, class: classesList.find(c => c.name.toLowerCase() === className.toLowerCase())?.name || className, gender, error };
+      }).filter(row => row.name || row.nisn || row.class);
+      if (!parsed.length) throw new Error('Tidak ditemukan baris data siswa yang dapat dibaca.');
+      setStudentImportRows(parsed);
+    } catch (error) {
+      setStudentImportRows([]);
+      alert(error.message || 'File Excel gagal dibaca. Gunakan format .xlsx atau .xls.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+  const handleImportStudents = async () => {
+    const validRows = studentImportRows.filter(row => !row.error);
+    if (!validRows.length) { alert('Tidak ada baris valid untuk diimpor. Perbaiki data Excel lalu unggah kembali.'); return; }
+    if (!window.confirm('Impor ' + validRows.length + ' siswa ke KELAS+? Baris yang tidak valid akan dilewati.')) return;
+    setStudentImportBusy(true);
+    let success = 0;
+    const failures = [];
+    try {
+      for (const row of validRows) {
+        try {
+          const response = await fetch(API_BASE_URL + '/students', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: row.name, nisn: row.nisn, class: row.class, gender: row.gender }) });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.message || 'Gagal menyimpan');
+          success += 1;
+        } catch (error) { failures.push(row.name + ' (' + row.nisn + '): ' + error.message); }
+      }
+      await fetchBootstrapData();
+      setStudentImportRows([]);
+      setStudentImportFileName('');
+      const skipped = studentImportRows.filter(row => row.error).length;
+      alert('Impor selesai. Berhasil: ' + success + '. Gagal disimpan: ' + failures.length + '. Baris dilewati karena validasi: ' + skipped + (failures.length ? '\n\nRincian gagal:\n' + failures.slice(0, 10).join('\n') : ''));
+    } finally { setStudentImportBusy(false); }
+  };
+
   const handleUserRoleChange = async (userId, role) => {
     try {
       const response = await fetch(API_BASE_URL + '/users/' + userId, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
@@ -615,9 +708,6 @@ export default function App() {
                 </button>
                 <button onClick={() => { setActiveTab('students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Users className="w-4 h-4 text-amber-400" /> Learning Map
-                </button>
-                <button onClick={() => { setActiveTab('reports'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'reports' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
-                  <Printer className="w-4 h-4 text-purple-400" /> Laporan & PDF
                 </button>
                 <button onClick={() => { setActiveTab('reports'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'reports' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Printer className="w-4 h-4 text-purple-400" /> Laporan & PDF
