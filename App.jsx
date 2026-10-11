@@ -564,6 +564,287 @@ export default function App() {
           </div>
         )}
 
+        {/* TEACHER - KELAS SAYA */}
+        {currentUser.role === 'TEACHER' && activeTab === 'classes' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900">Kelas Saya</h1>
+              <p className="text-xs text-slate-500 mt-1">Daftar kelas yang ditugaskan untuk diajar</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {classesList.filter(c => teacherAssignedClasses.includes(c.name) || teacherAssignedClasses.includes('ALL')).map(cls => (
+                <div key={cls.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="px-2.5 py-1 bg-blue-50 text-blue-800 text-[10px] font-bold rounded-lg border border-blue-200">Tingkat {cls.grade}</span>
+                      <h2 className="text-xl font-bold text-slate-800 mt-2">Kelas {cls.name}</h2>
+                      <p className="text-xs text-slate-500">Wali Kelas: {cls.homeroomTeacher}</p>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md">{cls.totalStudents} Siswa</span>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex gap-2">
+                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('attendance'); }} className="flex-1 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl hover:bg-blue-900 transition">
+                      Absensi
+                    </button>
+                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('journal'); }} className="flex-1 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-200 transition">
+                      Jurnal
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TEACHER - ABSENSI CEPT */}
+        {currentUser.role === 'TEACHER' && activeTab === 'attendance' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-black text-slate-900">Absensi Cepat & Rekap Presensi</h1>
+                <p className="text-xs text-slate-500 mt-1">Pilih tanggal dan kelola kehadiran siswa</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold shadow-sm">
+                  {teacherAssignedClasses.map(c => <option key={c} value={c}>Kelas {c}</option>)}
+                </select>
+                <input
+                  type="date"
+                  value={attendanceDate}
+                  onChange={e => setAttendanceDate(e.target.value)}
+                  className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold shadow-sm"
+                />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+              <div className="p-4 bg-slate-50 flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700">Presensi Kelas {selectedClass} — Tanggal: {attendanceDate}</span>
+                <button onClick={handleMarkAllPresent} className="px-3.5 py-1.5 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 transition">
+                  ✓ Tandai Semua Hadir
+                </button>
+              </div>
+
+              {students.filter(s => s.class === selectedClass).map((std, idx) => (
+                <div key={std.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-slate-400 w-6">{idx + 1}.</span>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{std.name}</p>
+                      <p className="text-xs text-slate-400">NISN: {std.nisn} | Gender: {std.gender}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                    {['PRESENT', 'SICK', 'EXCUSED', 'ABSENT'].map(st => {
+                      const isActive = currentAttendance[std.id] === st;
+                      const label = { PRESENT: 'Hadir', SICK: 'Sakit', EXCUSED: 'Izin', ABSENT: 'Alpa' }[st];
+                      let activeStyle = '';
+                      if (st === 'PRESENT') activeStyle = 'bg-emerald-600 text-white font-bold shadow-sm';
+                      if (st === 'SICK') activeStyle = 'bg-amber-500 text-white font-bold shadow-sm';
+                      if (st === 'EXCUSED') activeStyle = 'bg-blue-600 text-white font-bold shadow-sm';
+                      if (st === 'ABSENT') activeStyle = 'bg-rose-600 text-white font-bold shadow-sm';
+
+                      return (
+                        <button
+                          key={st}
+                          onClick={() => handleStatusChange(std.id, st)}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${isActive ? activeStyle : 'text-slate-600 hover:bg-slate-200'}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TEACHER - SMART JOURNAL */}
+        {currentUser.role === 'TEACHER' && activeTab === 'journal' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900">Smart Journal & Library</h1>
+              <p className="text-xs text-slate-500 mt-1">Isi jurnal mengajar harian dan telusuri arsip jurnal</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Form Jurnal Mengajar Baru</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold">
+                  {teacherAssignedClasses.map(c => <option key={c} value={c}>Kelas {c}</option>)}
+                </select>
+                <input type="text" value={journalTopic} onChange={e => setJournalTopic(e.target.value)} placeholder="Topik / Materi Pembelajaran..." className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
+                <input type="text" value={journalMethod} onChange={e => setJournalMethod(e.target.value)} placeholder="Metode (Diskusi/Role-play)..." className="p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
+              </div>
+
+              <textarea rows={2} value={journalNote} onChange={e => setJournalNote(e.target.value)} placeholder="Catatan khusus respon siswa..." className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600" />
+
+              <div className="flex flex-col sm:flex-row gap-2 justify-between">
+                <button onClick={handleAutoGenerateJournal} className="px-4 py-2 bg-blue-50 text-blue-800 text-xs font-bold rounded-xl border border-blue-200 hover:bg-blue-100 flex items-center justify-center gap-2">
+                  <Sparkles className="w-4 h-4 text-blue-600" /> Auto-Generate Draf
+                </button>
+                <button onClick={handleSaveJournal} className="px-5 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 flex items-center justify-center gap-2">
+                  <Save className="w-4 h-4" /> Simpan Jurnal
+                </button>
+              </div>
+
+              {smartDraft && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                  <p className="font-bold text-blue-800">Draf Rangkuman:</p>
+                  <p className="text-slate-700">{smartDraft}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Arsip Jurnal Mengajar</h2>
+              <div className="space-y-3">
+                {journals.map(j => (
+                  <div key={j.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                    <div className="flex justify-between text-xs font-bold">
+                      <span className="text-blue-800">Kelas {j.class} — {j.date}</span>
+                      <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{j.method}</span>
+                    </div>
+                    <p className="text-sm font-bold text-slate-800">{j.topic}</p>
+                    <p className="text-xs text-slate-600">{j.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TEACHER - LEARNING MAP */}
+        {currentUser.role === 'TEACHER' && activeTab === 'students' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-black text-slate-900">Student Learning Map</h1>
+                <p className="text-xs text-slate-500 mt-1">Pemantauan pencapaian akademik dan karakter siswa</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Cari nama siswa..."
+                  value={studentSearchTerm}
+                  onChange={e => setStudentSearchTerm(e.target.value)}
+                  className="p-2 bg-white border border-slate-300 rounded-xl text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[500px]">
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">Nama Siswa</th>
+                    <th className="p-3">Kelas</th>
+                    <th className="p-3 text-center">Tingkat Kehadiran</th>
+                    <th className="p-3 text-center">Nilai Tugas</th>
+                    <th className="p-3 text-center">Status Pemantauan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredStudents.map(std => (
+                    <tr key={std.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-bold text-slate-800">{std.name}</td>
+                      <td className="p-3 font-bold text-blue-800">{std.class}</td>
+                      <td className="p-3 text-center font-mono">{std.attendanceRate}%</td>
+                      <td className="p-3 text-center font-mono">{std.assignmentScore}</td>
+                      <td className="p-3 text-center">
+                        {std.statusFlag === 'GOOD' && <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">🟢 Sangat Baik</span>}
+                        {std.statusFlag === 'NEEDS_FOLLOW_UP' && <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">⚠️ Pendampingan</span>}
+                        {std.statusFlag === 'MONITOR' && <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">🟡 Pemantauan</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TEACHER - AI TEACHING ASSISTANT */}
+        {currentUser.role === 'TEACHER' && activeTab === 'ai' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                <Bot className="w-6 h-6 text-cyan-600" /> AI Teaching Assistant Real-Time
+              </h1>
+              <p className="text-xs text-slate-500 mt-1">Rekomendasi skenario mengajar interaktif berbasis Google Gemini AI</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h2 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Parameter Kelas</h2>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
+                  <input type="text" value={aiSubject} onChange={e => setAiSubject(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Materi / Topik</label>
+                  <input type="text" value={aiTopic} onChange={e => setAiTopic(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Kondisi Kelas</label>
+                  <select value={aiCondition} onChange={e => setAiCondition(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs">
+                    <option value="Siswa Pasif & Malu Berbicara">Siswa Pasif & Malu Berbicara</option>
+                    <option value="Siswa Sangat Aktif & Gaduh">Siswa Sangat Aktif & Gaduh</option>
+                    <option value="Pemahaman Konsep Masih Rendah">Pemahaman Konsep Masih Rendah</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleGenerateAiActivities}
+                  disabled={isGeneratingAi}
+                  className="w-full py-3 bg-blue-800 hover:bg-blue-900 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" /> {isGeneratingAi ? 'Gemini AI Menyusun Skenario...' : 'Eksekusi Gemini AI'}
+                </button>
+              </div>
+
+              <div className="md:col-span-2 space-y-4">
+                {aiRecommendations ? (
+                  aiRecommendations.map((item) => (
+                    <div key={item.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="px-2.5 py-1 bg-blue-50 text-blue-800 font-bold text-[10px] rounded-lg border border-blue-200">{item.type}</span>
+                        <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {item.duration}</span>
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">{item.title}</h3>
+                      <p className="text-xs text-slate-600">{item.objective}</p>
+                      {item.steps && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <p className="text-[11px] font-bold text-slate-700 mb-1">Langkah Pelaksanaan:</p>
+                          <ol className="list-decimal list-inside text-xs text-slate-600 space-y-1">
+                            {item.steps.map((st, i) => <li key={i}>{st}</li>)}
+                          </ol>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400 space-y-2">
+                    <Bot className="w-12 h-12 mx-auto text-slate-300" />
+                    <p className="text-sm font-medium">Klik "Eksekusi Gemini AI" untuk mendapatkan skenario mengajar.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+
         {/* LEADER - OVERVIEW */}
         {currentUser.role === 'LEADER' && activeTab === 'leader_overview' && (
           <div className="space-y-6">
