@@ -223,75 +223,40 @@ export default function App() {
   };
   const handleAddTeacher = async (e) => {
     e.preventDefault();
-    if (!newTeacher.name || !newTeacher.username) return;
-    const added = {
-      id: `u_${Date.now()}`,
-      name: newTeacher.name,
-      nip: newTeacher.nip || '-',
-      subject: newTeacher.subject,
-      username: newTeacher.username,
-      password: newTeacher.password || 'password123',
-      role: 'TEACHER',
-      assignedClasses: newTeacher.assignedClasses,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
-    };
-
-    setUsers([...users, added]);
-
+    if (!newTeacher.name.trim() || !newTeacher.username.trim() || newTeacher.password.length < 12) { alert('Nama, username, dan password minimal 12 karakter wajib diisi.'); return; }
     try {
-      await fetch(`${API_BASE_URL}/teachers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(added)
-      });
-      alert("✓ Akun Guru Baru Berhasil Dibuat!");
-    } catch (err) {
-      alert("✓ Akun Guru Tersimpan!");
-    }
-
-    setNewTeacher({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: ['VII A'] });
+      const response = await fetch(API_BASE_URL + '/teachers', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTeacher) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Akun guru gagal dibuat.');
+      setUsers(prev => [...prev, data.user]);
+      alert('Akun guru berhasil dibuat.');
+      setNewTeacher({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: ['VII A'] });
+    } catch (err) { alert(err.message || 'Akun guru gagal dibuat.'); }
   };
-
   const handleAddClass = async (e) => {
     e.preventDefault();
-    if (!newClass.name) return;
-    const added = { id: `c_${Date.now()}`, name: newClass.name, grade: newClass.grade, totalStudents: 30, homeroomTeacher: newClass.homeroomTeacher || 'Belum Ditentukan' };
-    setClassesList([...classesList, added]);
-
+    if (!newClass.name.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/classes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(added)
-      });
-      alert("✓ Rombel Kelas Baru Berhasil Ditambahkan!");
-    } catch (err) {
-      alert("✓ Rombel Kelas Tersimpan!");
-    }
-
-    setNewClass({ name: '', grade: 'VII', homeroomTeacher: '' });
+      const response = await fetch(API_BASE_URL + '/classes', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newClass) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Kelas gagal ditambahkan.');
+      setClassesList(prev => [...prev, { ...data.class, totalStudents: 0 }]);
+      alert('Rombel kelas berhasil ditambahkan.');
+      setNewClass({ name: '', grade: 'VII', homeroomTeacher: '' });
+    } catch (err) { alert(err.message || 'Kelas gagal ditambahkan.'); }
   };
-
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (!newStudent.name || !newStudent.nisn) return;
-    const added = { id: `s_${Date.now()}`, nisn: newStudent.nisn, name: newStudent.name, class: newStudent.class, gender: newStudent.gender, status: 'ACTIVE', attendanceRate: 100, assignmentScore: 80, statusFlag: 'GOOD' };
-    setStudents([...students, added]);
-
+    if (!newStudent.name.trim() || !newStudent.nisn.trim()) return;
     try {
-      await fetch(`${API_BASE_URL}/students`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(added)
-      });
-      alert("✓ Data Siswa Baru Berhasil Disimpan!");
-    } catch (err) {
-      alert("✓ Siswa Tersimpan!");
-    }
-
-    setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
+      const response = await fetch(API_BASE_URL + '/students', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newStudent) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Siswa gagal ditambahkan.');
+      setStudents(prev => [...prev, { ...data.student, attendanceRate: null, assignmentScore: null, statusFlag: 'GOOD' }]);
+      alert('Data siswa berhasil disimpan.');
+      setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
+    } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
   };
-
   // Helper Lists
   const teacherAssignedClasses = currentUser?.role === 'TEACHER' ? (currentUser.assignedClasses || []) : classesList.map(c => c.name);
   const filteredStudents = students.filter(s => {
