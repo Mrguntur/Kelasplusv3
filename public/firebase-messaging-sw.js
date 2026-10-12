@@ -28,6 +28,9 @@ try {
     firebase.initializeApp(firebaseConfig);
     const messaging = firebase.messaging();
     messaging.onBackgroundMessage(payload => {
+      // FCM displays notification payloads automatically in the background.
+      // Manually show only data-only messages to avoid duplicate notifications.
+      if (payload.notification) return;
       const notification = payload.notification || {};
       const data = payload.data || {};
       const title = notification.title || 'Pengingat Mengajar';
