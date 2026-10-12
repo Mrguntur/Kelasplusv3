@@ -18,7 +18,7 @@
 
 ## Important: this branch is not a complete, activated feature yet
 
-The React Admin/Teacher schedule screens, browser permission/token registration, service worker setup, and Android native FCM token integration must be added and tested before users receive reminders. Do not merge/deploy this branch as a complete user-facing feature yet.
+The React schedule screen is now included on this branch for Admin, Leader, and Teacher. Admin can add and deactivate schedules; teachers see their own schedules and can request browser notification registration. The browser service worker is included. This is still a draft until the hosting configuration, build, end-to-end delivery, and Android native push are validated. Do not describe reminders as live before those checks pass.
 
 ## Required server configuration
 
@@ -34,9 +34,10 @@ Configure a cPanel cron job to call the dispatch endpoint every minute using an 
 
 ## Validation before production
 
-1. Add schedule management UI and validate role-based access.
-2. Add and test web FCM service-worker registration/token registration.
-3. Add native Android FCM token registration for the APK.
-4. Configure `CRON_SECRET` and the trusted scheduler on hosting.
-5. Test a schedule with a reminder five minutes ahead, including duplicate cron invocations and invalid/expired device tokens.
-6. Confirm that notification permission is explicitly granted on each device.
+1. Configure `VITE_FIREBASE_VAPID_KEY` in the frontend build environment using the Web Push certificate public key from Firebase Console > Project settings > Cloud Messaging. The `VITE_` key is public; never use a private server secret here.
+2. Confirm the other `VITE_FIREBASE_*` client config values are available at build time and that the Firebase project has Cloud Messaging enabled.
+3. Configure `CRON_SECRET` (at least 32 random characters) only in the server environment and configure a trusted one-minute scheduler to call the dispatch endpoint.
+4. Build and deploy this branch to a staging URL; verify schedule CRUD and role access with Admin, Leader, and Teacher accounts.
+5. On HTTPS Chrome, grant notification permission and use the KELAS+ screen to register the browser token. Check the `notificationDevices` collection only through trusted admin tooling.
+6. Test a schedule with a reminder five minutes ahead, including duplicate cron invocations and invalid/expired device tokens.
+7. Add native Android FCM token registration to the APK separately; browser push registration does not complete native Android push.
