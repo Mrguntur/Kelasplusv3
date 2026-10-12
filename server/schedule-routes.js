@@ -28,7 +28,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
 
   app.get('/api/schedules', auth, async (req, res, next) => {
     try {
-      const rows = await list('teachingSchedules');
+      const rows = (await list('teachingSchedules')).filter(row => row.active !== false);
       const visible = req.user.role === 'TEACHER' ? rows.filter(row => row.teacherId === req.user.id) : rows;
       visible.sort((a, b) => (a.dayOfWeek - b.dayOfWeek) || a.startTime.localeCompare(b.startTime));
       res.json({ success: true, schedules: visible });
