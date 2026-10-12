@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { registerScheduleRoutes } from './schedule-routes.js';
 
 dotenv.config();
 const app = express();
@@ -399,6 +400,9 @@ app.delete('/api/students/:id', auth, allow('ADMIN'), async (req,res,next) => {
   } catch(error) { next(error); }
 });
 app.post('/api/settings/gemini-key', auth, allow('ADMIN'), (_req,res) => fail(res,410,'Kunci AI tidak disimpan dari browser. Atur GEMINI_API_KEY pada environment server.'));
+
+registerScheduleRoutes({ app, auth, allow, col, list, getDoc, setDoc, audit, id, adminApp });
+
 app.use((err,_req,res,_next) => { console.error('API error:',err); res.status(500).json({success:false,message:'Terjadi kesalahan server. Silakan coba kembali.'}); });
 app.use((_req,res) => fail(res,404,'Endpoint tidak ditemukan.'));
 app.listen(PORT, () => console.log('KELAS+ Firestore backend aktif pada port '+PORT));
