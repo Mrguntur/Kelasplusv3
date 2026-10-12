@@ -8,8 +8,10 @@ import {
   Sparkles, Wifi, ShieldAlert, LogOut, Download, Search, Edit3, Trash2, 
   UserPlus, Filter, Upload, Layers, Key, User, Camera, Lock, Eye, EyeOff, 
   Printer, FileSpreadsheet, Database, RefreshCw, Menu, X, Save, Check,
-  Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3
+  Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing
 } from 'lucide-react';
+import firebaseApp from './firebase.js';
+import { getMessaging, getToken } from 'firebase/messaging';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
@@ -58,6 +60,14 @@ export default function App() {
   const [learningTaskCount, setLearningTaskCount] = useState(4);
   const [adminStudentPageSize, setAdminStudentPageSize] = useState(10);
   const [adminStudentPage, setAdminStudentPage] = useState(1);
+
+  // Teaching schedule and browser push notification state
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ teacherId: '', classId: '', subject: 'Bahasa Inggris', dayOfWeek: '1', startTime: '07:30', endTime: '08:10', room: '' });
+  const [notificationStatus, setNotificationStatus] = useState('idle');
+  const [notificationMessage, setNotificationMessage] = useState('');
 
   // Admin Feature States
   const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
@@ -133,6 +143,21 @@ export default function App() {
       setAttendanceSaveStatus('unsaved');
     }
   }, [selectedClass, attendanceDate, students, attendanceRecords]);
+
+  useEffect(() => {
+    if (!currentUser || activeTab !== 'schedule') return;
+    let cancelled = false;
+    setScheduleLoading(true);
+    fetch(`${API_BASE_URL}/schedules`, { credentials: 'include' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Jadwal gagal dimuat.');
+        if (!cancelled) setSchedules(data.schedules || []);
+      })
+      .catch(error => { if (!cancelled) alert(error.message || 'Jadwal gagal dimuat.'); })
+      .finally(() => { if (!cancelled) setScheduleLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, currentUser]);
 
   // Sync state after login
   useEffect(() => {
@@ -261,6 +286,67 @@ export default function App() {
     } catch (err) { alert(err.message || 'Layanan AI tidak tersedia.'); }
     finally { setIsGeneratingAi(false); }
   };
+  const handleCreateSchedule = async (e) => {
+    e.preventDefault();
+    if (!scheduleForm.teacherId || !scheduleForm.classId || !scheduleForm.subject.trim()) {
+      alert('Pilih guru, kelas, dan mata pelajaran terlebih dahulu.'); return;
+    }
+    setScheduleSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/schedules`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...scheduleForm, dayOfWeek: Number(scheduleForm.dayOfWeek) }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Jadwal gagal disimpan.');
+      setSchedules(prev => [...prev, data.schedule].sort((a,b) => a.dayOfWeek-b.dayOfWeek || a.startTime.localeCompare(b.startTime)));
+      setScheduleForm(prev => ({ ...prev, room: '' }));
+      alert('Jadwal mengajar berhasil ditambahkan.');
+    } catch (error) { alert(error.message || 'Jadwal gagal disimpan.'); }
+    finally { setScheduleSaving(false); }
+  };
+
+  const handleDeactivateSchedule = async (schedule) => {
+    if (!window.confirm(`Nonaktifkan jadwal ${schedule.subject} kelas ${schedule.className}?`)) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/schedules/${encodeURIComponent(schedule.id)}`, { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Jadwal gagal dinonaktifkan.');
+      setSchedules(prev => prev.filter(item => item.id !== schedule.id));
+    } catch (error) { alert(error.message || 'Jadwal gagal dinonaktifkan.'); }
+  };
+
+  const handleEnableNotifications = async () => {
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!firebaseApp || !firebaseConfigured) { setNotificationStatus('error'); setNotificationMessage('Konfigurasi Firebase web belum lengkap.'); return; }
+    if (!vapidKey) { setNotificationStatus('error'); setNotificationMessage('VITE_FIREBASE_VAPID_KEY belum diatur pada environment build.'); return; }
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) { setNotificationStatus('error'); setNotificationMessage('Browser ini belum mendukung notifikasi web. Coba Chrome terbaru melalui HTTPS.'); return; }
+    setNotificationStatus('working'); setNotificationMessage('Meminta izin notifikasi…');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Izin notifikasi belum diberikan pada browser.');
+      const cfg = {
+        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+        appId: import.meta.env.VITE_FIREBASE_APP_ID
+      };
+      const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+      const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?config=${encodeURIComponent(encodedConfig)}`, { scope: '/' });
+      await navigator.serviceWorker.ready;
+      const messaging = getMessaging(firebaseApp);
+      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
+      if (!token) throw new Error('Token not berhasil dibuat. Periksa Firebase Cloud Messaging dan VAPID key.');
+      const response = await fetch(`${API_BASE_URL}/notifications/register`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, platform: 'web' }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Pendaftaran perangkat gagal.');
+      setNotificationStatus('enabled');
+      setNotificationMessage('Notifikasi aktif di browser ini. Izinkan notifikasi untuk situs KELAS+ pada pengaturan perangkat.');
+    } catch (error) {
+      setNotificationStatus('error');
+      setNotificationMessage(error.message || 'Notifikasi gagal diaktifkan.');
+    }
+  };
+
   // Admin Operations
   const handleSaveGeminiApiKey = async (e) => {
     e.preventDefault();
@@ -727,6 +813,8 @@ export default function App() {
                 </button>
               </>
             )}
+
+            <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar</button>
 
             {currentUser.role === 'LEADER' && (
               <>
@@ -1253,6 +1341,42 @@ export default function App() {
               <p className="text-sm text-slate-700">Pengelola teknis perlu mengatur <code>GEMINI_API_KEY</code> pada file <code>.env</code> di server backend, lalu memulai ulang layanan API.</p>
               <p className="text-xs text-slate-500">Jangan tempelkan kunci API di chat, GitHub, atau kolom browser. Jika belum dikonfigurasi, fitur AI akan memberi tahu bahwa layanan belum tersedia.</p>
             </div>
+          </div>
+        )}
+
+        {/* TEACHING SCHEDULE & NOTIFICATIONS */}
+        {activeTab === 'schedule' && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><Calendar className="w-6 h-6 text-blue-800" /> Jadwal Mengajar</h1><p className="text-xs text-slate-500 mt-1">Jadwal tersimpan di server dan pengingat otomatis 5 menit sebelum pelajaran dimulai.</p></div>
+              <button onClick={() => { setScheduleLoading(true); fetch(`${API_BASE_URL}/schedules`, { credentials: 'include' }).then(async r => { const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.message || 'Gagal memuat jadwal'); setSchedules(d.schedules || []); }).catch(e => alert(e.message)).finally(() => setScheduleLoading(false)); }} className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold flex items-center justify-center gap-2"><RefreshCw className="w-4 h-4" /> Segarkan</button>
+            </div>
+
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div className="flex items-start gap-3"><div className="p-2.5 bg-blue-50 text-blue-800 rounded-xl"><BellRing className="w-5 h-5" /></div><div className="flex-1"><h2 className="font-bold text-slate-900">Pengingat sebelum mengajar</h2><p className="text-xs text-slate-500 mt-1">Aktifkan sekali pada setiap perangkat/browser. Pengingat web memerlukan izin notifikasi dan konfigurasi FCM/VAPID.</p></div></div>
+              <button onClick={handleEnableNotifications} disabled={notificationStatus === 'working'} className="px-4 py-2.5 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-2"><Bell className="w-4 h-4" />{notificationStatus === 'working' ? 'Mengaktifkan…' : notificationStatus === 'enabled' ? 'Aktifkan ulang perangkat' : 'Aktifkan Notifikasi'}</button>
+              {notificationMessage && <p className={`text-xs rounded-xl p-3 ${notificationStatus === 'error' ? 'bg-rose-50 text-rose-700' : notificationStatus === 'enabled' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-800'}`}>{notificationMessage}</p>}
+              <p className="text-[11px] text-slate-500">Catatan: pengingat tidak akan terkirim sebelum FCM, VAPID, dan cron server dikonfigurasi. Browser harus mengizinkan notifikasi. Integrasi notifikasi native APK masih tahap berikutnya.</p>
+            </section>
+
+            {currentUser.role === 'ADMIN' && <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div><h2 className="font-bold text-slate-900">Tambah jadwal</h2><p className="text-xs text-slate-500 mt-1">Hanya admin yang dapat mengatur jadwal guru.</p></div>
+              <form onSubmit={handleCreateSchedule} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <label className="text-xs font-bold text-slate-700">Guru<select required value={scheduleForm.teacherId} onChange={e => setScheduleForm(p => ({ ...p, teacherId: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs"><option value="">Pilih guru</option>{users.filter(u => u.role === 'TEACHER' && u.active !== false).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Kelas<select required value={scheduleForm.classId} onChange={e => setScheduleForm(p => ({ ...p, classId: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs"><option value="">Pilih kelas</option>{classesList.filter(c => c.active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Mata pelajaran<select required value={scheduleForm.subject} onChange={e => setScheduleForm(p => ({ ...p, subject: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs">{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Hari<select required value={scheduleForm.dayOfWeek} onChange={e => setScheduleForm(p => ({ ...p, dayOfWeek: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs">{[['1','Senin'],['2','Selasa'],['3','Rabu'],['4','Kamis'],['5','Jumat'],['6','Sabtu'],['7','Minggu']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Mulai<input required type="time" value={scheduleForm.startTime} onChange={e => setScheduleForm(p => ({ ...p, startTime: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs" /></label>
+                <label className="text-xs font-bold text-slate-700">Selesai<input required type="time" value={scheduleForm.endTime} onChange={e => setScheduleForm(p => ({ ...p, endTime: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs" /></label>
+                <label className="text-xs font-bold text-slate-700">Ruang (opsional)<input value={scheduleForm.room} onChange={e => setScheduleForm(p => ({ ...p, room: e.target.value }))} placeholder="Contoh: VII A / Lab" className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs" /></label>
+                <div className="flex items-end"><button disabled={scheduleSaving} type="submit" className="w-full p-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2"><Plus className="w-4 h-4" />{scheduleSaving ? 'Menyimpan…' : 'Simpan Jadwal'}</button></div>
+              </form>
+            </section>}
+
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between"><div><h2 className="font-bold text-slate-900">Daftar jadwal</h2><p className="text-xs text-slate-500 mt-1">{schedules.length} jadwal ditemukan</p></div>{scheduleLoading && <RefreshCw className="w-4 h-4 text-blue-700 animate-spin" />}</div>
+              {scheduleLoading && schedules.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Memuat jadwal…</p> : schedules.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Belum ada jadwal. Admin dapat menambahkan jadwal melalui formulir di atas.</p> : <div className="divide-y divide-slate-100">{schedules.map(schedule => <div key={schedule.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5"><div className="sm:w-28 shrink-0"><p className="font-black text-blue-800">{[['',''],['Senin',''],['Selasa',''],['Rabu',''],['Kamis',''],['Jumat',''],['Sabtu',''],['Minggu','']][Number(schedule.dayOfWeek)]?.[0] || 'Hari'}</p><p className="text-xs text-slate-600 font-bold mt-1">{schedule.startTime}–{schedule.endTime}</p></div><div className="flex-1"><p className="font-bold text-slate-900">{schedule.subject}</p><p className="text-xs text-slate-500 mt-1">Kelas {schedule.className} · {schedule.teacherName || currentUser.name}{schedule.room ? ` · Ruang ${schedule.room}` : ''}</p></div>{currentUser.role === 'ADMIN' && <button onClick={() => handleDeactivateSchedule(schedule)} className="self-start sm:self-auto px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Nonaktifkan</button>}</div>)}</div>}
+            </section>
           </div>
         )}
 
