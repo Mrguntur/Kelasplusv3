@@ -853,7 +853,7 @@ export default function App() {
 
         <div className="p-4 border-t border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={currentUser.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name || 'Guru') + '&background=1e40af&color=fff')} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-slate-700" />
+            <div className="w-8 h-8 rounded-full border border-slate-700 bg-slate-100 flex items-center justify-center text-slate-500" aria-label="Avatar pengguna"><svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.2-7.5 5v2h15v-2c0-2.8-3.4-5-7.5-5Z"/></svg></div>
             <div>
               <p className="text-xs font-bold text-white leading-tight">{currentUser.name}</p>
               <p className="text-[10px] text-slate-400">{currentUser.subject}</p>
