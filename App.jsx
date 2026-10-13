@@ -826,6 +826,9 @@ export default function App() {
                 <button onClick={() => { setActiveTab('leader_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'leader_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <BarChart2 className="w-4 h-4 text-amber-400" /> Dashboard Leader
                 </button>
+                <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar
+                </button>
                 <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Daftar Guru</button>
                 <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Daftar Kelas</button>
                 <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-emerald-400" /> Daftar Siswa</button>
