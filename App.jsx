@@ -3,19 +3,25 @@ import * as XLSX from 'xlsx';
 import { auth, firebaseConfigured } from './firebase.js';
 import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { 
-  Home, Users, Calendar, BookOpen, AlertTriangle, FileText, 
+  Home, Users, Calendar, BookOpen, AlertTriangle, FileText, ClipboardCheck, 
   Bot, Settings, CheckCircle, Clock, Plus, BarChart2, ChevronRight, 
   Sparkles, Wifi, ShieldAlert, LogOut, Download, Search, Edit3, Trash2, 
   UserPlus, Filter, Upload, Layers, Key, User, Camera, Lock, Eye, EyeOff, 
   Printer, FileSpreadsheet, Database, RefreshCw, Menu, X, Save, Check,
-  Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3
+  Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing
 } from 'lucide-react';
+import firebaseApp from './firebase.js';
+import { getMessaging, getToken } from 'firebase/messaging';
 
+
+const APP_VERSION = '2.2.0';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const localDateString = (date = new Date()) => date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
 const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [toastNotice, setToastNotice] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(false);
 
@@ -26,6 +32,7 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Core Data Collections
   const [users, setUsers] = useState([]);
@@ -42,11 +49,23 @@ export default function App() {
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingGradesFor, setSavingGradesFor] = useState('');
   const [gradeDrafts, setGradeDrafts] = useState({});
-  const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'SMP NEGERI 2 BAJUIN', academicYear: '2026/2027' });
+  const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'UPTD SMPN 2 BAJUIN', academicYear: '2026/2027', schoolAddress: '', schoolPhone: '', schoolEmail: '', principalName: '', principalNip: '', letterheadSubtitle: 'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas' });
+  const [letterheadForm, setLetterheadForm] = useState({ schoolName: 'UPTD SMPN 2 BAJUIN', schoolAddress: '', schoolPhone: '', schoolEmail: '', academicYear: '2026/2027', principalName: '', principalNip: '', letterheadSubtitle: 'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas' });
+  const [letterheadSaving, setLetterheadSaving] = useState(false);
+  const [letterheadNotice, setLetterheadNotice] = useState('');
+  const [adminStudentClassFilter, setAdminStudentClassFilter] = useState('ALL');
+  const [adminStudentSearch, setAdminStudentSearch] = useState('');
+  const [scheduleFilterClass, setScheduleFilterClass] = useState('ALL');
+  const [scheduleFilterTeacher, setScheduleFilterTeacher] = useState('ALL');
+  const [followUps, setFollowUps] = useState([]);
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpNotice, setFollowUpNotice] = useState('');
+  const [followUpSearch, setFollowUpSearch] = useState('');
+  const [followUpForm, setFollowUpForm] = useState({ studentId: '', date: localDateString(), category: 'Kehadiran rendah', action: '', result: '', nextStep: '', notes: '', status: 'MONITORING' });
 
   // Teacher Feature States
   const [selectedClass, setSelectedClass] = useState('VII A');
-  const [attendanceDate, setAttendanceDate] = useState('2026-10-11');
+  const [attendanceDate, setAttendanceDate] = useState(() => localDateString());
   const [currentAttendance, setCurrentAttendance] = useState({});
   const [journalTopic, setJournalTopic] = useState('');
   const [journalMethod, setJournalMethod] = useState('');
@@ -58,6 +77,19 @@ export default function App() {
   const [learningTaskCount, setLearningTaskCount] = useState(4);
   const [adminStudentPageSize, setAdminStudentPageSize] = useState(10);
   const [adminStudentPage, setAdminStudentPage] = useState(1);
+
+  // Teaching schedule and browser push notification state
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState(() => String((new Date().getDay() + 6) % 7 + 1));
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ teacherId: '', classId: '', subject: 'Bahasa Inggris', dayOfWeek: '1', startTime: '07:30', endTime: '08:10', room: '' });
+  const [notificationStatus, setNotificationStatus] = useState('idle');
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '', type: 'info', pinned: true, expiresAt: '' });
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [announcementNotice, setAnnouncementNotice] = useState('');
 
   // Admin Feature States
   const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
@@ -75,6 +107,47 @@ export default function App() {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
+  const [deviceNow, setDeviceNow] = useState(() => new Date());
+
+  const fetchStudentFollowUps = async () => {
+    try { const response = await fetch(API_BASE_URL + '/student-follow-ups', { credentials: 'include' }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Riwayat tindak lanjut gagal dimuat.'); setFollowUps(data.followUps || []); }
+    catch (error) { console.warn('Gagal memuat tindak lanjut siswa:', error); }
+  };
+
+  const handleSaveLetterhead = async (event) => {
+    event.preventDefault(); setLetterheadSaving(true); setLetterheadNotice('');
+    try { const response = await fetch(API_BASE_URL + '/settings/letterhead', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(letterheadForm) }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Pengaturan kop surat gagal disimpan.'); setSystemSettings(prev => ({ ...prev, ...data.settings })); setLetterheadForm(prev => ({ ...prev, ...data.settings })); setLetterheadNotice('Pengaturan kop surat berhasil disimpan dan akan digunakan pada laporan berikutnya.'); }
+    catch (error) { setLetterheadNotice(error.message || 'Pengaturan gagal disimpan.'); } finally { setLetterheadSaving(false); }
+  };
+
+  const handleSaveFollowUp = async (event) => {
+    event.preventDefault(); setFollowUpSaving(true); setFollowUpNotice('');
+    try { const response = await fetch(API_BASE_URL + '/student-follow-ups', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(followUpForm) }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Tindak lanjut gagal disimpan.'); setFollowUps(prev => [data.followUp, ...prev]); setFollowUpForm({ studentId: '', date: localDateString(), category: 'Kehadiran rendah', action: '', result: '', nextStep: '', notes: '', status: 'MONITORING' }); setFollowUpNotice('Catatan tindak lanjut berhasil disimpan.'); }
+    catch (error) { setFollowUpNotice(error.message || 'Tindak lanjut gagal disimpan.'); } finally { setFollowUpSaving(false); }
+  };
+
+  const fetchAnnouncements = async () => {
+    try {
+      const response = await fetch(API_BASE_URL + '/announcements', { credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Pengumuman tidak dapat dimuat.');
+      setAnnouncements(data.announcements || []);
+    } catch (error) { console.warn('Gagal memuat pengumuman:', error); }
+  };
+  const handleSaveAnnouncement = async (event) => {
+    event.preventDefault(); setAnnouncementSaving(true); setAnnouncementNotice('');
+    try {
+      const response = await fetch(API_BASE_URL + '/announcements', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...announcementForm, expiresAt: announcementForm.expiresAt ? new Date(announcementForm.expiresAt + 'T23:59:59').toISOString() : '' }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Pengumuman gagal disimpan.');
+      setAnnouncements(items => [data.announcement, ...items]); setAnnouncementForm({ title: '', message: '', type: 'info', pinned: true, expiresAt: '' }); setAnnouncementNotice('Pengumuman berhasil diterbitkan.');
+    } catch (error) { setAnnouncementNotice(error.message || 'Pengumuman gagal disimpan.'); } finally { setAnnouncementSaving(false); }
+  };
+  const handleDeleteAnnouncement = async (announcement) => {
+    if (!window.confirm('Nonaktifkan pengumuman ini?')) return;
+    try { const response = await fetch(API_BASE_URL + '/announcements/' + encodeURIComponent(announcement.id), { method: 'DELETE', credentials: 'include' }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Pengumuman gagal dinonaktifkan.'); setAnnouncements(items => items.filter(item => item.id !== announcement.id)); }
+    catch (error) { setAnnouncementNotice(error.message || 'Pengumuman gagal dinonaktifkan.'); }
+  };
 
   // Load school data only after a valid server session exists.
   const fetchBootstrapData = async () => {
@@ -92,7 +165,7 @@ export default function App() {
       const drafts = {};
       (data.assignmentScores || []).forEach(g => { drafts[g.studentId] = { ...(drafts[g.studentId] || {}), [g.assignmentNo]: g.score == null ? '' : String(g.score) }; });
       setGradeDrafts(drafts);
-      if (data.settings) setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' }));
+      if (data.settings) { setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' })); setLetterheadForm(prev => ({ ...prev, ...data.settings })); }
       const attendanceMap = {};
       (data.attendanceRecords || []).forEach(r => {
         const key = `${r.class}_${r.date}`;
@@ -111,15 +184,40 @@ export default function App() {
     let cancelled = false;
     fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (!cancelled && data && data.success) setCurrentUser(data.user); })
+      .then(data => { if (!cancelled && data && data.success) { const user = data.user; setCurrentUser(user); const savedTab = window.sessionStorage.getItem('kelasplus.activeTab'); const roleTabs = user.role === 'ADMIN' ? ['admin_overview','admin_users','admin_teachers','admin_classes','admin_students','announcements','admin_api','schedule','settings'] : user.role === 'LEADER' ? ['leader_overview','schedule','students','admin_teachers','admin_classes','admin_students','leader_followups','reports','settings'] : ['dashboard','classes','attendance','journal','students','reports','ai','schedule','settings']; setActiveTab(roleTabs.includes(savedTab) ? savedTab : user.role === 'ADMIN' ? 'admin_overview' : user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
       .catch(() => { if (!cancelled) setIsServerOnline(false); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (currentUser) fetchBootstrapData();
+    if (currentUser) { fetchBootstrapData(); fetchAnnouncements(); if (currentUser.role === 'LEADER' || currentUser.role === 'ADMIN') fetchStudentFollowUps(); }
   }, [currentUser]);
+
+  useEffect(() => { if (currentUser?.role === 'LEADER' && activeTab === 'leader_followups') fetchStudentFollowUps(); }, [activeTab, currentUser]);
+
+  // Preserve the current page when the user refreshes the browser.
+  useEffect(() => {
+    if (currentUser) window.sessionStorage.setItem('kelasplus.activeTab', activeTab);
+  }, [activeTab, currentUser]);
+
+  useEffect(() => {
+    if (!toastNotice) return undefined;
+    const timer = window.setTimeout(() => setToastNotice(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [toastNotice]);
   
+  // End sessions after 30 minutes of inactivity and refresh active server sessions.
+  useEffect(() => {
+    if (!currentUser) return;
+    let idleTimer;
+    const resetIdleTimer = () => { window.clearTimeout(idleTimer); idleTimer = window.setTimeout(() => { handleLogout(true); }, 30 * 60 * 1000); };
+    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(name => window.addEventListener(name, resetIdleTimer, { passive: true }));
+    resetIdleTimer();
+    const heartbeat = window.setInterval(() => { fetch(API_BASE_URL + '/auth/activity', { method: 'POST', credentials: 'include' }).catch(() => {}); }, 2 * 60 * 1000);
+    return () => { window.clearTimeout(idleTimer); window.clearInterval(heartbeat); events.forEach(name => window.removeEventListener(name, resetIdleTimer)); };
+  }, [currentUser]);
+
   // Update attendance view for selected class/date
   useEffect(() => {
     const key = `${selectedClass}_${attendanceDate}`;
@@ -133,6 +231,23 @@ export default function App() {
       setAttendanceSaveStatus('unsaved');
     }
   }, [selectedClass, attendanceDate, students, attendanceRecords]);
+
+  useEffect(() => {
+    if (!currentUser || !['schedule', 'dashboard'].includes(activeTab)) return;
+    let cancelled = false;
+    setScheduleLoading(true);
+    fetch(`${API_BASE_URL}/schedules`, { credentials: 'include' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Jadwal gagal dimuat.');
+        if (!cancelled) setSchedules(data.schedules || []);
+      })
+      .catch(error => { if (!cancelled) alert(error.message || 'Jadwal gagal dimuat.'); })
+      .finally(() => { if (!cancelled) setScheduleLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, currentUser]);
+
+  useEffect(() => { const timer = window.setInterval(() => setDeviceNow(new Date()), 60000); return () => window.clearInterval(timer); }, []);
 
   // Sync state after login
   useEffect(() => {
@@ -149,7 +264,7 @@ export default function App() {
         phone: '081234567890',
         currentPassword: '',
         newPassword: '',
-        avatar: currentUser.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
+        avatar: currentUser.avatar || ''
       });
     }
   }, [currentUser]);
@@ -158,6 +273,7 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoadingAuth(true);
+    const loginStartedAt = Date.now();
     setLoginError('');
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
@@ -174,22 +290,30 @@ export default function App() {
         await signInWithCustomToken(auth, data.firebaseCustomToken);
       }
       setCurrentUser(data.user);
-      setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
+      const landingTab = data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard';
+      setActiveTab(landingTab);
+      window.sessionStorage.setItem('kelasplus.activeTab', landingTab);
     } catch (err) {
       setLoginError(err.message || 'Server tidak dapat dihubungi. Pastikan backend berjalan.');
     } finally {
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2500 - (Date.now() - loginStartedAt))));
       setIsLoadingAuth(false);
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (idleTimeout = false) => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    const logoutStartedAt = Date.now();
     try { if (auth) await signOut(auth); } catch (err) { console.warn('Firebase logout failed:', err); }
     try {
       await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (err) {
       console.warn('Backend logout request failed:', err);
     } finally {
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2500 - (Date.now() - logoutStartedAt))));
       setCurrentUser(null);
+      setIsLoggingOut(false);
       setUsers([]);
       setClassesList([]);
       setStudents([]);
@@ -199,6 +323,7 @@ export default function App() {
       setAssignmentTasks([]);
       setLoginUsername('');
       setLoginPassword('');
+      // Do not show the inactivity timeout message on the login screen.
       setLoginError('');
       setActiveTab('dashboard');
     }
@@ -219,7 +344,7 @@ export default function App() {
       setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: { ...currentAttendance } }));
       setAttendanceSaveStatus('saved');
       alert('Presensi kelas ' + selectedClass + ' tanggal ' + attendanceDate + ' berhasil disimpan (' + Object.keys(currentAttendance).length + ' siswa).');
-    } catch (err) { setAttendanceSaveStatus('error'); alert(err.message || 'Presensi gagal disimpan.'); }
+    } catch (err) { setAttendanceSaveStatus('error'); setToastNotice({ title: err.message?.includes('jam mengajar') || err.message?.includes('jadwal mengajar') ? '⏰ Di luar jam mengajar' : '⚠️ Presensi belum tersimpan', message: err.message || 'Presensi gagal disimpan.', type: 'warning' }); }
     finally { setSavingAttendance(false); }
   };
 
@@ -261,6 +386,67 @@ export default function App() {
     } catch (err) { alert(err.message || 'Layanan AI tidak tersedia.'); }
     finally { setIsGeneratingAi(false); }
   };
+  const handleCreateSchedule = async (e) => {
+    e.preventDefault();
+    if (!scheduleForm.teacherId || !scheduleForm.classId || !scheduleForm.subject.trim()) {
+      alert('Pilih guru, kelas, dan mata pelajaran terlebih dahulu.'); return;
+    }
+    setScheduleSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/schedules`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...scheduleForm, dayOfWeek: Number(scheduleForm.dayOfWeek) }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Jadwal gagal disimpan.');
+      setSchedules(prev => [...prev, data.schedule].sort((a,b) => a.dayOfWeek-b.dayOfWeek || a.startTime.localeCompare(b.startTime)));
+      setScheduleForm(prev => ({ ...prev, room: '' }));
+      alert('Jadwal mengajar berhasil ditambahkan.');
+    } catch (error) { alert(error.message || 'Jadwal gagal disimpan.'); }
+    finally { setScheduleSaving(false); }
+  };
+
+  const handleDeactivateSchedule = async (schedule) => {
+    if (!window.confirm(`Nonaktifkan jadwal ${schedule.subject} kelas ${schedule.className}?`)) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/schedules/${encodeURIComponent(schedule.id)}`, { method: 'DELETE', credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Jadwal gagal dinonaktifkan.');
+      setSchedules(prev => prev.filter(item => item.id !== schedule.id));
+    } catch (error) { alert(error.message || 'Jadwal gagal dinonaktifkan.'); }
+  };
+
+  const handleEnableNotifications = async () => {
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!firebaseApp || !firebaseConfigured) { setNotificationStatus('error'); setNotificationMessage('Konfigurasi Firebase web belum lengkap.'); return; }
+    if (!vapidKey) { setNotificationStatus('error'); setNotificationMessage('VITE_FIREBASE_VAPID_KEY belum diatur pada environment build.'); return; }
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) { setNotificationStatus('error'); setNotificationMessage('Browser ini belum mendukung notifikasi web. Coba Chrome terbaru melalui HTTPS.'); return; }
+    setNotificationStatus('working'); setNotificationMessage('Meminta izin notifikasi…');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Izin notifikasi belum diberikan pada browser.');
+      const cfg = {
+        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+        appId: import.meta.env.VITE_FIREBASE_APP_ID
+      };
+      const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+      const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?config=${encodeURIComponent(encodedConfig)}`, { scope: '/' });
+      await navigator.serviceWorker.ready;
+      const messaging = getMessaging(firebaseApp);
+      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
+      if (!token) throw new Error('Token not berhasil dibuat. Periksa Firebase Cloud Messaging dan VAPID key.');
+      const response = await fetch(`${API_BASE_URL}/notifications/register`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, platform: 'web' }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Pendaftaran perangkat gagal.');
+      setNotificationStatus('enabled');
+      setNotificationMessage('Notifikasi aktif di browser ini. Izinkan notifikasi untuk situs KELAS+ pada pengaturan perangkat.');
+    } catch (error) {
+      setNotificationStatus('error');
+      setNotificationMessage(error.message || 'Notifikasi gagal diaktifkan.');
+    }
+  };
+
   // Admin Operations
   const handleSaveGeminiApiKey = async (e) => {
     e.preventDefault();
@@ -472,6 +658,17 @@ export default function App() {
   };
   const teacherLearningTasks = assignmentTasks.filter(t => t.teacherId === currentUser?.id && t.subject === (currentUser?.subject || 'Umum')).sort((a,b) => a.assignmentNo-b.assignmentNo);
   const escapeReportHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const generateFollowUpPdf = (record) => {
+    const e = escapeReportHtml;
+    const win = window.open('', '_blank');
+    if (!win) { alert('Popup diblokir browser. Izinkan popup untuk KELAS+, lalu coba lagi.'); return; }
+    const school = e(systemSettings.schoolName || 'UPTD SMPN 2 BAJUIN');
+    const address = e(systemSettings.schoolAddress || '');
+    const contact = e([systemSettings.schoolPhone, systemSettings.schoolEmail].filter(Boolean).join(' · '));
+    const html = '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Laporan Tindak Lanjut - '+e(record.studentName)+'</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial,sans-serif;color:#172033;font-size:11pt;line-height:1.55}.header{text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:22px}.school{font-size:15pt;font-weight:bold}.sub{font-size:9pt;color:#475569}.title{text-align:center;font-weight:bold;font-size:14pt;margin:22px 0}.meta{width:100%;border-collapse:collapse;margin:16px 0}.meta td{padding:5px 8px;vertical-align:top}.label{width:150px;font-weight:bold}.section{margin:16px 0}.section h3{font-size:10pt;text-transform:uppercase;color:#1e3a8a;border-bottom:1px solid #cbd5e1;padding-bottom:5px}.body{white-space:pre-wrap;min-height:35px}.sign{display:flex;justify-content:space-between;margin-top:48px;text-align:center}.sign>div{width:45%}.space{height:65px}.print{text-align:center;margin-top:28px}@media print{.print{display:none}}</style></head><body><header class="header"><div class="school">'+school+'</div><div>'+address+'</div><div>'+contact+'</div><div class="sub">'+e(systemSettings.letterheadSubtitle||'Laporan Tindak Lanjut Siswa')+'</div></header><div class="title">LAPORAN TINDAK LANJUT SISWA</div><table class="meta"><tr><td class="label">Nama Siswa</td><td>: '+e(record.studentName)+'</td></tr><tr><td class="label">Kelas</td><td>: '+e(record.studentClass)+'</td></tr><tr><td class="label">Tanggal</td><td>: '+e(record.date)+'</td></tr><tr><td class="label">Kategori</td><td>: '+e(record.category)+'</td></tr><tr><td class="label">Status</td><td>: '+e(record.status==='SELESAI'?'Selesai':'Monitoring lanjutan')+'</td></tr><tr><td class="label">Petugas</td><td>: '+e(record.createdByName||currentUser.name)+'</td></tr></table><section class="section"><h3>Tindakan yang Dilakukan</h3><div class="body">'+e(record.action)+'</div></section><section class="section"><h3>Hasil Tindak Lanjut</h3><div class="body">'+e(record.result)+'</div></section><section class="section"><h3>Rencana Berikutnya</h3><div class="body">'+e(record.nextStep||'-')+'</div></section><section class="section"><h3>Catatan Tambahan</h3><div class="body">'+e(record.notes||'-')+'</div></section><div class="sign"><div>Mengetahui,<br>Kepala Sekolah<div class="space"></div><b>'+e(systemSettings.principalName||'........................................')+'</b><br>NIP. '+e(systemSettings.principalNip||'....................................')+'</div><div>Bajuin, '+e(new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}))+'<br>Leader / Petugas<div class="space"></div><b>'+e(currentUser.name||'')+'</b></div></div><div class="print"><button onclick="window.print()">Cetak / Simpan PDF</button></div></body></html>';
+    win.document.write(html); win.document.close(); setTimeout(() => { win.focus(); win.print(); }, 350);
+  };
+
   const generatePdfReport = kind => {
     const className = reportClass || selectedClass || teacherAssignedClasses[0] || '';
     const from = reportFromDate || reportToDate, to = reportToDate || reportFromDate;
@@ -489,21 +686,23 @@ export default function App() {
       summary = 'Jumlah entri jurnal: '+data.length;
     } else if (kind === 'attendance') {
       title = 'REKAPITULASI ABSENSI SISWA';
-      const data = [];
+      const perStudent = new Map(classStudents.map(student => [student.id, { student, PRESENT: 0, LATE: 0, SICK: 0, PERMISSION: 0, ABSENT: 0 }]));
       Object.entries(attendanceRecords).forEach(([key, record]) => {
         const prefix = className + '_';
         if (!key.startsWith(prefix)) return;
         const date = key.slice(prefix.length);
         if (!inPeriod(date)) return;
-        classStudents.forEach(student => { if (record[student.id]) data.push({date,student,status:record[student.id]}); });
+        classStudents.forEach(student => {
+          const status = record[student.id], row = perStudent.get(student.id);
+          if (status && row && Object.prototype.hasOwnProperty.call(row, status)) { row[status] += 1; if (status === 'LATE') row.PRESENT += 1; }
+        });
       });
-      data.sort((a,b)=>a.date.localeCompare(b.date)||a.student.name.localeCompare(b.student.name,'id'));
+      const data = [...perStudent.values()].sort((a,b)=>a.student.name.localeCompare(b.student.name,'id'));
       const counts = {PRESENT:0,LATE:0,SICK:0,PERMISSION:0,ABSENT:0};
-      data.forEach(r=>{if(counts[r.status]!==undefined)counts[r.status]++;});
-      const statusNames = {PRESENT:'Hadir',LATE:'Terlambat',SICK:'Sakit',PERMISSION:'Izin',ABSENT:'Alpa'};
-      headers = '<th>No.</th><th>Tanggal</th><th>Nama Siswa</th><th>NISN</th><th>Status</th>';
-      rows = data.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(r.date)+'</td><td>'+e(r.student.name)+'</td><td>'+e(r.student.nisn||'-')+'</td><td>'+e(statusNames[r.status]||r.status)+'</td></tr>').join('');
-      summary = 'Hadir: '+counts.PRESENT+' · Terlambat: '+counts.LATE+' · Sakit: '+counts.SICK+' · Izin: '+counts.PERMISSION+' · Alpa: '+counts.ABSENT;
+      data.forEach(row => Object.keys(counts).forEach(status => { counts[status] += row[status]; }));
+      headers = '<th>No.</th><th>Nama Siswa</th><th>NISN</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpa</th>';
+      rows = data.map((row,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(row.student.name)+'</td><td>'+e(row.student.nisn||'-')+'</td><td>'+row.PRESENT+'</td><td>'+row.PERMISSION+'</td><td>'+row.SICK+'</td><td>'+row.ABSENT+'</td></tr>').join('');
+      summary = 'Periode: '+e(from)+' s.d. '+e(to)+' · Kelas: '+e(className)+' · Hadir: '+counts.PRESENT+' · Izin: '+counts.PERMISSION+' · Sakit: '+counts.SICK+' · Alpa: '+counts.ABSENT;
     } else {
       title = 'REKAPITULASI NILAI TUGAS';
       const tasks = teacherLearningTasks.slice().sort((a,b)=>a.assignmentNo-b.assignmentNo);
@@ -522,7 +721,7 @@ export default function App() {
     const win = window.open('', '_blank');
     if (!win) { alert('Popup diblokir browser. Izinkan popup untuk KELAS+, lalu coba lagi.'); return; }
     const orientation = kind === 'grades' ? 'landscape' : 'portrait';
-    const documentHtml = '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>'+e(title)+' - '+e(className)+'</title><style>@page{size:A4 '+orientation+';margin:14mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;font-size:10pt;line-height:1.45;margin:0}.header{text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:16px}.brand{font-size:17pt;font-weight:800;color:#1e3a8a}.school{font-size:12pt;font-weight:700;margin-top:3px}.sub{font-size:8.5pt;color:#475569;margin-top:3px}.title{text-align:center;font-size:13pt;font-weight:800;margin:18px 0 12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;margin-bottom:12px;font-size:9pt}.meta strong{display:inline-block;min-width:110px}.summary{padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;margin:12px 0;font-size:9pt}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:8.5pt}thead{display:table-header-group}tr{break-inside:avoid}th{background:#1e3a8a;color:white;font-weight:700;text-align:center}th,td{border:1px solid #cbd5e1;padding:6px 7px;vertical-align:top}tbody tr:nth-child(even){background:#f8fafc}td:first-child{text-align:center}.sign{display:flex;justify-content:space-between;gap:30px;margin-top:34px;page-break-inside:avoid}.sign div{text-align:center;width:45%;font-size:9pt}.space{height:55px}.foot{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:8pt;color:#64748b;display:flex;justify-content:space-between}@media screen{body{padding:16px}.paper{max-width:1100px;margin:auto}}@media print{.no-print{display:none}}</style></head><body><main class="paper"><header class="header"><div class="brand">KELAS+</div><div class="school">'+e(systemSettings.schoolName||'UPTD SMPN 2 BAJUIN')+'</div><div class="sub">Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas</div></header><div class="title">'+e(title)+'</div><section class="meta"><div><strong>Kelas</strong>: '+e(className)+'</div><div><strong>Mata Pelajaran</strong>: '+e(currentUser.subject||'-')+'</div><div><strong>Periode</strong>: '+e(kind === 'grades' ? 'Tugas aktif per tanggal cetak' : from + ' s.d. ' + to)+'</div><div><strong>Tanggal Cetak</strong>: '+e(printedAt)+'</div><div><strong>Guru</strong>: '+e(currentUser.name||'-')+'</div><div><strong>Tahun Pelajaran</strong>: '+e(systemSettings.academicYear||'2026/2027')+'</div></section><div class="summary">'+e(summary)+'</div><table><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table><section class="sign"><div>Mengetahui,<br>Kepala Sekolah<div class="space"></div><b>( ........................................ )</b><br>NIP. ....................................</div><div>Bajuin, '+e(new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}))+'<br>Guru Mata Pelajaran<div class="space"></div><b>'+e(currentUser.name||'........................................')+'</b><br>NIP. '+e(currentUser.nip||'....................................')+'</div></section><footer class="foot"><span>KELAS+ · '+e(title)+'</span><span>Dicetak: '+e(printedAt)+'</span></footer><div class="no-print" style="text-align:center;margin:24px"><button onclick="window.print()" style="background:#1e3a8a;color:white;border:0;padding:10px 18px;border-radius:6px;font-weight:bold;cursor:pointer">Cetak / Simpan sebagai PDF</button></div></main></body></html>';
+    const documentHtml = '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>'+e(title)+' - '+e(className)+'</title><style>@page{size:A4 '+orientation+';margin:14mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;font-size:10pt;line-height:1.45;margin:0}.header{text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:16px}.brand{font-size:17pt;font-weight:800;color:#1e3a8a}.school{font-size:12pt;font-weight:700;margin-top:3px}.sub{font-size:8.5pt;color:#475569;margin-top:3px}.title{text-align:center;font-size:13pt;font-weight:800;margin:18px 0 12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;margin-bottom:12px;font-size:9pt}.meta strong{display:inline-block;min-width:110px}.summary{padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;margin:12px 0;font-size:9pt}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:8.5pt}thead{display:table-header-group}tr{break-inside:avoid}th{background:#1e3a8a;color:white;font-weight:700;text-align:center}th,td{border:1px solid #cbd5e1;padding:6px 7px;vertical-align:top}tbody tr:nth-child(even){background:#f8fafc}td:first-child{text-align:center}.sign{display:flex;justify-content:space-between;gap:30px;margin-top:34px;page-break-inside:avoid}.sign div{text-align:center;width:45%;font-size:9pt}.space{height:55px}.foot{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:8pt;color:#64748b;display:flex;justify-content:space-between}@media screen{body{padding:16px}.paper{max-width:1100px;margin:auto}}@media print{.no-print{display:none}}</style></head><body><main class="paper"><header class="header"><div class="brand">'+e(systemSettings.schoolName||'UPTD SMPN 2 BAJUIN')+'</div><div class="school">'+e(systemSettings.schoolAddress||'')+'</div><div class="sub">'+e([systemSettings.schoolPhone,systemSettings.schoolEmail].filter(Boolean).join(' · '))+'</div><div class="sub">'+e(systemSettings.letterheadSubtitle||'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas')+'</div></header><div class="title">'+e(title)+'</div><section class="meta"><div><strong>Kelas</strong>: '+e(className)+'</div><div><strong>Mata Pelajaran</strong>: '+e(currentUser.subject||'-')+'</div><div><strong>Periode</strong>: '+e(kind === 'grades' ? 'Tugas aktif per tanggal cetak' : from + ' s.d. ' + to)+'</div><div><strong>Tanggal Cetak</strong>: '+e(printedAt)+'</div><div><strong>Guru</strong>: '+e(currentUser.name||'-')+'</div><div><strong>Tahun Pelajaran</strong>: '+e(systemSettings.academicYear||'2026/2027')+'</div></section><div class="summary">'+e(summary)+'</div><table><thead><tr>'+headers+'</tr></thead><tbody>'+rows+'</tbody></table><section class="sign"><div>Mengetahui,<br>Kepala Sekolah<div class="space"></div><b>'+e(systemSettings.principalName||'........................................')+'</b><br>NIP. '+e(systemSettings.principalNip||'....................................')+'</div><div>Bajuin, '+e(new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}))+'<br>Guru Mata Pelajaran<div class="space"></div><b>'+e(currentUser.name||'........................................')+'</b><br>NIP. '+e(currentUser.nip||'....................................')+'</div></section><footer class="foot"><span>KELAS+ · '+e(title)+'</span><span>Dicetak: '+e(printedAt)+'</span></footer><div class="no-print" style="text-align:center;margin:24px"><button onclick="window.print()" style="background:#1e3a8a;color:white;border:0;padding:10px 18px;border-radius:6px;font-weight:bold;cursor:pointer">Cetak / Simpan sebagai PDF</button></div></main></body></html>';
     win.document.write(documentHtml);
     win.document.close();
     setTimeout(()=>{win.focus();win.print();},400);
@@ -598,8 +797,11 @@ export default function App() {
     const priority = { WATCH: 0, NEEDS_SUPPORT: 1, GOOD: 2, VERY_GOOD: 3, NO_DATA: 4 };
     return priority[a.statusFlag] - priority[b.statusFlag] || (a.class || '').localeCompare(b.class || '') || a.name.localeCompare(b.name);
   });
-  const adminStudentPageCount = Math.max(1, Math.ceil(students.length / adminStudentPageSize));
-  const paginatedAdminStudents = students.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
+  const filteredAdminStudents = students.filter(student => (adminStudentClassFilter === 'ALL' || student.class === adminStudentClassFilter) && (student.name.toLowerCase().includes(adminStudentSearch.toLowerCase()) || String(student.nisn || '').includes(adminStudentSearch)));
+  const adminStudentPageCount = Math.max(1, Math.ceil(filteredAdminStudents.length / adminStudentPageSize));
+  const paginatedAdminStudents = filteredAdminStudents.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
+  const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
+  const visibleSchedules = schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
 
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
@@ -661,12 +863,13 @@ export default function App() {
               disabled={isLoadingAuth}
               className="w-full py-3 bg-blue-800 hover:bg-blue-900 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
             >
-              {isLoadingAuth ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Masuk Sekarang'}
+              {isLoadingAuth ? <><RefreshCw className="w-4 h-4 animate-spin" /> Memverifikasi akun…</> : 'Masuk Sekarang'}
             </button>
 
             <p className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-500">
               Gunakan akun yang dibuat oleh administrator sekolah.
             </p>
+            <p className="text-center text-[9px] text-slate-400 tracking-wide">KELAS+ versi {APP_VERSION}</p>
           </form>
         </div>
       </div>
@@ -675,9 +878,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
+      {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
+      {toastNotice && <button type="button" onClick={() => { setToastNotice(null); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg text-left rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 hover:shadow-2xl transition-shadow" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span><X className="w-4 h-4 text-slate-400" /></button>}
       
       {/* Mobile Top Navigation */}
-      <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50">
+      <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
         <div>
           <h1 className="text-xl font-black text-white">KELAS<span className="text-amber-400">+</span></h1>
           <p className="text-[9px] text-slate-400 tracking-wider">{systemSettings.schoolName}</p>
@@ -688,7 +893,7 @@ export default function App() {
       </div>
 
       {/* Main Sidebar */}
-      <aside className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'block' : 'hidden lg:flex'}`}>
+      <aside className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'block' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto`}>
         <div>
           <div className="hidden lg:flex p-5 border-b border-slate-800 items-center justify-between">
             <div>
@@ -722,17 +927,23 @@ export default function App() {
                 <button onClick={() => { setActiveTab('ai'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'ai' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Bot className="w-4 h-4 text-cyan-400" /> AI Assistant
                 </button>
+                <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar</button>
                 <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Profil
                 </button>
               </>
             )}
 
+
             {currentUser.role === 'LEADER' && (
               <>
                 <button onClick={() => { setActiveTab('leader_overview'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'leader_overview' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <BarChart2 className="w-4 h-4 text-amber-400" /> Dashboard Leader
                 </button>
+                <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
+                  <Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar
+                </button>
+                <button onClick={() => { setActiveTab('leader_followups'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'leader_followups' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><ClipboardCheck className="w-4 h-4 text-emerald-400" /> Tindak Lanjut Siswa</button>
                 <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Daftar Guru</button>
                 <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Daftar Kelas</button>
                 <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-emerald-400" /> Daftar Siswa</button>
@@ -750,17 +961,19 @@ export default function App() {
                 <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Manajemen Guru</button>
                 <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Manajemen Kelas</button>
                 <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-cyan-400" /> Manajemen Siswa</button>
+                <button onClick={() => { setActiveTab('announcements'); setMobileMenuOpen(false); }} className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-300 hover:bg-slate-800"><BellRing className="w-4 h-4 text-amber-400" /> Pengumuman Sekolah</button>
                 <button onClick={() => { setActiveTab('admin_api'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_api' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Key className="w-4 h-4 text-amber-400" /> Konfigurasi AI</button>
-                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Settings className="w-4 h-4 text-slate-400" /> Pengaturan Admin</button>
+                <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar</button>
+                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Settings className="w-4 h-4 text-slate-400" /> Pengaturan Kop Surat & Admin</button>
               </>
             )}
 
           </nav>
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex items-center justify-between">
+        <div className="p-4 border-t border-slate-800 flex items-center justify-between sticky bottom-0 bg-slate-900 z-10 lg:mt-auto">
           <div className="flex items-center gap-2">
-            <img src={currentUser.avatar} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-slate-700" />
+            <div className="w-8 h-8 rounded-full border border-slate-700 bg-slate-100 flex items-center justify-center text-slate-500" aria-label="Avatar pengguna"><svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.2-7.5 5v2h15v-2c0-2.8-3.4-5-7.5-5Z"/></svg></div>
             <div>
               <p className="text-xs font-bold text-white leading-tight">{currentUser.name}</p>
               <p className="text-[10px] text-slate-400">{currentUser.subject}</p>
@@ -773,22 +986,27 @@ export default function App() {
       </aside>
 
       {/* Dynamic Content Views */}
-      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+      <main className="relative flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full min-w-0">
         
         {/* TEACHER - DASHBOARD */}
         {currentUser.role === 'TEACHER' && activeTab === 'dashboard' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div><h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1><p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran UPTD SMPN 2 Bajuin · Tahun {systemSettings.academicYear}</p></div>
-              <button onClick={() => setActiveTab('attendance')} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
+              <button onClick={() => { setAttendanceDate(localDateString()); setActiveTab('attendance'); }} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
             </div>
+            <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3"><div className="flex items-center justify-between"><div><h2 className="font-bold text-slate-900">Jadwal Mengajar Hari Ini</h2><p className="text-xs text-slate-500 mt-1">{deviceNow.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></div><button onClick={() => setActiveTab("schedule")} className="text-xs font-bold text-blue-800">Lihat semua</button></div>{scheduleLoading && schedules.length === 0 ? <p className="text-xs text-slate-500">Memuat jadwal…</p> : schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).length === 0 ? <p className="text-xs text-slate-500">Tidak ada jadwal mengajar hari ini.</p> : <div className="space-y-2">{schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => { const now = String(deviceNow.getHours()).padStart(2,"0") + ":" + String(deviceNow.getMinutes()).padStart(2,"0"); const active = now >= item.startTime && now < item.endTime; const next = now < item.startTime; return <button type="button" key={item.id} onClick={() => { setSelectedClass(item.className); setAttendanceDate(localDateString(deviceNow)); setActiveTab('attendance'); setMobileMenuOpen(false); setToastNotice({ title: 'Menu absensi dibuka', message: `Kelas ${item.className} · ${item.subject}`, type: 'info' }); }} className="w-full text-left flex items-center justify-between gap-3 p-3 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-inner transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"><div><p className="text-sm font-bold text-slate-800">{item.subject} · {item.className}</p><p className="text-xs text-slate-500">{item.startTime}–{item.endTime}{item.room ? " · " + item.room : ""}</p><p className="text-[10px] text-blue-700 font-semibold mt-1">Klik untuk membuka absensi kelas <span aria-hidden="true">→</span></p></div><span className={"shrink-0 text-[10px] font-bold px-2 py-1 rounded-full " + (active ? "bg-emerald-100 text-emerald-700" : next ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600")}>{active ? "Sedang berlangsung" : next ? "Berikutnya" : "Selesai"}</span></button>; })}</div>}</section>
+             <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+               <div className="p-5 flex items-center justify-between gap-3 border-b border-slate-100"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-800 flex items-center justify-center"><BellRing className="w-5 h-5" /></div><div><h2 className="font-bold text-slate-900">Pengumuman Sekolah</h2><p className="text-xs text-slate-500 mt-1">Informasi resmi dari administrator</p></div></div><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{announcements.length} aktif</span></div>
+               {announcements.length === 0 ? <div className="px-5 py-6 flex items-start gap-3"><Bell className="w-5 h-5 text-slate-400 mt-0.5" /><div><p className="text-sm font-semibold text-slate-700">Belum ada pengumuman</p><p className="text-xs text-slate-500 mt-1">Pengumuman dari administrator akan muncul di sini.</p></div></div> : <div className="divide-y divide-slate-100">{announcements.slice(0, 3).map(item => <article key={item.id} className="p-5 flex items-start gap-3"><div className={"mt-0.5 rounded-lg p-2 " + (item.type === 'important' ? 'bg-amber-50 text-amber-700' : item.type === 'event' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700')}>{item.type === 'important' ? <AlertTriangle className="w-4 h-4" /> : item.type === 'event' ? <Calendar className="w-4 h-4" /> : <Bell className="w-4 h-4" />}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold text-slate-900">{item.title}</h3>{item.pinned && <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">PENTING</span>}</div><p className="text-xs text-slate-600 leading-relaxed mt-1.5 whitespace-pre-wrap">{item.message}</p><p className="text-[10px] text-slate-400 mt-2">{item.createdByName ? 'Oleh ' + item.createdByName + ' · ' : ''}{item.createdAt ? new Date(item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}</p></div></article>)}</div>}
+             </section>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Kelas Pengampuan</span><p className="text-2xl font-black text-blue-800 mt-1">{teacherAssignedClasses.length}</p><p className="text-[10px] text-slate-500 mt-1">{teacherAssignedClasses.join(', ') || 'Belum ditentukan'}</p></div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jumlah Siswa Diampu</span><p className="text-2xl font-black text-emerald-600 mt-1">{students.filter(s => teacherAssignedClasses.includes('ALL') || teacherAssignedClasses.includes(s.class)).length}</p></div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jurnal Tersimpan</span><p className="text-2xl font-black text-purple-600 mt-1">{journals.length}</p><button onClick={() => setActiveTab('journal')} className="text-[10px] text-blue-800 font-bold mt-2">Buka Smart Journal →</button></div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Status Asisten AI</span><p className="text-sm font-black text-cyan-700 mt-2">{isServerOnline ? 'Backend terhubung' : 'Backend belum terhubung'}</p><button onClick={() => setActiveTab('ai')} className="text-[10px] text-blue-800 font-bold mt-2">Buka AI Assistant →</button></div>
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><h2 className="font-bold text-slate-800">Langkah cepat</h2><div className="flex flex-wrap gap-3 mt-4"><button onClick={() => setActiveTab('attendance')} className="px-4 py-2 rounded-xl bg-blue-50 text-blue-800 text-xs font-bold">Absensi Cepat</button><button onClick={() => setActiveTab('journal')} className="px-4 py-2 rounded-xl bg-purple-50 text-purple-800 text-xs font-bold">Isi Smart Journal</button><button onClick={() => setActiveTab('students')} className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold">Input Nilai Tugas</button></div></div>
+            <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-blue-900 p-5 md:p-6 rounded-2xl shadow-lg text-white"><div className="flex items-center justify-between gap-3"><div><h2 className="font-extrabold text-lg">Langkah cepat</h2><p className="text-xs text-blue-100 mt-1">Pilih tindakan untuk melanjutkan kegiatan mengajar.</p></div><Sparkles className="w-6 h-6 text-amber-300" /></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5"><button onClick={() => { setAttendanceDate(localDateString()); setActiveTab('attendance'); }} className="group min-h-20 px-4 py-4 rounded-xl bg-white text-blue-900 text-left font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all focus:outline-none focus:ring-2 focus:ring-amber-300"><span className="flex items-center gap-2 text-sm"><CheckCircle className="w-5 h-5 text-emerald-600" /> Absensi Cepat</span><span className="block text-[11px] text-slate-500 font-medium mt-2">Catat kehadiran siswa →</span></button><button onClick={() => setActiveTab('journal')} className="group min-h-20 px-4 py-4 rounded-xl bg-white text-blue-900 text-left font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all focus:outline-none focus:ring-2 focus:ring-amber-300"><span className="flex items-center gap-2 text-sm"><BookOpen className="w-5 h-5 text-purple-600" /> Isi Smart Jurnal</span><span className="block text-[11px] text-slate-500 font-medium mt-2">Catat kegiatan pembelajaran →</span></button><button onClick={() => setActiveTab('students')} className="group min-h-20 px-4 py-4 rounded-xl bg-white text-blue-900 text-left font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all focus:outline-none focus:ring-2 focus:ring-amber-300"><span className="flex items-center gap-2 text-sm"><Award className="w-5 h-5 text-amber-600" /> Nilai Tugas</span><span className="block text-[11px] text-slate-500 font-medium mt-2">Pantau capaian siswa →</span></button></div></section>
           </div>
         )}
 
@@ -813,10 +1031,10 @@ export default function App() {
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 flex gap-2">
-                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('attendance'); }} className="flex-1 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl hover:bg-blue-900 transition">
+                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('attendance'); }} className="flex-1 py-2.5 bg-gradient-to-b from-blue-700 to-blue-900 text-white text-xs font-extrabold rounded-xl shadow-md shadow-blue-900/20 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:shadow-inner transition-all ring-1 ring-blue-600/30">
                       Absensi
                     </button>
-                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('journal'); }} className="flex-1 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-200 transition">
+                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('journal'); }} className="flex-1 py-2.5 bg-gradient-to-b from-white to-slate-100 text-slate-800 text-xs font-extrabold rounded-xl border border-slate-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:shadow-inner transition-all">
                       Jurnal
                     </button>
                   </div>
@@ -842,6 +1060,7 @@ export default function App() {
                 <input
                   type="date"
                   value={attendanceDate}
+                  max={localDateString()}
                   onChange={e => setAttendanceDate(e.target.value)}
                   className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold shadow-sm"
                 />
@@ -1003,10 +1222,38 @@ export default function App() {
           </div>
         )}
 
+        {/* LEADER - STUDENT FOLLOW-UP */}
+        {currentUser.role === 'LEADER' && activeTab === 'leader_followups' && (
+          <div className="space-y-6 max-w-6xl">
+            <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><ClipboardCheck className="w-6 h-6 text-emerald-700"/> Tindak Lanjut Siswa</h1><p className="text-xs text-slate-500 mt-1">Catat pembinaan dan tindak lanjut bagi siswa yang membutuhkan perhatian khusus.</p></div>
+            <form onSubmit={handleSaveFollowUp} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h2 className="font-extrabold text-slate-900">Catatan tindak lanjut baru</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="text-xs font-bold text-slate-700">Cari nama siswa<input value={followUpSearch} onChange={e=>setFollowUpSearch(e.target.value)} placeholder="Ketik nama siswa atau NISN..." className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Pilih siswa<select required value={followUpForm.studentId} onChange={e=>setFollowUpForm(p=>({...p,studentId:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl bg-white text-sm font-normal"><option value="">Pilih siswa</option>{students.filter(st=>st.name.toLowerCase().includes(followUpSearch.toLowerCase())||String(st.nisn||'').includes(followUpSearch)).map(st=><option key={st.id} value={st.id}>{st.name} · Kelas {st.class} · {st.nisn||'Tanpa NISN'}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Tanggal tindak lanjut<input type="date" required value={followUpForm.date} onChange={e=>setFollowUpForm(p=>({...p,date:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Kategori<select value={followUpForm.category} onChange={e=>setFollowUpForm(p=>({...p,category:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl bg-white text-sm font-normal"><option>Kehadiran rendah</option><option>Nilai akademik rendah</option><option>Perilaku / kedisiplinan</option><option>Motivasi belajar</option><option>Permasalahan sosial-emosional</option><option>Lainnya</option></select></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Tindakan yang dilakukan<textarea required rows={3} maxLength={3000} value={followUpForm.action} onChange={e=>setFollowUpForm(p=>({...p,action:e.target.value}))} placeholder="Tuliskan langkah pembinaan, komunikasi dengan siswa/orang tua, atau intervensi yang dilakukan..." className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Hasil tindak lanjut<textarea required rows={3} maxLength={3000} value={followUpForm.result} onChange={e=>setFollowUpForm(p=>({...p,result:e.target.value}))} placeholder="Jelaskan respons siswa dan perubahan yang teramati..." className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Rencana tindak lanjut berikutnya<textarea rows={2} maxLength={2000} value={followUpForm.nextStep} onChange={e=>setFollowUpForm(p=>({...p,nextStep:e.target.value}))} placeholder="Langkah pemantauan selanjutnya..." className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Status<select value={followUpForm.status} onChange={e=>setFollowUpForm(p=>({...p,status:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl bg-white text-sm font-normal"><option value="MONITORING">Perlu monitoring</option><option value="SELESAI">Tindak lanjut selesai</option></select></label>
+                <label className="text-xs font-bold text-slate-700">Catatan tambahan<textarea rows={2} maxLength={2000} value={followUpForm.notes} onChange={e=>setFollowUpForm(p=>({...p,notes:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+              </div>
+              {followUpNotice && <p className="rounded-xl bg-blue-50 text-blue-800 p-3 text-xs font-semibold">{followUpNotice}</p>}
+              <button disabled={followUpSaving} className="px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2"><Save className="w-4 h-4"/>{followUpSaving?'Menyimpan laporan…':'Simpan Tindak Lanjut'}</button>
+            </form>
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-slate-100"><h2 className="font-extrabold text-slate-900">Riwayat tindak lanjut</h2><p className="text-xs text-slate-500 mt-1">{followUps.length} catatan tersimpan</p></div>
+              {followUps.length===0 ? <p className="p-8 text-center text-sm text-slate-500">Belum ada catatan tindak lanjut.</p> : <div className="divide-y divide-slate-100">{followUps.map(record=><article key={record.id} className="p-5 space-y-3"><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><h3 className="font-bold text-slate-900">{record.studentName} <span className="font-normal text-slate-500">· Kelas {record.studentClass}</span></h3><p className="text-xs text-slate-500 mt-1">{record.date} · {record.category} · Petugas: {record.createdByName}</p></div><div className="flex items-center gap-2"><span className={'px-2.5 py-1 rounded-full text-[10px] font-bold '+(record.status==='SELESAI'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700')}>{record.status==='SELESAI'?'Selesai':'Monitoring'}</span><button type="button" onClick={()=>generateFollowUpPdf(record)} className="px-3 py-2 rounded-lg bg-blue-800 hover:bg-blue-900 text-white text-xs font-bold flex items-center gap-1"><Printer className="w-3.5 h-3.5"/> Cetak PDF</button></div></div><div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs"><div className="rounded-xl bg-slate-50 p-3"><p className="font-bold text-slate-700 mb-1">Tindakan</p><p className="text-slate-600 whitespace-pre-wrap">{record.action}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="font-bold text-slate-700 mb-1">Hasil</p><p className="text-slate-600 whitespace-pre-wrap">{record.result}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="font-bold text-slate-700 mb-1">Rencana berikutnya</p><p className="text-slate-600 whitespace-pre-wrap">{record.nextStep||'-'}</p></div></div></article>)}</div>}
+            </section>
+          </div>
+        )}
+
         {/* LEADER - SCHOOL-WIDE LEARNING MAP */}
         {currentUser.role === 'LEADER' && activeTab === 'students' && (
           <div className="space-y-6">
             <div><h1 className="text-2xl font-black text-slate-900">Learning Map Sekolah</h1><p className="text-xs text-slate-500 mt-1">Seluruh kelas dipantau bersama. Siswa yang butuh pengawasan ditampilkan paling atas.</p></div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="text-xs font-bold text-slate-700">Filter kelas<select value={mapClassFilter} onChange={e=>setMapClassFilter(e.target.value)} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white"><option value="ALL">Semua kelas</option>{classesList.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></label><label className="text-xs font-bold text-slate-700">Cari nama / NISN siswa<input value={studentSearchTerm} onChange={e=>setStudentSearchTerm(e.target.value)} placeholder="Cari siswa yang perlu dipantau..." className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs"/></label></div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 {key:'WATCH',label:'Butuh Pengawasan',color:'text-red-700'},
@@ -1017,7 +1264,7 @@ export default function App() {
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[780px]">
               <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3">Kehadiran</th><th className="p-3">Rata-rata Tugas</th><th className="p-3">Status Perhatian</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{leaderLearningStudents.map(std=><tr key={std.id} className={std.statusFlag==='WATCH'?'bg-amber-50':std.statusFlag==='NEEDS_SUPPORT'?'bg-yellow-50':'hover:bg-slate-50'}>
+              <tbody className="divide-y divide-slate-100">{filteredLeaderStudents.map(std=><tr key={std.id} className={std.statusFlag==='WATCH'?'bg-amber-50':std.statusFlag==='NEEDS_SUPPORT'?'bg-yellow-50':'hover:bg-slate-50'}>
                 <td className="p-3 font-bold">{std.name}</td><td className="p-3">{std.class}</td><td className="p-3">{std.attendanceRate==null?'Belum ada data':std.attendanceRate+'%'}</td><td className="p-3">{std.averageScore==null?'Belum ada nilai':std.averageScore+'%'}</td>
                 <td className="p-3 whitespace-nowrap">
                   {std.statusFlag==='VERY_GOOD'&&<span>🟢 Sangat Baik</span>}{std.statusFlag==='GOOD'&&<span>🟠 Baik</span>}{std.statusFlag==='NEEDS_SUPPORT'&&<span>🟡 Perlu Pendampingan</span>}{std.statusFlag==='WATCH'&&<span>⚠️ Butuh Pengawasan</span>}{std.statusFlag==='NO_DATA'&&<span className="text-slate-500">Belum Ada Data</span>}
@@ -1225,8 +1472,9 @@ export default function App() {
                 <div className="max-h-80 overflow-auto border border-slate-200 rounded-xl"><table className="w-full min-w-[700px] text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-slate-600"><tr><th className="p-2">Baris</th><th className="p-2">Nama Siswa</th><th className="p-2">NISN</th><th className="p-2">Kelas</th><th className="p-2">Jenis Kelamin</th><th className="p-2">Status Validasi</th></tr></thead><tbody className="divide-y divide-slate-100">{studentImportRows.map((row,i)=><tr key={row.rowNumber+'-'+i} className={row.error?'bg-rose-50/70':''}><td className="p-2">{row.rowNumber}</td><td className="p-2 font-semibold">{row.name||'-'}</td><td className="p-2 font-mono">{row.nisn||'-'}</td><td className="p-2">{row.class||'-'}</td><td className="p-2">{row.gender||'-'}</td><td className={'p-2 '+(row.error?'text-rose-700':'text-emerald-700')}>{row.error||'Siap diimpor'}</td></tr>)}</tbody></table></div>
               </div>}
             </div>}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3"><label className="text-xs font-bold text-slate-700">Filter kelas<select value={adminStudentClassFilter} onChange={e=>{setAdminStudentClassFilter(e.target.value);setAdminStudentPage(1);}} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white"><option value="ALL">Semua kelas</option>{classesList.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></label><label className="text-xs font-bold text-slate-700 sm:col-span-2">Cari nama atau NISN siswa<input value={adminStudentSearch} onChange={e=>{setAdminStudentSearch(e.target.value);setAdminStudentPage(1);}} placeholder="Ketik nama atau NISN..." className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs"/></label></div>
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 text-xs"><span className="font-bold text-slate-600">Tampilkan</span><select value={adminStudentPageSize} onChange={e=>{setAdminStudentPageSize(Number(e.target.value));setAdminStudentPage(1);}} className="p-2 border border-slate-300 rounded-lg font-bold">{[10,15,20,25,50].map(n=><option key={n} value={n}>{n} siswa</option>)}</select><span className="text-slate-500">per halaman · Total {students.length} siswa</span></div>
+              <div className="flex items-center gap-2 text-xs"><span className="font-bold text-slate-600">Tampilkan</span><select value={adminStudentPageSize} onChange={e=>{setAdminStudentPageSize(Number(e.target.value));setAdminStudentPage(1);}} className="p-2 border border-slate-300 rounded-lg font-bold">{[10,15,20,25,50].map(n=><option key={n} value={n}>{n} siswa</option>)}</select><span className="text-slate-500">per halaman · Total {filteredAdminStudents.length} siswa sesuai filter</span></div>
               <div className="text-xs text-slate-500">Halaman {Math.min(adminStudentPage,adminStudentPageCount)} dari {adminStudentPageCount}</div>
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-slate-100 text-slate-600"><tr><th className="p-3">No.</th><th className="p-3">Nama Siswa</th><th className="p-3">NISN</th><th className="p-3">Kelas</th><th className="p-3">Jenis Kelamin</th>{currentUser.role==='ADMIN'&&<th className="p-3">Tindakan</th>}</tr></thead><tbody className="divide-y divide-slate-100">
@@ -1234,7 +1482,7 @@ export default function App() {
               {!paginatedAdminStudents.length&&<tr><td colSpan={currentUser.role==='ADMIN'?6:5} className="p-6 text-center text-slate-500">Belum ada data siswa.</td></tr>}
             </tbody></table></div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-slate-500">Menampilkan {students.length?((adminStudentPage-1)*adminStudentPageSize+1):0}–{Math.min(adminStudentPage*adminStudentPageSize,students.length)} dari {students.length} siswa</p>
+              <p className="text-xs text-slate-500">Menampilkan {filteredAdminStudents.length?((adminStudentPage-1)*adminStudentPageSize+1):0}–{Math.min(adminStudentPage*adminStudentPageSize,filteredAdminStudents.length)} dari {filteredAdminStudents.length} siswa</p>
               <div className="flex flex-wrap gap-1 items-center">
                 <button disabled={adminStudentPage<=1} onClick={()=>setAdminStudentPage(p=>Math.max(1,p-1))} className="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-40">Sebelumnya</button>
                 {Array.from({length:adminStudentPageCount},(_,i)=>i+1).filter(p=>p===1||p===adminStudentPageCount||Math.abs(p-adminStudentPage)<=1).map((p,i,arr)=><React.Fragment key={p}>{i>0&&p-arr[i-1]>1&&<span className="px-1 text-slate-400">…</span>}<button onClick={()=>setAdminStudentPage(p)} className={'min-w-9 px-3 py-2 rounded-lg border text-xs font-bold '+(p===adminStudentPage?'bg-blue-800 text-white border-blue-800':'border-slate-300 text-slate-700')}>{p}</button></React.Fragment>)}
@@ -1256,38 +1504,93 @@ export default function App() {
           </div>
         )}
 
-        {/* PROFILE SETTINGS */}
-        {activeTab === 'settings' && (
-          <div className="space-y-6 max-w-2xl">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900">Pengaturan Akun & Profil</h1>
-              <p className="text-xs text-slate-500 mt-1">Kelola data informasi akun Anda</p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label>
-                <input
-                  type="text"
-                  value={profileForm.name}
-                  disabled
-                  className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Status Peran</label>
-                <input
-                  type="text"
-                  value={currentUser.role}
-                  disabled
-                  className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold"
-                />
-              </div>
-            </div>
+        {/* TEACHING SCHEDULE & NOTIFICATIONS */}
+        {currentUser.role === 'ADMIN' && activeTab === 'announcements' && (
+          <div className="space-y-6 max-w-5xl">
+            <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><BellRing className="w-6 h-6 text-blue-800" /> Pengumuman Sekolah</h1><p className="text-xs text-slate-500 mt-1">Terbitkan informasi resmi untuk ditampilkan di dashboard Guru.</p></div>
+            <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><h2 className="font-bold text-slate-900">Buat pengumuman baru</h2><form onSubmit={handleSaveAnnouncement} className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="text-xs font-bold text-slate-700 md:col-span-2">Judul pengumuman<input required maxLength={120} value={announcementForm.title} onChange={e => setAnnouncementForm(p => ({ ...p, title: e.target.value }))} placeholder="Contoh: Rapat koordinasi guru" className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700 md:col-span-2">Isi pengumuman<textarea required maxLength={2000} rows={4} value={announcementForm.message} onChange={e => setAnnouncementForm(p => ({ ...p, message: e.target.value }))} placeholder="Tuliskan informasi yang perlu diketahui guru..." className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal resize-y" /></label>
+              <label className="text-xs font-bold text-slate-700">Kategori<select value={announcementForm.type} onChange={e => setAnnouncementForm(p => ({ ...p, type: e.target.value }))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl bg-white text-sm font-normal"><option value="info">Informasi</option><option value="important">Penting</option><option value="event">Agenda kegiatan</option></select></label>
+              <label className="text-xs font-bold text-slate-700">Tampilkan sampai (opsional)<input type="date" value={announcementForm.expiresAt} onChange={e => setAnnouncementForm(p => ({ ...p, expiresAt: e.target.value }))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal" /></label>
+              <label className="md:col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" checked={announcementForm.pinned} onChange={e => setAnnouncementForm(p => ({ ...p, pinned: e.target.checked }))} /> Tandai sebagai pengumuman penting</label>
+              {announcementNotice && <p className="md:col-span-2 text-xs font-semibold text-blue-800">{announcementNotice}</p>}
+              <div className="md:col-span-2"><button disabled={announcementSaving} className="px-5 py-3 rounded-xl bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{announcementSaving ? 'Menerbitkan…' : 'Terbitkan pengumuman'}</button></div>
+            </form></section>
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"><div className="p-5 border-b border-slate-100"><h2 className="font-bold text-slate-900">Pengumuman aktif</h2><p className="text-xs text-slate-500 mt-1">{announcements.length} pengumuman sedang ditampilkan</p></div>{announcements.length === 0 ? <p className="p-6 text-sm text-slate-500">Belum ada pengumuman yang diterbitkan.</p> : <div className="divide-y divide-slate-100">{announcements.map(item => <div key={item.id} className="p-5 flex flex-col sm:flex-row sm:items-start gap-3"><div className="flex-1"><p className="font-bold text-sm text-slate-900">{item.title}</p><p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{item.message}</p><p className="text-[10px] text-slate-400 mt-2">{item.createdAt ? new Date(item.createdAt).toLocaleString('id-ID') : ''}{item.expiresAt ? ' · Berakhir ' + new Date(item.expiresAt).toLocaleDateString('id-ID') : ''}</p></div><button onClick={() => handleDeleteAnnouncement(item)} className="self-start px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold">Nonaktifkan</button></div>)}</div>}</section>
           </div>
         )}
 
+        {activeTab === 'schedule' && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div><h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><Calendar className="w-6 h-6 text-blue-800" /> Jadwal Mengajar</h1><p className="text-xs text-slate-500 mt-1">Jadwal tersimpan di server dan pengingat otomatis 5 menit sebelum pelajaran dimulai.</p></div>
+              <button onClick={() => { setScheduleLoading(true); fetch(`${API_BASE_URL}/schedules`, { credentials: 'include' }).then(async r => { const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.message || 'Gagal memuat jadwal'); setSchedules(d.schedules || []); }).catch(e => alert(e.message)).finally(() => setScheduleLoading(false)); }} className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold flex items-center justify-center gap-2"><RefreshCw className="w-4 h-4" /> Segarkan</button>
+            </div>
+
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div className="flex items-start gap-3"><div className="p-2.5 bg-blue-50 text-blue-800 rounded-xl"><BellRing className="w-5 h-5" /></div><div className="flex-1"><h2 className="font-bold text-slate-900">Pengingat sebelum mengajar</h2><p className="text-xs text-slate-500 mt-1">Aktifkan sekali pada setiap perangkat/browser. Pengingat web memerlukan izin notifikasi dan konfigurasi FCM/VAPID.</p></div></div>
+              <button onClick={handleEnableNotifications} disabled={notificationStatus === 'working'} className="px-4 py-2.5 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-2"><Bell className="w-4 h-4" />{notificationStatus === 'working' ? 'Mengaktifkan…' : notificationStatus === 'enabled' ? 'Aktifkan ulang perangkat' : 'Aktifkan Notifikasi'}</button>
+              {notificationMessage && <p className={`text-xs rounded-xl p-3 ${notificationStatus === 'error' ? 'bg-rose-50 text-rose-700' : notificationStatus === 'enabled' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-800'}`}>{notificationMessage}</p>}
+              <p className="text-[11px] text-slate-500">Catatan: pengingat tidak akan terkirim sebelum FCM, VAPID, dan cron server dikonfigurasi. Browser harus mengizinkan notifikasi. Integrasi notifikasi native APK masih tahap berikutnya.</p>
+            </section>
+
+            {currentUser.role === 'ADMIN' && <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+              <div><h2 className="font-bold text-slate-900">Tambah jadwal</h2><p className="text-xs text-slate-500 mt-1">Hanya admin yang dapat mengatur jadwal guru.</p></div>
+              <form onSubmit={handleCreateSchedule} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <label className="text-xs font-bold text-slate-700">Guru<select required value={scheduleForm.teacherId} onChange={e => setScheduleForm(p => ({ ...p, teacherId: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs"><option value="">Pilih guru</option>{users.filter(u => u.role === 'TEACHER' && u.active !== false).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Kelas<select required value={scheduleForm.classId} onChange={e => setScheduleForm(p => ({ ...p, classId: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs"><option value="">Pilih kelas</option>{classesList.filter(c => c.active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Mata pelajaran<select required value={scheduleForm.subject} onChange={e => setScheduleForm(p => ({ ...p, subject: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs">{SUBJECT_OPTIONS.map(subject => <option key={subject} value={subject}>{subject}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Hari<select required value={scheduleForm.dayOfWeek} onChange={e => setScheduleForm(p => ({ ...p, dayOfWeek: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white text-xs">{[['1','Senin'],['2','Selasa'],['3','Rabu'],['4','Kamis'],['5','Jumat'],['6','Sabtu'],['7','Minggu']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label className="text-xs font-bold text-slate-700">Mulai<input required type="time" value={scheduleForm.startTime} onChange={e => setScheduleForm(p => ({ ...p, startTime: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs" /></label>
+                <label className="text-xs font-bold text-slate-700">Selesai<input required type="time" value={scheduleForm.endTime} onChange={e => setScheduleForm(p => ({ ...p, endTime: e.target.value }))} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs" /></label>
+                <label className="text-xs font-bold text-slate-700">Ruang (opsional)<input value={scheduleForm.room} onChange={e => setScheduleForm(p => ({ ...p, room: e.target.value }))} placeholder="Contoh: VII A / Lab" className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs" /></label>
+                <div className="flex items-end"><button disabled={scheduleSaving} type="submit" className="w-full p-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2"><Plus className="w-4 h-4" />{scheduleSaving ? 'Menyimpan…' : 'Simpan Jadwal'}</button></div>
+              </form>
+            </section>}
+
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 className="font-bold text-slate-900">Jadwal berdasarkan hari</h2><p className="text-xs text-slate-500 mt-1">{visibleSchedules.length} jadwal sesuai filter</p></div><div className="flex items-center gap-2"><label htmlFor="schedule-day-filter" className="text-xs font-semibold text-slate-600">Pilih hari</label><select id="schedule-day-filter" value={selectedScheduleDay} onChange={e => setSelectedScheduleDay(e.target.value)} className="p-2.5 border border-slate-300 rounded-xl bg-white text-xs font-semibold">{[["1","Senin"],["2","Selasa"],["3","Rabu"],["4","Kamis"],["5","Jumat"],["6","Sabtu"],["7","Minggu"]].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>{currentUser.role === 'LEADER' && <><label className="text-xs font-semibold text-slate-600">Kelas<select value={scheduleFilterClass} onChange={e=>setScheduleFilterClass(e.target.value)} className="p-2.5 border border-slate-300 rounded-xl bg-white text-xs font-semibold"><option value="ALL">Semua kelas</option>{classesList.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Guru<select value={scheduleFilterTeacher} onChange={e=>setScheduleFilterTeacher(e.target.value)} className="p-2.5 border border-slate-300 rounded-xl bg-white text-xs font-semibold"><option value="ALL">Semua guru</option>{users.filter(u=>u.role==='TEACHER'&&u.active!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label></>}{scheduleLoading && <RefreshCw className="w-4 h-4 text-blue-700 animate-spin" />}</div></div>
+              {scheduleLoading && schedules.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Memuat jadwal…</p> : visibleSchedules.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Belum ada jadwal untuk hari yang dipilih. Pilih hari lain untuk melihat jadwal.</p> : <div className="divide-y divide-slate-100">{visibleSchedules.slice().sort((a,b) => a.startTime.localeCompare(b.startTime)).map(schedule => <div key={schedule.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5"><div className="sm:w-28 shrink-0"><p className="font-black text-blue-800">{[['',''],['Senin',''],['Selasa',''],['Rabu',''],['Kamis',''],['Jumat',''],['Sabtu',''],['Minggu','']][Number(schedule.dayOfWeek)]?.[0] || 'Hari'}</p><p className="text-xs text-slate-600 font-bold mt-1">{schedule.startTime}–{schedule.endTime}</p></div><div className="flex-1"><p className="font-bold text-slate-900">{schedule.subject}</p><p className="text-xs text-slate-500 mt-1">Kelas {schedule.className} · {schedule.teacherName || currentUser.name}{schedule.room ? ` · Ruang ${schedule.room}` : ''}</p></div>{currentUser.role === 'ADMIN' && <button onClick={() => handleDeactivateSchedule(schedule)} className="self-start sm:self-auto px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Nonaktifkan</button>}</div>)}</div>}
+            </section>
+          </div>
+        )}
+
+        {/* ADMIN - SCHOOL LETTERHEAD SETTINGS */}
+        {currentUser.role === 'ADMIN' && activeTab === 'settings' && (
+          <div className="space-y-6 max-w-4xl">
+            <div><h1 className="text-2xl font-black text-slate-900">Pengaturan Kop Surat</h1><p className="text-xs text-slate-500 mt-1">Informasi ini digunakan pada laporan PDF KELAS+ dan laporan tindak lanjut siswa.</p></div>
+            <form onSubmit={handleSaveLetterhead} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="text-xs font-bold text-slate-700">Nama sekolah / instansi<input required maxLength={160} value={letterheadForm.schoolName||''} onChange={e=>setLetterheadForm(p=>({...p,schoolName:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Tahun pelajaran<input maxLength={30} value={letterheadForm.academicYear||''} onChange={e=>setLetterheadForm(p=>({...p,academicYear:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Alamat sekolah<textarea rows={2} maxLength={300} value={letterheadForm.schoolAddress||''} onChange={e=>setLetterheadForm(p=>({...p,schoolAddress:e.target.value}))} placeholder="Alamat lengkap sekolah" className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Nomor telepon<input maxLength={160} value={letterheadForm.schoolPhone||''} onChange={e=>setLetterheadForm(p=>({...p,schoolPhone:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Email sekolah<input maxLength={160} value={letterheadForm.schoolEmail||''} onChange={e=>setLetterheadForm(p=>({...p,schoolEmail:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Subjudul kop surat<input maxLength={160} value={letterheadForm.letterheadSubtitle||''} onChange={e=>setLetterheadForm(p=>({...p,letterheadSubtitle:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Nama kepala sekolah<input maxLength={160} value={letterheadForm.principalName||''} onChange={e=>setLetterheadForm(p=>({...p,principalName:e.target.value}))} placeholder="Nama lengkap dan gelar" className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">NIP kepala sekolah<input maxLength={160} value={letterheadForm.principalNip||''} onChange={e=>setLetterheadForm(p=>({...p,principalNip:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+              </div>
+              {letterheadNotice && <p className="rounded-xl bg-blue-50 text-blue-800 p-3 text-xs font-semibold">{letterheadNotice}</p>}
+              <button type="submit" disabled={letterheadSaving} className="px-5 py-3 rounded-xl bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2"><Save className="w-4 h-4"/>{letterheadSaving?'Menyimpan pengaturan…':'Simpan Pengaturan Kop Surat'}</button>
+            </form>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900">Perubahan berlaku pada laporan PDF yang dibuat setelah pengaturan disimpan. Tidak diperlukan Firebase Storage.</div>
+          </div>
+        )}
+
+        {/* PROFILE SETTINGS */}
+        {currentUser.role === 'TEACHER' && activeTab === "settings" && (
+          <div className="space-y-6 max-w-2xl"><div><h1 className="text-2xl font-black text-slate-900">Pengaturan Akun & Profil</h1><p className="text-xs text-slate-500 mt-1">Kelola informasi akun Anda</p></div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+              <div className="flex items-center gap-4"><div className="w-20 h-20 rounded-full border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-500" aria-label="Avatar pengguna"><svg viewBox="0 0 24 24" className="w-12 h-12" fill="currentColor" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.2-7.5 5v2h15v-2c0-2.8-3.4-5-7.5-5Z"/></svg></div><div><p className="font-bold text-slate-800">Avatar Profil</p><p className="text-xs text-slate-500 my-2">Avatar siluet pengguna sebagai foto profil default.</p></div></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label><input type="text" value={profileForm.name || currentUser.name || ""} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Username</label><input type="text" value={currentUser.username || ""} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Mata Pelajaran</label><input type="text" value={currentUser.subject || "-"} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Status Peran</label><input type="text" value={currentUser.role} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
+            </div></div>
+        )}
+
+        <footer className="mt-10 pt-5 pb-2 border-t border-slate-200 text-right text-[10px] leading-relaxed text-slate-400"><span className="font-semibold text-slate-500">KELAS+</span> · Dikembangkan oleh <span className="font-semibold text-slate-600">Guntur Angga Saputra, S.Pd.</span><br />Untuk mengikuti Lomba Inovasi Daerah 2026 · Kabupaten Tanah Laut<br /><span>© 2026 KELAS+ · Versi {APP_VERSION}. Hak cipta dilindungi.</span></footer>
       </main>
     </div>
   );

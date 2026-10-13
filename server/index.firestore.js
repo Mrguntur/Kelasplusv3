@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { registerScheduleRoutes } from './schedule-routes.js';
 
 dotenv.config();
 const app = express();
@@ -12,7 +13,7 @@ const PORT = Number(process.env.PORT || 5000);
 const ENV = process.env.NODE_ENV || 'development';
 const ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').split(',').map(v => v.trim());
 const COOKIE = 'kelasplus_session';
-const TTL = 8 * 60 * 60 * 1000;
+const TTL = 30 * 60 * 1000;
 
 let adminApp = getApps()[0];
 if (!adminApp) {
@@ -25,6 +26,12 @@ const authAdmin = getAuth(adminApp);
 const db = getFirestore(adminApp);
 const col = name => db.collection(name);
 const nowIso = () => new Date().toISOString();
+const schoolClock = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Makassar', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  const dayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  return { dayOfWeek: dayMap[values.weekday], time: `${values.hour}:${values.minute}` };
+};
 const id = () => crypto.randomUUID();
 const fail = (res, code, message) => res.status(code).json({ success: false, message });
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
@@ -69,6 +76,9 @@ async function auth(req, res, next) {
     if (!session || session.revokedAt || session.expiresAt <= Date.now()) return fail(res, 401, 'Sesi berakhir. Silakan login kembali.');
     const user = await getDoc('users', session.userId);
     if (!user || !user.active) return fail(res, 401, 'Akun tidak aktif. Silakan hubungi administrator.');
+    const renewedExpiry = Date.now() + TTL;
+    await setDoc('sessions', digest, { expiresAt: renewedExpiry, lastActivityAt: nowIso() }, true);
+    res.cookie(COOKIE, token, cookieOptions());
     req.user = publicUser(user);
     req.sessionId = digest;
     next();
@@ -151,6 +161,7 @@ app.post('/api/login', loginRateLimit, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 app.get('/api/auth/me', auth, (req, res) => res.json({ success: true, user: req.user }));
+app.post('/api/auth/activity', auth, (req, res) => res.json({ success: true, expiresIn: TTL }));
 app.post('/api/auth/logout', auth, async (req, res, next) => {
   try {
     await setDoc('sessions', req.sessionId, { revokedAt: Date.now() }, true);
@@ -249,6 +260,14 @@ app.post('/api/attendance', auth, allow('ADMIN','TEACHER'), async (req,res,next)
     const b=req.body||{}, className=clean(b.className), date=b.date, records=b.records;
     if(!className||!validDate(date)||!records||typeof records!=='object'||Array.isArray(records)) return fail(res,400,'Data presensi tidak valid.');
     if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(className)) return fail(res,403,'Anda tidak ditugaskan pada kelas ini.');
+    if (req.user.role === 'TEACHER') {
+      const clock = schoolClock();
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      if (date !== today) return fail(res, 403, 'Absensi hanya dapat diubah pada tanggal hari ini dan selama jam mengajar.');
+      const schedules = await list('teachingSchedules');
+      const inTeachingWindow = schedules.some(item => item.active !== false && item.teacherId === req.user.id && item.className === className && Number(item.dayOfWeek) === clock.dayOfWeek && clock.time >= item.startTime && clock.time < item.endTime);
+      if (!inTeachingWindow) return fail(res, 403, 'Anda tidak berada dalam jam mengajar untuk kelas ini. Absensi hanya dapat diubah selama jadwal mengajar berlangsung.');
+    }
     const classes=await list('classes'), cls=classes.find(c=>c.name===className&&c.active!==false);
     if(!cls) return fail(res,404,'Kelas tidak ditemukan.');
     const students=await list('students'), batch=db.batch();
@@ -325,6 +344,21 @@ app.post('/api/ai/teaching-recommendations', auth, async (req,res,next) => {
     try { res.json({success:true,recommendations:JSON.parse(match[0])}); } catch { return fail(res,502,'Respons AI tidak dapat dibaca.'); }
   } catch(error) { next(error); }
 });
+app.patch('/api/profile', auth, async (req,res,next) => {
+  try {
+    const avatar = clean(req.body?.avatar);
+    if (!avatar || avatar.length > 2048 || !/^https:\/\//i.test(avatar)) {
+      return fail(res, 400, 'URL foto profil tidak valid.');
+    }
+    const parsed = new URL(avatar);
+    const allowedHosts = ['firebasestorage.googleapis.com', 'storage.googleapis.com'];
+    if (!allowedHosts.includes(parsed.hostname)) return fail(res, 400, 'Foto profil harus berasal dari Firebase Storage.');
+    await setDoc('users', req.user.id, { avatar, updatedAt: nowIso() }, true);
+    await audit(req.user, 'UPDATE_PROFILE_PHOTO', 'user', req.user.id);
+    res.json({ success: true, avatar });
+  } catch(error) { next(error); }
+});
+
 app.patch('/api/users/:id', auth, allow('ADMIN'), async (req,res,next) => {
   try {
     const old=await getDoc('users',req.params.id); if(!old) return fail(res,404,'Pengguna tidak ditemukan.');
@@ -399,6 +433,93 @@ app.delete('/api/students/:id', auth, allow('ADMIN'), async (req,res,next) => {
   } catch(error) { next(error); }
 });
 app.post('/api/settings/gemini-key', auth, allow('ADMIN'), (_req,res) => fail(res,410,'Kunci AI tidak disimpan dari browser. Atur GEMINI_API_KEY pada environment server.'));
+
+app.patch('/api/settings/letterhead', auth, allow('ADMIN'), async (req, res, next) => {
+  try {
+    const allowed = ['schoolName','schoolAddress','schoolPhone','schoolEmail','academicYear','principalName','principalNip','letterheadSubtitle'];
+    const values = {};
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) values[key] = clean(req.body[key]).slice(0, key === 'schoolAddress' ? 300 : 160);
+    }
+    if (values.schoolName !== undefined && !values.schoolName) return fail(res, 400, 'Nama sekolah wajib diisi.');
+    const batch = db.batch();
+    for (const [key, value] of Object.entries(values)) {
+      batch.set(col('appSettings').doc(key), { key, value, updatedAt: nowIso(), updatedBy: req.user.id }, { merge: true });
+    }
+    await batch.commit();
+    await audit(req.user, 'UPDATE', 'appSettings', 'letterhead', { keys: Object.keys(values) });
+    res.json({ success: true, settings: values });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/student-follow-ups', auth, allow('ADMIN','LEADER'), async (req, res, next) => {
+  try {
+    const [rows, studentRows, classRows, userRows] = await Promise.all([list('studentFollowUps'), list('students'), list('classes'), list('users')]);
+    const visible = rows.map(row => {
+      const student = studentRows.find(item => item.id === row.studentId);
+      const klass = classRows.find(item => item.id === student?.classId);
+      const author = userRows.find(item => item.id === row.createdBy);
+      return { ...row, studentName: student?.name || 'Siswa tidak ditemukan', studentClass: klass?.name || '-', createdByName: author?.name || '-' };
+    }).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    res.json({ success: true, followUps: visible });
+  } catch (error) { next(error); }
+});
+app.post('/api/student-follow-ups', auth, allow('LEADER'), async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const studentId = clean(b.studentId), date = clean(b.date), category = clean(b.category), action = clean(b.action);
+    const result = clean(b.result), nextStep = clean(b.nextStep), notes = clean(b.notes);
+    if (!studentId || !validDate(date) || !category || !action || !result) return fail(res, 400, 'Siswa, tanggal, kategori, tindakan, dan hasil tindak lanjut wajib diisi.');
+    if (category.length > 120 || action.length > 3000 || result.length > 3000 || nextStep.length > 2000 || notes.length > 2000) return fail(res, 400, 'Isi laporan melebihi batas panjang yang diizinkan.');
+    const student = await getDoc('students', studentId);
+    if (!student || student.active === false) return fail(res, 404, 'Siswa aktif tidak ditemukan.');
+    const followUpId = id();
+    const record = { id: followUpId, studentId, date, category, action, result, nextStep, notes, status: ['MONITORING','SELESAI'].includes(b.status) ? b.status : 'MONITORING', createdBy: req.user.id, createdAt: nowIso(), updatedAt: nowIso() };
+    await setDoc('studentFollowUps', followUpId, record);
+    await audit(req.user, 'CREATE', 'studentFollowUp', followUpId, { studentId, category });
+    const [classRows, user] = await Promise.all([list('classes'), getDoc('users', req.user.id)]);
+    const klass = classRows.find(item => item.id === student.classId);
+    res.status(201).json({ success: true, followUp: { ...record, studentName: student.name, studentClass: klass?.name || '-', createdByName: user?.name || '-' } });
+  } catch (error) { next(error); }
+});
+
+
+app.get('/api/announcements', auth, async (req, res, next) => {
+  try {
+    const now = Date.now();
+    const announcements = (await list('announcements'))
+      .filter(item => item.active !== false && (!item.expiresAt || Date.parse(item.expiresAt) > now))
+      .sort((a, b) => (b.pinned === true) - (a.pinned === true) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    res.json({ success: true, announcements });
+  } catch (err) { next(err); }
+});
+app.post('/api/announcements', auth, allow('ADMIN'), async (req, res, next) => {
+  try {
+    const title = clean(req.body.title).slice(0, 120);
+    const message = clean(req.body.message).slice(0, 2000);
+    const type = ['info', 'important', 'event'].includes(req.body.type) ? req.body.type : 'info';
+    const expiresAt = clean(req.body.expiresAt);
+    if (!title || !message) return fail(res, 400, 'Judul dan isi pengumuman wajib diisi.');
+    if (expiresAt && Number.isNaN(Date.parse(expiresAt))) return fail(res, 400, 'Tanggal kedaluwarsa tidak valid.');
+    const announcementId = id();
+    const announcement = { id: announcementId, title, message, type, active: true, pinned: Boolean(req.body.pinned), createdAt: nowIso(), createdBy: req.user.id, createdByName: req.user.name, expiresAt: expiresAt || null };
+    await setDoc('announcements', announcementId, announcement);
+    await audit(req.user, 'CREATE', 'announcement', announcementId, { title, type });
+    res.status(201).json({ success: true, announcement });
+  } catch (err) { next(err); }
+});
+app.delete('/api/announcements/:id', auth, allow('ADMIN'), async (req, res, next) => {
+  try {
+    const item = await getDoc('announcements', req.params.id);
+    if (!item) return fail(res, 404, 'Pengumuman tidak ditemukan.');
+    await setDoc('announcements', item.id, { active: false, updatedAt: nowIso(), updatedBy: req.user.id }, true);
+    await audit(req.user, 'DEACTIVATE', 'announcement', item.id, { title: item.title });
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+registerScheduleRoutes({ app, auth, allow, col, list, getDoc, setDoc, audit, id, adminApp });
+
 app.use((err,_req,res,_next) => { console.error('API error:',err); res.status(500).json({success:false,message:'Terjadi kesalahan server. Silakan coba kembali.'}); });
 app.use((_req,res) => fail(res,404,'Endpoint tidak ditemukan.'));
 app.listen(PORT, () => console.log('KELAS+ Firestore backend aktif pada port '+PORT));
