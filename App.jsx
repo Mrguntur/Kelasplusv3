@@ -14,12 +14,14 @@ import firebaseApp from './firebase.js';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 
+const APP_VERSION = '2.1.0';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 const localDateString = (date = new Date()) => date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
 const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [toastNotice, setToastNotice] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(false);
 
@@ -153,7 +155,7 @@ export default function App() {
     let cancelled = false;
     fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (!cancelled && data && data.success) { setCurrentUser(data.user); setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
+      .then(data => { if (!cancelled && data && data.success) { const user = data.user; setCurrentUser(user); const savedTab = window.sessionStorage.getItem('kelasplus.activeTab'); const roleTabs = user.role === 'ADMIN' ? ['admin_overview','admin_users','admin_teachers','admin_classes','admin_students','announcements','admin_api','schedule','settings'] : user.role === 'LEADER' ? ['leader_overview','schedule','leader_students','leader_reports'] : ['dashboard','classes','attendance','journal','students','reports','ai','schedule','settings']; setActiveTab(roleTabs.includes(savedTab) ? savedTab : user.role === 'ADMIN' ? 'admin_overview' : user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
       .catch(() => { if (!cancelled) setIsServerOnline(false); });
     return () => { cancelled = true; };
   }, []);
@@ -161,6 +163,17 @@ export default function App() {
   useEffect(() => {
     if (currentUser) { fetchBootstrapData(); fetchAnnouncements(); }
   }, [currentUser]);
+
+  // Preserve the current page when the user refreshes the browser.
+  useEffect(() => {
+    if (currentUser) window.sessionStorage.setItem('kelasplus.activeTab', activeTab);
+  }, [activeTab, currentUser]);
+
+  useEffect(() => {
+    if (!toastNotice) return undefined;
+    const timer = window.setTimeout(() => setToastNotice(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [toastNotice]);
   
   // End sessions after 30 minutes of inactivity and refresh active server sessions.
   useEffect(() => {
@@ -246,7 +259,9 @@ export default function App() {
         await signInWithCustomToken(auth, data.firebaseCustomToken);
       }
       setCurrentUser(data.user);
-      setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
+      const landingTab = data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard';
+      setActiveTab(landingTab);
+      window.sessionStorage.setItem('kelasplus.activeTab', landingTab);
     } catch (err) {
       setLoginError(err.message || 'Server tidak dapat dihubungi. Pastikan backend berjalan.');
     } finally {
@@ -277,7 +292,8 @@ export default function App() {
       setAssignmentTasks([]);
       setLoginUsername('');
       setLoginPassword('');
-      setLoginError(idleTimeout ? 'Sesi berakhir karena tidak ada aktivitas selama 30 menit. Silakan login kembali.' : '');
+      // Do not show the inactivity timeout message on the login screen.
+      setLoginError('');
       setActiveTab('dashboard');
     }
   };
@@ -806,6 +822,7 @@ export default function App() {
             <p className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-500">
               Gunakan akun yang dibuat oleh administrator sekolah.
             </p>
+            <p className="text-center text-[9px] text-slate-400 tracking-wide">KELAS+ versi {APP_VERSION}</p>
           </form>
         </div>
       </div>
@@ -815,9 +832,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
       {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
+      {toastNotice && <button type="button" onClick={() => { setToastNotice(null); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg text-left rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 hover:shadow-2xl transition-shadow" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span><X className="w-4 h-4 text-slate-400" /></button>}
       
       {/* Mobile Top Navigation */}
-      <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50">
+      <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
         <div>
           <h1 className="text-xl font-black text-white">KELAS<span className="text-amber-400">+</span></h1>
           <p className="text-[9px] text-slate-400 tracking-wider">{systemSettings.schoolName}</p>
@@ -828,7 +846,7 @@ export default function App() {
       </div>
 
       {/* Main Sidebar */}
-      <aside className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'block' : 'hidden lg:flex'}`}>
+      <aside className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'block' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto`}>
         <div>
           <div className="hidden lg:flex p-5 border-b border-slate-800 items-center justify-between">
             <div>
@@ -905,7 +923,7 @@ export default function App() {
           </nav>
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex items-center justify-between">
+        <div className="p-4 border-t border-slate-800 flex items-center justify-between sticky bottom-0 bg-slate-900 z-10 lg:mt-auto">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full border border-slate-700 bg-slate-100 flex items-center justify-center text-slate-500" aria-label="Avatar pengguna"><svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.2-7.5 5v2h15v-2c0-2.8-3.4-5-7.5-5Z"/></svg></div>
             <div>
@@ -920,7 +938,7 @@ export default function App() {
       </aside>
 
       {/* Dynamic Content Views */}
-      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+      <main className="relative flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full min-w-0">
         
         {/* TEACHER - DASHBOARD */}
         {currentUser.role === 'TEACHER' && activeTab === 'dashboard' && (
@@ -929,7 +947,7 @@ export default function App() {
               <div><h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1><p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran UPTD SMPN 2 Bajuin · Tahun {systemSettings.academicYear}</p></div>
               <button onClick={() => { setAttendanceDate(localDateString()); setActiveTab('attendance'); }} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
             </div>
-            <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3"><div className="flex items-center justify-between"><div><h2 className="font-bold text-slate-900">Jadwal Mengajar Hari Ini</h2><p className="text-xs text-slate-500 mt-1">{deviceNow.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></div><button onClick={() => setActiveTab("schedule")} className="text-xs font-bold text-blue-800">Lihat semua</button></div>{scheduleLoading && schedules.length === 0 ? <p className="text-xs text-slate-500">Memuat jadwal…</p> : schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).length === 0 ? <p className="text-xs text-slate-500">Tidak ada jadwal mengajar hari ini.</p> : <div className="space-y-2">{schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => { const now = String(deviceNow.getHours()).padStart(2,"0") + ":" + String(deviceNow.getMinutes()).padStart(2,"0"); const active = now >= item.startTime && now < item.endTime; const next = now < item.startTime; return <div key={item.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100"><div><p className="text-sm font-bold text-slate-800">{item.subject} · {item.className}</p><p className="text-xs text-slate-500">{item.startTime}–{item.endTime}{item.room ? " · " + item.room : ""}</p></div><span className={"text-[10px] font-bold px-2 py-1 rounded-full " + (active ? "bg-emerald-100 text-emerald-700" : next ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600")}>{active ? "Sedang berlangsung" : next ? "Berikutnya" : "Selesai"}</span></div>; })}</div>}</section>
+            <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3"><div className="flex items-center justify-between"><div><h2 className="font-bold text-slate-900">Jadwal Mengajar Hari Ini</h2><p className="text-xs text-slate-500 mt-1">{deviceNow.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></div><button onClick={() => setActiveTab("schedule")} className="text-xs font-bold text-blue-800">Lihat semua</button></div>{scheduleLoading && schedules.length === 0 ? <p className="text-xs text-slate-500">Memuat jadwal…</p> : schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).length === 0 ? <p className="text-xs text-slate-500">Tidak ada jadwal mengajar hari ini.</p> : <div className="space-y-2">{schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => { const now = String(deviceNow.getHours()).padStart(2,"0") + ":" + String(deviceNow.getMinutes()).padStart(2,"0"); const active = now >= item.startTime && now < item.endTime; const next = now < item.startTime; return <button type="button" key={item.id} onClick={() => { setSelectedClass(item.className); setAttendanceDate(localDateString(deviceNow)); setActiveTab('attendance'); setMobileMenuOpen(false); setToastNotice({ title: 'Menu absensi dibuka', message: `Kelas ${item.className} · ${item.subject}`, type: 'info' }); }} className="w-full text-left flex items-center justify-between gap-3 p-3 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-inner transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"><div><p className="text-sm font-bold text-slate-800">{item.subject} · {item.className}</p><p className="text-xs text-slate-500">{item.startTime}–{item.endTime}{item.room ? " · " + item.room : ""}</p><p className="text-[10px] text-blue-700 font-semibold mt-1">Klik untuk membuka absensi kelas <span aria-hidden="true">→</span></p></div><span className={"shrink-0 text-[10px] font-bold px-2 py-1 rounded-full " + (active ? "bg-emerald-100 text-emerald-700" : next ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600")}>{active ? "Sedang berlangsung" : next ? "Berikutnya" : "Selesai"}</span></button>; })}</div>}</section>
              <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                <div className="p-5 flex items-center justify-between gap-3 border-b border-slate-100"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-800 flex items-center justify-center"><BellRing className="w-5 h-5" /></div><div><h2 className="font-bold text-slate-900">Pengumuman Sekolah</h2><p className="text-xs text-slate-500 mt-1">Informasi resmi dari administrator</p></div></div><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{announcements.length} aktif</span></div>
                {announcements.length === 0 ? <div className="px-5 py-6 flex items-start gap-3"><Bell className="w-5 h-5 text-slate-400 mt-0.5" /><div><p className="text-sm font-semibold text-slate-700">Belum ada pengumuman</p><p className="text-xs text-slate-500 mt-1">Pengumuman dari administrator akan muncul di sini.</p></div></div> : <div className="divide-y divide-slate-100">{announcements.slice(0, 3).map(item => <article key={item.id} className="p-5 flex items-start gap-3"><div className={"mt-0.5 rounded-lg p-2 " + (item.type === 'important' ? 'bg-amber-50 text-amber-700' : item.type === 'event' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700')}>{item.type === 'important' ? <AlertTriangle className="w-4 h-4" /> : item.type === 'event' ? <Calendar className="w-4 h-4" /> : <Bell className="w-4 h-4" />}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold text-slate-900">{item.title}</h3>{item.pinned && <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">PENTING</span>}</div><p className="text-xs text-slate-600 leading-relaxed mt-1.5 whitespace-pre-wrap">{item.message}</p><p className="text-[10px] text-slate-400 mt-2">{item.createdByName ? 'Oleh ' + item.createdByName + ' · ' : ''}{item.createdAt ? new Date(item.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}</p></div></article>)}</div>}
@@ -940,7 +958,7 @@ export default function App() {
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jurnal Tersimpan</span><p className="text-2xl font-black text-purple-600 mt-1">{journals.length}</p><button onClick={() => setActiveTab('journal')} className="text-[10px] text-blue-800 font-bold mt-2">Buka Smart Journal →</button></div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Status Asisten AI</span><p className="text-sm font-black text-cyan-700 mt-2">{isServerOnline ? 'Backend terhubung' : 'Backend belum terhubung'}</p><button onClick={() => setActiveTab('ai')} className="text-[10px] text-blue-800 font-bold mt-2">Buka AI Assistant →</button></div>
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><h2 className="font-bold text-slate-800">Langkah cepat</h2><div className="flex flex-wrap gap-3 mt-4"><button onClick={() => setActiveTab('attendance')} className="px-4 py-2 rounded-xl bg-blue-50 text-blue-800 text-xs font-bold">Absensi Cepat</button><button onClick={() => setActiveTab('journal')} className="px-4 py-2 rounded-xl bg-purple-50 text-purple-800 text-xs font-bold">Isi Smart Journal</button><button onClick={() => setActiveTab('students')} className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold">Input Nilai Tugas</button></div></div>
+            <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-blue-900 p-5 md:p-6 rounded-2xl shadow-lg text-white"><div className="flex items-center justify-between gap-3"><div><h2 className="font-extrabold text-lg">Langkah cepat</h2><p className="text-xs text-blue-100 mt-1">Pilih tindakan untuk melanjutkan kegiatan mengajar.</p></div><Sparkles className="w-6 h-6 text-amber-300" /></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5"><button onClick={() => { setAttendanceDate(localDateString()); setActiveTab('attendance'); }} className="group min-h-20 px-4 py-4 rounded-xl bg-white text-blue-900 text-left font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all focus:outline-none focus:ring-2 focus:ring-amber-300"><span className="flex items-center gap-2 text-sm"><CheckCircle className="w-5 h-5 text-emerald-600" /> Absensi Cepat</span><span className="block text-[11px] text-slate-500 font-medium mt-2">Catat kehadiran siswa →</span></button><button onClick={() => setActiveTab('journal')} className="group min-h-20 px-4 py-4 rounded-xl bg-white text-blue-900 text-left font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all focus:outline-none focus:ring-2 focus:ring-amber-300"><span className="flex items-center gap-2 text-sm"><BookOpen className="w-5 h-5 text-purple-600" /> Isi Smart Jurnal</span><span className="block text-[11px] text-slate-500 font-medium mt-2">Catat kegiatan pembelajaran →</span></button><button onClick={() => setActiveTab('students')} className="group min-h-20 px-4 py-4 rounded-xl bg-white text-blue-900 text-left font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all focus:outline-none focus:ring-2 focus:ring-amber-300"><span className="flex items-center gap-2 text-sm"><Award className="w-5 h-5 text-amber-600" /> Nilai Tugas</span><span className="block text-[11px] text-slate-500 font-medium mt-2">Pantau capaian siswa →</span></button></div></section>
           </div>
         )}
 
@@ -965,10 +983,10 @@ export default function App() {
                   </div>
 
                   <div className="pt-2 border-t border-slate-100 flex gap-2">
-                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('attendance'); }} className="flex-1 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl hover:bg-blue-900 transition">
+                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('attendance'); }} className="flex-1 py-2.5 bg-gradient-to-b from-blue-700 to-blue-900 text-white text-xs font-extrabold rounded-xl shadow-md shadow-blue-900/20 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:shadow-inner transition-all ring-1 ring-blue-600/30">
                       Absensi
                     </button>
-                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('journal'); }} className="flex-1 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-200 transition">
+                    <button onClick={() => { setSelectedClass(cls.name); setActiveTab('journal'); }} className="flex-1 py-2.5 bg-gradient-to-b from-white to-slate-100 text-slate-800 text-xs font-extrabold rounded-xl border border-slate-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:shadow-inner transition-all">
                       Jurnal
                     </button>
                   </div>
@@ -1473,7 +1491,7 @@ export default function App() {
             </div></div>
         )}
 
-        <footer className="mt-10 pt-5 pb-2 border-t border-slate-200 text-right text-[10px] leading-relaxed text-slate-400"><span className="font-semibold text-slate-500">KELAS+</span> · Dikembangkan oleh <span className="font-semibold text-slate-600">Guntur Angga Saputra, S.Pd.</span><br />Untuk mengikuti Lomba Inovasi Daerah 2026 · Kabupaten Tanah Laut<br /><span>© 2026 KELAS+. Hak cipta dilindungi.</span></footer>
+        <footer className="mt-10 pt-5 pb-2 border-t border-slate-200 text-right text-[10px] leading-relaxed text-slate-400"><span className="font-semibold text-slate-500">KELAS+</span> · Dikembangkan oleh <span className="font-semibold text-slate-600">Guntur Angga Saputra, S.Pd.</span><br />Untuk mengikuti Lomba Inovasi Daerah 2026 · Kabupaten Tanah Laut<br /><span>© 2026 KELAS+ · Versi {APP_VERSION}. Hak cipta dilindungi.</span></footer>
       </main>
     </div>
   );
