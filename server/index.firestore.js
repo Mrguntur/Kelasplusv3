@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT || 5000);
 const ENV = process.env.NODE_ENV || 'development';
 const ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').split(',').map(v => v.trim());
 const COOKIE = 'kelasplus_session';
-const TTL = 8 * 60 * 60 * 1000;
+const TTL = 30 * 60 * 1000;
 
 let adminApp = getApps()[0];
 if (!adminApp) {
@@ -70,6 +70,9 @@ async function auth(req, res, next) {
     if (!session || session.revokedAt || session.expiresAt <= Date.now()) return fail(res, 401, 'Sesi berakhir. Silakan login kembali.');
     const user = await getDoc('users', session.userId);
     if (!user || !user.active) return fail(res, 401, 'Akun tidak aktif. Silakan hubungi administrator.');
+    const renewedExpiry = Date.now() + TTL;
+    await setDoc('sessions', digest, { expiresAt: renewedExpiry, lastActivityAt: nowIso() }, true);
+    res.cookie(COOKIE, token, cookieOptions());
     req.user = publicUser(user);
     req.sessionId = digest;
     next();
@@ -152,6 +155,7 @@ app.post('/api/login', loginRateLimit, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 app.get('/api/auth/me', auth, (req, res) => res.json({ success: true, user: req.user }));
+app.post('/api/auth/activity', auth, (req, res) => res.json({ success: true, expiresIn: TTL }));
 app.post('/api/auth/logout', auth, async (req, res, next) => {
   try {
     await setDoc('sessions', req.sessionId, { revokedAt: Date.now() }, true);
