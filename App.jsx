@@ -14,6 +14,7 @@ import firebaseApp from './firebase.js';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const localDateString = (date = new Date()) => date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
 const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
 
 export default function App() {
@@ -48,7 +49,7 @@ export default function App() {
 
   // Teacher Feature States
   const [selectedClass, setSelectedClass] = useState('VII A');
-  const [attendanceDate, setAttendanceDate] = useState('2026-10-11');
+  const [attendanceDate, setAttendanceDate] = useState(() => localDateString());
   const [currentAttendance, setCurrentAttendance] = useState({});
   const [journalTopic, setJournalTopic] = useState('');
   const [journalMethod, setJournalMethod] = useState('');
@@ -85,6 +86,8 @@ export default function App() {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
+  const [deviceNow, setDeviceNow] = useState(() => new Date());
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   // Load school data only after a valid server session exists.
   const fetchBootstrapData = async () => {
@@ -145,7 +148,7 @@ export default function App() {
   }, [selectedClass, attendanceDate, students, attendanceRecords]);
 
   useEffect(() => {
-    if (!currentUser || activeTab !== 'schedule') return;
+    if (!currentUser || !['schedule', 'dashboard'].includes(activeTab)) return;
     let cancelled = false;
     setScheduleLoading(true);
     fetch(`${API_BASE_URL}/schedules`, { credentials: 'include' })
@@ -158,6 +161,8 @@ export default function App() {
       .finally(() => { if (!cancelled) setScheduleLoading(false); });
     return () => { cancelled = true; };
   }, [activeTab, currentUser]);
+
+  useEffect(() => { const timer = window.setInterval(() => setDeviceNow(new Date()), 60000); return () => window.clearInterval(timer); }, []);
 
   // Sync state after login
   useEffect(() => {
@@ -174,7 +179,7 @@ export default function App() {
         phone: '081234567890',
         currentPassword: '',
         newPassword: '',
-        avatar: currentUser.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
+        avatar: currentUser.avatar || ''
       });
     }
   }, [currentUser]);
@@ -808,13 +813,13 @@ export default function App() {
                 <button onClick={() => { setActiveTab('ai'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'ai' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Bot className="w-4 h-4 text-cyan-400" /> AI Assistant
                 </button>
+                <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar</button>
                 <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Profil
                 </button>
               </>
             )}
 
-            <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar</button>
 
             {currentUser.role === 'LEADER' && (
               <>
@@ -848,7 +853,7 @@ export default function App() {
 
         <div className="p-4 border-t border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={currentUser.avatar} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-slate-700" />
+            <img src={currentUser.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name || 'Guru') + '&background=1e40af&color=fff')} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-slate-700" />
             <div>
               <p className="text-xs font-bold text-white leading-tight">{currentUser.name}</p>
               <p className="text-[10px] text-slate-400">{currentUser.subject}</p>
@@ -868,8 +873,9 @@ export default function App() {
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div><h1 className="text-2xl font-black text-slate-900">Selamat datang, {currentUser.name}! 👋</h1><p className="text-xs text-slate-500 mt-1">Sistem Informasi Pengajaran UPTD SMPN 2 Bajuin · Tahun {systemSettings.academicYear}</p></div>
-              <button onClick={() => setActiveTab('attendance')} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
+              <button onClick={() => { setAttendanceDate(localDateString()); setActiveTab('attendance'); }} className="px-4 py-2 bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-blue-900 transition flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Input Presensi</button>
             </div>
+            <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3"><div className="flex items-center justify-between"><div><h2 className="font-bold text-slate-900">Jadwal Mengajar Hari Ini</h2><p className="text-xs text-slate-500 mt-1">{deviceNow.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></div><button onClick={() => setActiveTab("schedule")} className="text-xs font-bold text-blue-800">Lihat semua</button></div>{scheduleLoading && schedules.length === 0 ? <p className="text-xs text-slate-500">Memuat jadwal…</p> : schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).length === 0 ? <p className="text-xs text-slate-500">Tidak ada jadwal mengajar hari ini.</p> : <div className="space-y-2">{schedules.filter(item => Number(item.dayOfWeek) === ((deviceNow.getDay() + 6) % 7 + 1)).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => { const now = String(deviceNow.getHours()).padStart(2,"0") + ":" + String(deviceNow.getMinutes()).padStart(2,"0"); const active = now >= item.startTime && now < item.endTime; const next = now < item.startTime; return <div key={item.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100"><div><p className="text-sm font-bold text-slate-800">{item.subject} · {item.className}</p><p className="text-xs text-slate-500">{item.startTime}–{item.endTime}{item.room ? " · " + item.room : ""}</p></div><span className={"text-[10px] font-bold px-2 py-1 rounded-full " + (active ? "bg-emerald-100 text-emerald-700" : next ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600")}>{active ? "Sedang berlangsung" : next ? "Berikutnya" : "Selesai"}</span></div>; })}</div>}</section>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Kelas Pengampuan</span><p className="text-2xl font-black text-blue-800 mt-1">{teacherAssignedClasses.length}</p><p className="text-[10px] text-slate-500 mt-1">{teacherAssignedClasses.join(', ') || 'Belum ditentukan'}</p></div>
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span className="text-xs text-slate-500">Jumlah Siswa Diampu</span><p className="text-2xl font-black text-emerald-600 mt-1">{students.filter(s => teacherAssignedClasses.includes('ALL') || teacherAssignedClasses.includes(s.class)).length}</p></div>
@@ -930,6 +936,7 @@ export default function App() {
                 <input
                   type="date"
                   value={attendanceDate}
+                  max={localDateString()}
                   onChange={e => setAttendanceDate(e.target.value)}
                   className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold shadow-sm"
                 />
