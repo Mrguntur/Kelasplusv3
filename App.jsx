@@ -202,6 +202,7 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoadingAuth(true);
+    const loginStartedAt = Date.now();
     setLoginError('');
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
@@ -217,12 +218,12 @@ export default function App() {
         if (!data.firebaseCustomToken) throw new Error('Firebase belum terhubung ke backend. Pengelola aplikasi perlu mengatur FIREBASE_SERVICE_ACCOUNT_JSON pada server.');
         await signInWithCustomToken(auth, data.firebaseCustomToken);
       }
-      await new Promise(resolve => window.setTimeout(resolve, 2500));
       setCurrentUser(data.user);
       setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
     } catch (err) {
       setLoginError(err.message || 'Server tidak dapat dihubungi. Pastikan backend berjalan.');
     } finally {
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2500 - (Date.now() - loginStartedAt))));
       setIsLoadingAuth(false);
     }
   };
