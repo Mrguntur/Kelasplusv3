@@ -30,6 +30,7 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Core Data Collections
   const [users, setUsers] = useState([]);
@@ -66,6 +67,7 @@ export default function App() {
   // Teaching schedule and browser push notification state
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState(() => String((new Date().getDay() + 6) % 7 + 1));
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ teacherId: '', classId: '', subject: 'Bahasa Inggris', dayOfWeek: '1', startTime: '07:30', endTime: '08:10', room: '' });
   const [notificationStatus, setNotificationStatus] = useState('idle');
@@ -124,7 +126,7 @@ export default function App() {
     let cancelled = false;
     fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (!cancelled && data && data.success) setCurrentUser(data.user); })
+      .then(data => { if (!cancelled && data && data.success) { setCurrentUser(data.user); setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
       .catch(() => { if (!cancelled) setIsServerOnline(false); });
     return () => { cancelled = true; };
   }, []);
@@ -133,6 +135,18 @@ export default function App() {
     if (currentUser) fetchBootstrapData();
   }, [currentUser]);
   
+  // End sessions after 30 minutes of inactivity and refresh active server sessions.
+  useEffect(() => {
+    if (!currentUser) return;
+    let idleTimer;
+    const resetIdleTimer = () => { window.clearTimeout(idleTimer); idleTimer = window.setTimeout(() => { handleLogout(true); }, 30 * 60 * 1000); };
+    const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(name => window.addEventListener(name, resetIdleTimer, { passive: true }));
+    resetIdleTimer();
+    const heartbeat = window.setInterval(() => { fetch(API_BASE_URL + '/auth/activity', { method: 'POST', credentials: 'include' }).catch(() => {}); }, 2 * 60 * 1000);
+    return () => { window.clearTimeout(idleTimer); window.clearInterval(heartbeat); events.forEach(name => window.removeEventListener(name, resetIdleTimer)); };
+  }, [currentUser]);
+
   // Update attendance view for selected class/date
   useEffect(() => {
     const key = `${selectedClass}_${attendanceDate}`;
@@ -203,6 +217,7 @@ export default function App() {
         if (!data.firebaseCustomToken) throw new Error('Firebase belum terhubung ke backend. Pengelola aplikasi perlu mengatur FIREBASE_SERVICE_ACCOUNT_JSON pada server.');
         await signInWithCustomToken(auth, data.firebaseCustomToken);
       }
+      await new Promise(resolve => window.setTimeout(resolve, 2500));
       setCurrentUser(data.user);
       setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : data.user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
     } catch (err) {
@@ -212,14 +227,19 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (idleTimeout = false) => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    const logoutStartedAt = Date.now();
     try { if (auth) await signOut(auth); } catch (err) { console.warn('Firebase logout failed:', err); }
     try {
       await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (err) {
       console.warn('Backend logout request failed:', err);
     } finally {
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2500 - (Date.now() - logoutStartedAt))));
       setCurrentUser(null);
+      setIsLoggingOut(false);
       setUsers([]);
       setClassesList([]);
       setStudents([]);
@@ -229,7 +249,7 @@ export default function App() {
       setAssignmentTasks([]);
       setLoginUsername('');
       setLoginPassword('');
-      setLoginError('');
+      setLoginError(idleTimeout ? 'Sesi berakhir karena tidak ada aktivitas selama 30 menit. Silakan login kembali.' : '');
       setActiveTab('dashboard');
     }
   };
@@ -752,7 +772,7 @@ export default function App() {
               disabled={isLoadingAuth}
               className="w-full py-3 bg-blue-800 hover:bg-blue-900 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
             >
-              {isLoadingAuth ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Masuk Sekarang'}
+              {isLoadingAuth ? <><RefreshCw className="w-4 h-4 animate-spin" /> Memverifikasi akun…</> : 'Masuk Sekarang'}
             </button>
 
             <p className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-500">
@@ -766,6 +786,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
+      {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
       
       {/* Mobile Top Navigation */}
       <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50">
@@ -1385,7 +1406,7 @@ export default function App() {
             </section>}
 
             <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between"><div><h2 className="font-bold text-slate-900">Daftar jadwal</h2><p className="text-xs text-slate-500 mt-1">{schedules.length} jadwal ditemukan</p></div>{scheduleLoading && <RefreshCw className="w-4 h-4 text-blue-700 animate-spin" />}</div>
+              <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 className="font-bold text-slate-900">Jadwal berdasarkan hari</h2><p className="text-xs text-slate-500 mt-1">{schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay)).length} jadwal pada hari yang dipilih</p></div><div className="flex items-center gap-2"><label htmlFor="schedule-day-filter" className="text-xs font-semibold text-slate-600">Pilih hari</label><select id="schedule-day-filter" value={selectedScheduleDay} onChange={e => setSelectedScheduleDay(e.target.value)} className="p-2.5 border border-slate-300 rounded-xl bg-white text-xs font-semibold">{[["1","Senin"],["2","Selasa"],["3","Rabu"],["4","Kamis"],["5","Jumat"],["6","Sabtu"],["7","Minggu"]].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>{scheduleLoading && <RefreshCw className="w-4 h-4 text-blue-700 animate-spin" />}</div></div>
               {scheduleLoading && schedules.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Memuat jadwal…</p> : schedules.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Belum ada jadwal. Admin dapat menambahkan jadwal melalui formulir di atas.</p> : <div className="divide-y divide-slate-100">{schedules.map(schedule => <div key={schedule.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5"><div className="sm:w-28 shrink-0"><p className="font-black text-blue-800">{[['',''],['Senin',''],['Selasa',''],['Rabu',''],['Kamis',''],['Jumat',''],['Sabtu',''],['Minggu','']][Number(schedule.dayOfWeek)]?.[0] || 'Hari'}</p><p className="text-xs text-slate-600 font-bold mt-1">{schedule.startTime}–{schedule.endTime}</p></div><div className="flex-1"><p className="font-bold text-slate-900">{schedule.subject}</p><p className="text-xs text-slate-500 mt-1">Kelas {schedule.className} · {schedule.teacherName || currentUser.name}{schedule.room ? ` · Ruang ${schedule.room}` : ''}</p></div>{currentUser.role === 'ADMIN' && <button onClick={() => handleDeactivateSchedule(schedule)} className="self-start sm:self-auto px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Nonaktifkan</button>}</div>)}</div>}
             </section>
           </div>
