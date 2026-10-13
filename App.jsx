@@ -49,7 +49,19 @@ export default function App() {
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingGradesFor, setSavingGradesFor] = useState('');
   const [gradeDrafts, setGradeDrafts] = useState({});
-  const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'SMP NEGERI 2 BAJUIN', academicYear: '2026/2027' });
+  const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'UPTD SMPN 2 BAJUIN', academicYear: '2026/2027', schoolAddress: '', schoolPhone: '', schoolEmail: '', principalName: '', principalNip: '', letterheadSubtitle: 'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas' });
+  const [letterheadForm, setLetterheadForm] = useState({ schoolName: 'UPTD SMPN 2 BAJUIN', schoolAddress: '', schoolPhone: '', schoolEmail: '', academicYear: '2026/2027', principalName: '', principalNip: '', letterheadSubtitle: 'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas' });
+  const [letterheadSaving, setLetterheadSaving] = useState(false);
+  const [letterheadNotice, setLetterheadNotice] = useState('');
+  const [adminStudentClassFilter, setAdminStudentClassFilter] = useState('ALL');
+  const [adminStudentSearch, setAdminStudentSearch] = useState('');
+  const [scheduleFilterClass, setScheduleFilterClass] = useState('ALL');
+  const [scheduleFilterTeacher, setScheduleFilterTeacher] = useState('ALL');
+  const [followUps, setFollowUps] = useState([]);
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpNotice, setFollowUpNotice] = useState('');
+  const [followUpSearch, setFollowUpSearch] = useState('');
+  const [followUpForm, setFollowUpForm] = useState({ studentId: '', date: localDateString(), category: 'Kehadiran rendah', action: '', result: '', nextStep: '', notes: '', status: 'MONITORING' });
 
   // Teacher Feature States
   const [selectedClass, setSelectedClass] = useState('VII A');
