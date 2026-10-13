@@ -675,21 +675,23 @@ export default function App() {
       summary = 'Jumlah entri jurnal: '+data.length;
     } else if (kind === 'attendance') {
       title = 'REKAPITULASI ABSENSI SISWA';
-      const data = [];
+      const perStudent = new Map(classStudents.map(student => [student.id, { student, PRESENT: 0, LATE: 0, SICK: 0, PERMISSION: 0, ABSENT: 0 }]));
       Object.entries(attendanceRecords).forEach(([key, record]) => {
         const prefix = className + '_';
         if (!key.startsWith(prefix)) return;
         const date = key.slice(prefix.length);
         if (!inPeriod(date)) return;
-        classStudents.forEach(student => { if (record[student.id]) data.push({date,student,status:record[student.id]}); });
+        classStudents.forEach(student => {
+          const status = record[student.id], row = perStudent.get(student.id);
+          if (status && row && Object.prototype.hasOwnProperty.call(row, status)) row[status] += 1;
+        });
       });
-      data.sort((a,b)=>a.date.localeCompare(b.date)||a.student.name.localeCompare(b.student.name,'id'));
+      const data = [...perStudent.values()].sort((a,b)=>a.student.name.localeCompare(b.student.name,'id'));
       const counts = {PRESENT:0,LATE:0,SICK:0,PERMISSION:0,ABSENT:0};
-      data.forEach(r=>{if(counts[r.status]!==undefined)counts[r.status]++;});
-      const statusNames = {PRESENT:'Hadir',LATE:'Terlambat',SICK:'Sakit',PERMISSION:'Izin',ABSENT:'Alpa'};
-      headers = '<th>No.</th><th>Tanggal</th><th>Nama Siswa</th><th>NISN</th><th>Status</th>';
-      rows = data.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(r.date)+'</td><td>'+e(r.student.name)+'</td><td>'+e(r.student.nisn||'-')+'</td><td>'+e(statusNames[r.status]||r.status)+'</td></tr>').join('');
-      summary = 'Hadir: '+counts.PRESENT+' · Terlambat: '+counts.LATE+' · Sakit: '+counts.SICK+' · Izin: '+counts.PERMISSION+' · Alpa: '+counts.ABSENT;
+      data.forEach(row => Object.keys(counts).forEach(status => { counts[status] += row[status]; }));
+      headers = '<th>No.</th><th>Nama Siswa</th><th>NISN</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Alpa</th>';
+      rows = data.map((row,i)=>'<tr><td>'+(i+1)+'</td><td>'+e(row.student.name)+'</td><td>'+e(row.student.nisn||'-')+'</td><td>'+row.PRESENT+'</td><td>'+row.PERMISSION+'</td><td>'+row.SICK+'</td><td>'+row.ABSENT+'</td></tr>').join('');
+      summary = 'Periode: '+e(from)+' s.d. '+e(to)+' · Kelas: '+e(className)+' · Hadir: '+counts.PRESENT+' · Izin: '+counts.PERMISSION+' · Sakit: '+counts.SICK+' · Alpa: '+counts.ABSENT;
     } else {
       title = 'REKAPITULASI NILAI TUGAS';
       const tasks = teacherLearningTasks.slice().sort((a,b)=>a.assignmentNo-b.assignmentNo);
