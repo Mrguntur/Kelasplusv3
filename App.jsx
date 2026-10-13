@@ -694,7 +694,7 @@ export default function App() {
         if (!inPeriod(date)) return;
         classStudents.forEach(student => {
           const status = record[student.id], row = perStudent.get(student.id);
-          if (status && row && Object.prototype.hasOwnProperty.call(row, status)) row[status] += 1;
+          if (status && row && Object.prototype.hasOwnProperty.call(row, status)) { row[status] += 1; if (status === 'LATE') row.PRESENT += 1; }
         });
       });
       const data = [...perStudent.values()].sort((a,b)=>a.student.name.localeCompare(b.student.name,'id'));
