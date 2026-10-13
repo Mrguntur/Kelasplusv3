@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { auth, firebaseConfigured } from './firebase.js';
 import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { 
-  Home, Users, Calendar, BookOpen, AlertTriangle, FileText, 
+  Home, Users, Calendar, BookOpen, AlertTriangle, FileText, ClipboardCheck, 
   Bot, Settings, CheckCircle, Clock, Plus, BarChart2, ChevronRight, 
   Sparkles, Wifi, ShieldAlert, LogOut, Download, Search, Edit3, Trash2, 
   UserPlus, Filter, Upload, Layers, Key, User, Camera, Lock, Eye, EyeOff, 
@@ -165,7 +165,7 @@ export default function App() {
       const drafts = {};
       (data.assignmentScores || []).forEach(g => { drafts[g.studentId] = { ...(drafts[g.studentId] || {}), [g.assignmentNo]: g.score == null ? '' : String(g.score) }; });
       setGradeDrafts(drafts);
-      if (data.settings) setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' }));
+      if (data.settings) { setSystemSettings(prev => ({ ...prev, ...data.settings, geminiApiKey: '' })); setLetterheadForm(prev => ({ ...prev, ...data.settings })); }
       const attendanceMap = {};
       (data.attendanceRecords || []).forEach(r => {
         const key = `${r.class}_${r.date}`;
@@ -184,14 +184,16 @@ export default function App() {
     let cancelled = false;
     fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (!cancelled && data && data.success) { const user = data.user; setCurrentUser(user); const savedTab = window.sessionStorage.getItem('kelasplus.activeTab'); const roleTabs = user.role === 'ADMIN' ? ['admin_overview','admin_users','admin_teachers','admin_classes','admin_students','announcements','admin_api','schedule','settings'] : user.role === 'LEADER' ? ['leader_overview','schedule','students','reports','settings'] : ['dashboard','classes','attendance','journal','students','reports','ai','schedule','settings']; setActiveTab(roleTabs.includes(savedTab) ? savedTab : user.role === 'ADMIN' ? 'admin_overview' : user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
+      .then(data => { if (!cancelled && data && data.success) { const user = data.user; setCurrentUser(user); const savedTab = window.sessionStorage.getItem('kelasplus.activeTab'); const roleTabs = user.role === 'ADMIN' ? ['admin_overview','admin_users','admin_teachers','admin_classes','admin_students','announcements','admin_api','schedule','settings'] : user.role === 'LEADER' ? ['leader_overview','schedule','students','admin_teachers','admin_classes','admin_students','leader_followups','reports','settings'] : ['dashboard','classes','attendance','journal','students','reports','ai','schedule','settings']; setActiveTab(roleTabs.includes(savedTab) ? savedTab : user.role === 'ADMIN' ? 'admin_overview' : user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
       .catch(() => { if (!cancelled) setIsServerOnline(false); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (currentUser) { fetchBootstrapData(); fetchAnnouncements(); }
+    if (currentUser) { fetchBootstrapData(); fetchAnnouncements(); if (currentUser.role === 'LEADER' || currentUser.role === 'ADMIN') fetchStudentFollowUps(); }
   }, [currentUser]);
+
+  useEffect(() => { if (currentUser?.role === 'LEADER' && activeTab === 'leader_followups') fetchStudentFollowUps(); }, [activeTab, currentUser]);
 
   // Preserve the current page when the user refreshes the browser.
   useEffect(() => {
@@ -782,8 +784,10 @@ export default function App() {
     const priority = { WATCH: 0, NEEDS_SUPPORT: 1, GOOD: 2, VERY_GOOD: 3, NO_DATA: 4 };
     return priority[a.statusFlag] - priority[b.statusFlag] || (a.class || '').localeCompare(b.class || '') || a.name.localeCompare(b.name);
   });
-  const adminStudentPageCount = Math.max(1, Math.ceil(students.length / adminStudentPageSize));
-  const paginatedAdminStudents = students.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
+  const filteredAdminStudents = students.filter(student => (adminStudentClassFilter === 'ALL' || student.class === adminStudentClassFilter) && (student.name.toLowerCase().includes(adminStudentSearch.toLowerCase()) || String(student.nisn || '').includes(adminStudentSearch)));
+  const adminStudentPageCount = Math.max(1, Math.ceil(filteredAdminStudents.length / adminStudentPageSize));
+  const paginatedAdminStudents = filteredAdminStudents.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
+  const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
 
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
@@ -925,6 +929,7 @@ export default function App() {
                 <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
                   <Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar
                 </button>
+                <button onClick={() => { setActiveTab('leader_followups'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'leader_followups' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><ClipboardCheck className="w-4 h-4 text-emerald-400" /> Tindak Lanjut Siswa</button>
                 <button onClick={() => { setActiveTab('admin_teachers'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_teachers' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><UserPlus className="w-4 h-4 text-amber-400" /> Daftar Guru</button>
                 <button onClick={() => { setActiveTab('admin_classes'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_classes' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Layers className="w-4 h-4 text-purple-400" /> Daftar Kelas</button>
                 <button onClick={() => { setActiveTab('admin_students'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_students' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Users className="w-4 h-4 text-emerald-400" /> Daftar Siswa</button>
@@ -945,7 +950,7 @@ export default function App() {
                 <button onClick={() => { setActiveTab('announcements'); setMobileMenuOpen(false); }} className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-300 hover:bg-slate-800"><BellRing className="w-4 h-4 text-amber-400" /> Pengumuman Sekolah</button>
                 <button onClick={() => { setActiveTab('admin_api'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'admin_api' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Key className="w-4 h-4 text-amber-400" /> Konfigurasi AI</button>
                 <button onClick={() => { setActiveTab('schedule'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'schedule' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Calendar className="w-4 h-4 text-cyan-300" /> Jadwal Mengajar</button>
-                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Settings className="w-4 h-4 text-slate-400" /> Pengaturan Admin</button>
+                <button onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'settings' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}><Settings className="w-4 h-4 text-slate-400" /> Pengaturan Kop Surat & Admin</button>
               </>
             )}
 
