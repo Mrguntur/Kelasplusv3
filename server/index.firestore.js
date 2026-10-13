@@ -26,6 +26,12 @@ const authAdmin = getAuth(adminApp);
 const db = getFirestore(adminApp);
 const col = name => db.collection(name);
 const nowIso = () => new Date().toISOString();
+const schoolClock = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Makassar', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  const dayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  return { dayOfWeek: dayMap[values.weekday], time: `${values.hour}:${values.minute}` };
+};
 const id = () => crypto.randomUUID();
 const fail = (res, code, message) => res.status(code).json({ success: false, message });
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
@@ -254,6 +260,14 @@ app.post('/api/attendance', auth, allow('ADMIN','TEACHER'), async (req,res,next)
     const b=req.body||{}, className=clean(b.className), date=b.date, records=b.records;
     if(!className||!validDate(date)||!records||typeof records!=='object'||Array.isArray(records)) return fail(res,400,'Data presensi tidak valid.');
     if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(className)) return fail(res,403,'Anda tidak ditugaskan pada kelas ini.');
+    if (req.user.role === 'TEACHER') {
+      const clock = schoolClock();
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      if (date !== today) return fail(res, 403, 'Absensi hanya dapat diubah pada tanggal hari ini dan selama jam mengajar.');
+      const schedules = await list('teachingSchedules');
+      const inTeachingWindow = schedules.some(item => item.active !== false && item.teacherId === req.user.id && item.className === className && Number(item.dayOfWeek) === clock.dayOfWeek && clock.time >= item.startTime && clock.time < item.endTime);
+      if (!inTeachingWindow) return fail(res, 403, 'Anda tidak berada dalam jam mengajar untuk kelas ini. Absensi hanya dapat diubah selama jadwal mengajar berlangsung.');
+    }
     const classes=await list('classes'), cls=classes.find(c=>c.name===className&&c.active!==false);
     if(!cls) return fail(res,404,'Kelas tidak ditemukan.');
     const students=await list('students'), batch=db.batch();
