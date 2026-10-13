@@ -326,6 +326,21 @@ app.post('/api/ai/teaching-recommendations', auth, async (req,res,next) => {
     try { res.json({success:true,recommendations:JSON.parse(match[0])}); } catch { return fail(res,502,'Respons AI tidak dapat dibaca.'); }
   } catch(error) { next(error); }
 });
+app.patch('/api/profile', auth, async (req,res,next) => {
+  try {
+    const avatar = clean(req.body?.avatar);
+    if (!avatar || avatar.length > 2048 || !/^https:\/\//i.test(avatar)) {
+      return fail(res, 400, 'URL foto profil tidak valid.');
+    }
+    const parsed = new URL(avatar);
+    const allowedHosts = ['firebasestorage.googleapis.com', 'storage.googleapis.com'];
+    if (!allowedHosts.includes(parsed.hostname)) return fail(res, 400, 'Foto profil harus berasal dari Firebase Storage.');
+    await setDoc('users', req.user.id, { avatar, updatedAt: nowIso() }, true);
+    await audit(req.user, 'UPDATE_PROFILE_PHOTO', 'user', req.user.id);
+    res.json({ success: true, avatar });
+  } catch(error) { next(error); }
+});
+
 app.patch('/api/users/:id', auth, allow('ADMIN'), async (req,res,next) => {
   try {
     const old=await getDoc('users',req.params.id); if(!old) return fail(res,404,'Pengguna tidak ditemukan.');
