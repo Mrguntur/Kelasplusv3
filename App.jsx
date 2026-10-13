@@ -109,6 +109,23 @@ export default function App() {
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
   const [deviceNow, setDeviceNow] = useState(() => new Date());
 
+  const fetchStudentFollowUps = async () => {
+    try { const response = await fetch(API_BASE_URL + '/student-follow-ups', { credentials: 'include' }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Riwayat tindak lanjut gagal dimuat.'); setFollowUps(data.followUps || []); }
+    catch (error) { console.warn('Gagal memuat tindak lanjut siswa:', error); }
+  };
+
+  const handleSaveLetterhead = async (event) => {
+    event.preventDefault(); setLetterheadSaving(true); setLetterheadNotice('');
+    try { const response = await fetch(API_BASE_URL + '/settings/letterhead', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(letterheadForm) }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Pengaturan kop surat gagal disimpan.'); setSystemSettings(prev => ({ ...prev, ...data.settings })); setLetterheadForm(prev => ({ ...prev, ...data.settings })); setLetterheadNotice('Pengaturan kop surat berhasil disimpan dan akan digunakan pada laporan berikutnya.'); }
+    catch (error) { setLetterheadNotice(error.message || 'Pengaturan gagal disimpan.'); } finally { setLetterheadSaving(false); }
+  };
+
+  const handleSaveFollowUp = async (event) => {
+    event.preventDefault(); setFollowUpSaving(true); setFollowUpNotice('');
+    try { const response = await fetch(API_BASE_URL + '/student-follow-ups', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(followUpForm) }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Tindak lanjut gagal disimpan.'); setFollowUps(prev => [data.followUp, ...prev]); setFollowUpForm({ studentId: '', date: localDateString(), category: 'Kehadiran rendah', action: '', result: '', nextStep: '', notes: '', status: 'MONITORING' }); setFollowUpNotice('Catatan tindak lanjut berhasil disimpan.'); }
+    catch (error) { setFollowUpNotice(error.message || 'Tindak lanjut gagal disimpan.'); } finally { setFollowUpSaving(false); }
+  };
+
   const fetchAnnouncements = async () => {
     try {
       const response = await fetch(API_BASE_URL + '/announcements', { credentials: 'include' });
