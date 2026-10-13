@@ -1518,8 +1518,30 @@ export default function App() {
           </div>
         )}
 
+        {/* ADMIN - SCHOOL LETTERHEAD SETTINGS */}
+        {currentUser.role === 'ADMIN' && activeTab === 'settings' && (
+          <div className="space-y-6 max-w-4xl">
+            <div><h1 className="text-2xl font-black text-slate-900">Pengaturan Kop Surat</h1><p className="text-xs text-slate-500 mt-1">Informasi ini digunakan pada laporan PDF KELAS+ dan laporan tindak lanjut siswa.</p></div>
+            <form onSubmit={handleSaveLetterhead} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="text-xs font-bold text-slate-700">Nama sekolah / instansi<input required maxLength={160} value={letterheadForm.schoolName||''} onChange={e=>setLetterheadForm(p=>({...p,schoolName:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Tahun pelajaran<input maxLength={30} value={letterheadForm.academicYear||''} onChange={e=>setLetterheadForm(p=>({...p,academicYear:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Alamat sekolah<textarea rows={2} maxLength={300} value={letterheadForm.schoolAddress||''} onChange={e=>setLetterheadForm(p=>({...p,schoolAddress:e.target.value}))} placeholder="Alamat lengkap sekolah" className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Nomor telepon<input maxLength={160} value={letterheadForm.schoolPhone||''} onChange={e=>setLetterheadForm(p=>({...p,schoolPhone:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Email sekolah<input maxLength={160} value={letterheadForm.schoolEmail||''} onChange={e=>setLetterheadForm(p=>({...p,schoolEmail:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700 md:col-span-2">Subjudul kop surat<input maxLength={160} value={letterheadForm.letterheadSubtitle||''} onChange={e=>setLetterheadForm(p=>({...p,letterheadSubtitle:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">Nama kepala sekolah<input maxLength={160} value={letterheadForm.principalName||''} onChange={e=>setLetterheadForm(p=>({...p,principalName:e.target.value}))} placeholder="Nama lengkap dan gelar" className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+                <label className="text-xs font-bold text-slate-700">NIP kepala sekolah<input maxLength={160} value={letterheadForm.principalNip||''} onChange={e=>setLetterheadForm(p=>({...p,principalNip:e.target.value}))} className="mt-1 w-full p-3 border border-slate-300 rounded-xl text-sm font-normal"/></label>
+              </div>
+              {letterheadNotice && <p className="rounded-xl bg-blue-50 text-blue-800 p-3 text-xs font-semibold">{letterheadNotice}</p>}
+              <button type="submit" disabled={letterheadSaving} className="px-5 py-3 rounded-xl bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2"><Save className="w-4 h-4"/>{letterheadSaving?'Menyimpan pengaturan…':'Simpan Pengaturan Kop Surat'}</button>
+            </form>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900">Perubahan berlaku pada laporan PDF yang dibuat setelah pengaturan disimpan. Tidak diperlukan Firebase Storage.</div>
+          </div>
+        )}
+
         {/* PROFILE SETTINGS */}
-        {activeTab === "settings" && (
+        {currentUser.role === 'TEACHER' && activeTab === "settings" && (
           <div className="space-y-6 max-w-2xl"><div><h1 className="text-2xl font-black text-slate-900">Pengaturan Akun & Profil</h1><p className="text-xs text-slate-500 mt-1">Kelola informasi akun Anda</p></div>
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
               <div className="flex items-center gap-4"><div className="w-20 h-20 rounded-full border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-500" aria-label="Avatar pengguna"><svg viewBox="0 0 24 24" className="w-12 h-12" fill="currentColor" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.2-7.5 5v2h15v-2c0-2.8-3.4-5-7.5-5Z"/></svg></div><div><p className="font-bold text-slate-800">Avatar Profil</p><p className="text-xs text-slate-500 my-2">Avatar siluet pengguna sebagai foto profil default.</p></div></div>
