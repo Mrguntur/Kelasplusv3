@@ -434,6 +434,56 @@ app.delete('/api/students/:id', auth, allow('ADMIN'), async (req,res,next) => {
 });
 app.post('/api/settings/gemini-key', auth, allow('ADMIN'), (_req,res) => fail(res,410,'Kunci AI tidak disimpan dari browser. Atur GEMINI_API_KEY pada environment server.'));
 
+app.patch('/api/settings/letterhead', auth, allow('ADMIN'), async (req, res, next) => {
+  try {
+    const allowed = ['schoolName','schoolAddress','schoolPhone','schoolEmail','academicYear','principalName','principalNip','letterheadSubtitle'];
+    const values = {};
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) values[key] = clean(req.body[key]).slice(0, key === 'schoolAddress' ? 300 : 160);
+    }
+    if (values.schoolName !== undefined && !values.schoolName) return fail(res, 400, 'Nama sekolah wajib diisi.');
+    const batch = db.batch();
+    for (const [key, value] of Object.entries(values)) {
+      batch.set(col('appSettings').doc(key), { key, value, updatedAt: nowIso(), updatedBy: req.user.id }, { merge: true });
+    }
+    await batch.commit();
+    await audit(req.user, 'UPDATE', 'appSettings', 'letterhead', { keys: Object.keys(values) });
+    res.json({ success: true, settings: values });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/student-follow-ups', auth, allow('ADMIN','LEADER'), async (req, res, next) => {
+  try {
+    const [rows, studentRows, classRows, userRows] = await Promise.all([list('studentFollowUps'), list('students'), list('classes'), list('users')]);
+    const visible = rows.map(row => {
+      const student = studentRows.find(item => item.id === row.studentId);
+      const klass = classRows.find(item => item.id === student?.classId);
+      const author = userRows.find(item => item.id === row.createdBy);
+      return { ...row, studentName: student?.name || 'Siswa tidak ditemukan', studentClass: klass?.name || '-', createdByName: author?.name || '-' };
+    }).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    res.json({ success: true, followUps: visible });
+  } catch (error) { next(error); }
+});
+app.post('/api/student-follow-ups', auth, allow('LEADER'), async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const studentId = clean(b.studentId), date = clean(b.date), category = clean(b.category), action = clean(b.action);
+    const result = clean(b.result), nextStep = clean(b.nextStep), notes = clean(b.notes);
+    if (!studentId || !validDate(date) || !category || !action || !result) return fail(res, 400, 'Siswa, tanggal, kategori, tindakan, dan hasil tindak lanjut wajib diisi.');
+    if (category.length > 120 || action.length > 3000 || result.length > 3000 || nextStep.length > 2000 || notes.length > 2000) return fail(res, 400, 'Isi laporan melebihi batas panjang yang diizinkan.');
+    const student = await getDoc('students', studentId);
+    if (!student || student.active === false) return fail(res, 404, 'Siswa aktif tidak ditemukan.');
+    const followUpId = id();
+    const record = { id: followUpId, studentId, date, category, action, result, nextStep, notes, status: ['MONITORING','SELESAI'].includes(b.status) ? b.status : 'MONITORING', createdBy: req.user.id, createdAt: nowIso(), updatedAt: nowIso() };
+    await setDoc('studentFollowUps', followUpId, record);
+    await audit(req.user, 'CREATE', 'studentFollowUp', followUpId, { studentId, category });
+    const [classRows, user] = await Promise.all([list('classes'), getDoc('users', req.user.id)]);
+    const klass = classRows.find(item => item.id === student.classId);
+    res.status(201).json({ success: true, followUp: { ...record, studentName: student.name, studentClass: klass?.name || '-', createdByName: user?.name || '-' } });
+  } catch (error) { next(error); }
+});
+
+
 app.get('/api/announcements', auth, async (req, res, next) => {
   try {
     const now = Date.now();
