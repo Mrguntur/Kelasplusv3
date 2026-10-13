@@ -1212,6 +1212,7 @@ export default function App() {
         {currentUser.role === 'LEADER' && activeTab === 'students' && (
           <div className="space-y-6">
             <div><h1 className="text-2xl font-black text-slate-900">Learning Map Sekolah</h1><p className="text-xs text-slate-500 mt-1">Seluruh kelas dipantau bersama. Siswa yang butuh pengawasan ditampilkan paling atas.</p></div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="text-xs font-bold text-slate-700">Filter kelas<select value={mapClassFilter} onChange={e=>setMapClassFilter(e.target.value)} className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl bg-white"><option value="ALL">Semua kelas</option>{classesList.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></label><label className="text-xs font-bold text-slate-700">Cari nama / NISN siswa<input value={studentSearchTerm} onChange={e=>setStudentSearchTerm(e.target.value)} placeholder="Cari siswa yang perlu dipantau..." className="mt-1 w-full p-2.5 border border-slate-300 rounded-xl text-xs"/></label></div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 {key:'WATCH',label:'Butuh Pengawasan',color:'text-red-700'},
@@ -1222,7 +1223,7 @@ export default function App() {
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-left text-xs min-w-[780px]">
               <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="p-3">Nama Siswa</th><th className="p-3">Kelas</th><th className="p-3">Kehadiran</th><th className="p-3">Rata-rata Tugas</th><th className="p-3">Status Perhatian</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{leaderLearningStudents.map(std=><tr key={std.id} className={std.statusFlag==='WATCH'?'bg-amber-50':std.statusFlag==='NEEDS_SUPPORT'?'bg-yellow-50':'hover:bg-slate-50'}>
+              <tbody className="divide-y divide-slate-100">{filteredLeaderStudents.map(std=><tr key={std.id} className={std.statusFlag==='WATCH'?'bg-amber-50':std.statusFlag==='NEEDS_SUPPORT'?'bg-yellow-50':'hover:bg-slate-50'}>
                 <td className="p-3 font-bold">{std.name}</td><td className="p-3">{std.class}</td><td className="p-3">{std.attendanceRate==null?'Belum ada data':std.attendanceRate+'%'}</td><td className="p-3">{std.averageScore==null?'Belum ada nilai':std.averageScore+'%'}</td>
                 <td className="p-3 whitespace-nowrap">
                   {std.statusFlag==='VERY_GOOD'&&<span>🟢 Sangat Baik</span>}{std.statusFlag==='GOOD'&&<span>🟠 Baik</span>}{std.statusFlag==='NEEDS_SUPPORT'&&<span>🟡 Perlu Pendampingan</span>}{std.statusFlag==='WATCH'&&<span>⚠️ Butuh Pengawasan</span>}{std.statusFlag==='NO_DATA'&&<span className="text-slate-500">Belum Ada Data</span>}
