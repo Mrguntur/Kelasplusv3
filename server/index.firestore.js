@@ -420,6 +420,40 @@ app.delete('/api/students/:id', auth, allow('ADMIN'), async (req,res,next) => {
 });
 app.post('/api/settings/gemini-key', auth, allow('ADMIN'), (_req,res) => fail(res,410,'Kunci AI tidak disimpan dari browser. Atur GEMINI_API_KEY pada environment server.'));
 
+app.get('/api/announcements', auth, async (req, res, next) => {
+  try {
+    const now = Date.now();
+    const announcements = (await list('announcements'))
+      .filter(item => item.active !== false && (!item.expiresAt || Date.parse(item.expiresAt) > now))
+      .sort((a, b) => (b.pinned === true) - (a.pinned === true) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    res.json({ success: true, announcements });
+  } catch (err) { next(err); }
+});
+app.post('/api/announcements', auth, allow('ADMIN'), async (req, res, next) => {
+  try {
+    const title = clean(req.body.title).slice(0, 120);
+    const message = clean(req.body.message).slice(0, 2000);
+    const type = ['info', 'important', 'event'].includes(req.body.type) ? req.body.type : 'info';
+    const expiresAt = clean(req.body.expiresAt);
+    if (!title || !message) return fail(res, 400, 'Judul dan isi pengumuman wajib diisi.');
+    if (expiresAt && Number.isNaN(Date.parse(expiresAt))) return fail(res, 400, 'Tanggal kedaluwarsa tidak valid.');
+    const announcementId = id();
+    const announcement = { id: announcementId, title, message, type, active: true, pinned: Boolean(req.body.pinned), createdAt: nowIso(), createdBy: req.user.id, createdByName: req.user.name, expiresAt: expiresAt || null };
+    await setDoc('announcements', announcementId, announcement);
+    await audit(req.user, 'CREATE', 'announcement', announcementId, { title, type });
+    res.status(201).json({ success: true, announcement });
+  } catch (err) { next(err); }
+});
+app.delete('/api/announcements/:id', auth, allow('ADMIN'), async (req, res, next) => {
+  try {
+    const item = await getDoc('announcements', req.params.id);
+    if (!item) return fail(res, 404, 'Pengumuman tidak ditemukan.');
+    await setDoc('announcements', item.id, { active: false, updatedAt: nowIso(), updatedBy: req.user.id }, true);
+    await audit(req.user, 'DEACTIVATE', 'announcement', item.id, { title: item.title });
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 registerScheduleRoutes({ app, auth, allow, col, list, getDoc, setDoc, audit, id, adminApp });
 
 app.use((err,_req,res,_next) => { console.error('API error:',err); res.status(500).json({success:false,message:'Terjadi kesalahan server. Silakan coba kembali.'}); });
