@@ -801,7 +801,7 @@ export default function App() {
   const adminStudentPageCount = Math.max(1, Math.ceil(filteredAdminStudents.length / adminStudentPageSize));
   const paginatedAdminStudents = filteredAdminStudents.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
   const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
-  const visibleSchedules = schedules.filter(item => (currentUser?.role !== 'LEADER' || Number(item.dayOfWeek) === Number(selectedScheduleDay)) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
+  const visibleSchedules = schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
 
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
