@@ -313,7 +313,7 @@ export default function App() {
       setAttendanceRecords(prev => ({ ...prev, [selectedClass + '_' + attendanceDate]: { ...currentAttendance } }));
       setAttendanceSaveStatus('saved');
       alert('Presensi kelas ' + selectedClass + ' tanggal ' + attendanceDate + ' berhasil disimpan (' + Object.keys(currentAttendance).length + ' siswa).');
-    } catch (err) { setAttendanceSaveStatus('error'); alert(err.message || 'Presensi gagal disimpan.'); }
+    } catch (err) { setAttendanceSaveStatus('error'); setToastNotice({ title: err.message?.includes('jam mengajar') || err.message?.includes('jadwal mengajar') ? '⏰ Di luar jam mengajar' : '⚠️ Presensi belum tersimpan', message: err.message || 'Presensi gagal disimpan.', type: 'warning' }); }
     finally { setSavingAttendance(false); }
   };
 
