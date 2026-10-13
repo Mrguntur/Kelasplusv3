@@ -72,6 +72,10 @@ export default function App() {
   const [scheduleForm, setScheduleForm] = useState({ teacherId: '', classId: '', subject: 'Bahasa Inggris', dayOfWeek: '1', startTime: '07:30', endTime: '08:10', room: '' });
   const [notificationStatus, setNotificationStatus] = useState('idle');
   const [notificationMessage, setNotificationMessage] = useState('');
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '', type: 'info', pinned: true, expiresAt: '' });
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [announcementNotice, setAnnouncementNotice] = useState('');
 
   // Admin Feature States
   const [newTeacher, setNewTeacher] = useState({ name: '', nip: '', subject: 'Bahasa Inggris', username: '', password: '', assignedClasses: [] });
@@ -90,6 +94,29 @@ export default function App() {
 
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
   const [deviceNow, setDeviceNow] = useState(() => new Date());
+
+  const fetchAnnouncements = async () => {
+    try {
+      const response = await fetch(API_BASE_URL + '/announcements', { credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Pengumuman tidak dapat dimuat.');
+      setAnnouncements(data.announcements || []);
+    } catch (error) { console.warn('Gagal memuat pengumuman:', error); }
+  };
+  const handleSaveAnnouncement = async (event) => {
+    event.preventDefault(); setAnnouncementSaving(true); setAnnouncementNotice('');
+    try {
+      const response = await fetch(API_BASE_URL + '/announcements', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...announcementForm, expiresAt: announcementForm.expiresAt ? new Date(announcementForm.expiresAt + 'T23:59:59').toISOString() : '' }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Pengumuman gagal disimpan.');
+      setAnnouncements(items => [data.announcement, ...items]); setAnnouncementForm({ title: '', message: '', type: 'info', pinned: true, expiresAt: '' }); setAnnouncementNotice('Pengumuman berhasil diterbitkan.');
+    } catch (error) { setAnnouncementNotice(error.message || 'Pengumuman gagal disimpan.'); } finally { setAnnouncementSaving(false); }
+  };
+  const handleDeleteAnnouncement = async (announcement) => {
+    if (!window.confirm('Nonaktifkan pengumuman ini?')) return;
+    try { const response = await fetch(API_BASE_URL + '/announcements/' + encodeURIComponent(announcement.id), { method: 'DELETE', credentials: 'include' }); const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Pengumuman gagal dinonaktifkan.'); setAnnouncements(items => items.filter(item => item.id !== announcement.id)); }
+    catch (error) { setAnnouncementNotice(error.message || 'Pengumuman gagal dinonaktifkan.'); }
+  };
 
   // Load school data only after a valid server session exists.
   const fetchBootstrapData = async () => {
@@ -132,7 +159,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (currentUser) fetchBootstrapData();
+    if (currentUser) { fetchBootstrapData(); fetchAnnouncements(); }
   }, [currentUser]);
   
   // End sessions after 30 minutes of inactivity and refresh active server sessions.
