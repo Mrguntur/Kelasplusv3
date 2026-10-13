@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import firebaseApp from './firebase.js';
 import { getMessaging, getToken } from 'firebase/messaging';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 const localDateString = (date = new Date()) => date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
@@ -88,7 +88,6 @@ export default function App() {
 
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '', avatar: '' });
   const [deviceNow, setDeviceNow] = useState(() => new Date());
-  const [avatarUploading, setAvatarUploading] = useState(false);
 
   // Load school data only after a valid server session exists.
   const fetchBootstrapData = async () => {
@@ -1390,9 +1389,9 @@ export default function App() {
 
         {/* PROFILE SETTINGS */}
         {activeTab === "settings" && (
-          <div className="space-y-6 max-w-2xl"><div><h1 className="text-2xl font-black text-slate-900">Pengaturan Akun & Profil</h1><p className="text-xs text-slate-500 mt-1">Kelola informasi dan foto profil akun Anda</p></div>
+          <div className="space-y-6 max-w-2xl"><div><h1 className="text-2xl font-black text-slate-900">Pengaturan Akun & Profil</h1><p className="text-xs text-slate-500 mt-1">Kelola informasi akun Anda</p></div>
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-              <div className="flex items-center gap-4"><img src={profileForm.avatar || currentUser.avatar || ("https://ui-avatars.com/api/?name=" + encodeURIComponent(currentUser.name || "Guru") + "&background=1e40af&color=fff")} alt="Foto profil" className="w-20 h-20 rounded-full object-cover border border-slate-200" /><div><p className="font-bold text-slate-800">Foto Profil</p><p className="text-xs text-slate-500 my-2">JPG, PNG atau WebP · Maksimal 2 MB</p><label className="inline-flex px-3 py-2 rounded-lg bg-blue-800 text-white text-xs font-bold cursor-pointer">{avatarUploading ? "Mengunggah…" : "Unggah / Ganti Foto"}<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={avatarUploading} onChange={async e => { const file=e.target.files && e.target.files[0]; e.target.value=""; if(!file)return; if(!["image/jpeg","image/png","image/webp"].includes(file.type)){alert("Pilih gambar JPG, PNG, atau WebP.");return;} if(file.size>2*1024*1024){alert("Ukuran foto maksimal 2 MB.");return;} if(!firebaseApp){alert("Konfigurasi Firebase web belum lengkap.");return;} setAvatarUploading(true); try { const storage=getStorage(firebaseApp); const target=storageRef(storage,"profilePhotos/"+currentUser.id+"/avatar-"+Date.now()); await uploadBytes(target,file,{contentType:file.type}); const url=await getDownloadURL(target); const response=await fetch(API_BASE_URL+"/profile",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({avatar:url})}); const data=await response.json(); if(!response.ok||!data.success)throw new Error(data.message||"Profil gagal disimpan."); setProfileForm(p=>({...p,avatar:url})); setCurrentUser(p=>({...p,avatar:url})); alert("Foto profil berhasil diperbarui."); } catch(err){alert("Unggah foto gagal. Pastikan Firebase Storage aktif dan atur aturan Storage untuk pengguna terautentikasi. "+(err.message||""));} finally{setAvatarUploading(false);} }} /></label></div></div>
+              <div className="flex items-center gap-4"><div className="w-20 h-20 rounded-full border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-500" aria-label="Avatar pengguna"><svg viewBox="0 0 24 24" className="w-12 h-12" fill="currentColor" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-7.5 2.2-7.5 5v2h15v-2c0-2.8-3.4-5-7.5-5Z"/></svg></div><div><p className="font-bold text-slate-800">Avatar Profil</p><p className="text-xs text-slate-500 my-2">Avatar siluet pengguna sebagai foto profil default.</p></div></div>
               <div><label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label><input type="text" value={profileForm.name || currentUser.name || ""} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
               <div><label className="block text-xs font-bold text-slate-700 mb-1">Username</label><input type="text" value={currentUser.username || ""} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
               <div><label className="block text-xs font-bold text-slate-700 mb-1">Mata Pelajaran</label><input type="text" value={currentUser.subject || "-"} disabled className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-300 rounded-xl text-xs font-bold" /></div>
