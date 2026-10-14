@@ -150,11 +150,10 @@ export default function App() {
   };
 
   // Load school data only after a valid server session exists.
+  // Session-scoped cache gives an instant first paint without persisting student data after the tab closes.
   const fetchBootstrapData = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/bootstrap`, { credentials: 'include' });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message || 'Gagal memuat data aplikasi.');
+    const cacheKey = currentUser?.id ? `kelasplus.bootstrap.v1.${currentUser.id}` : '';
+    const applyBootstrap = data => {
       setUsers(data.users || []);
       setClassesList(data.classes || []);
       setStudents(data.students || []);
@@ -173,10 +172,32 @@ export default function App() {
         attendanceMap[key][r.student_id] = r.status;
       });
       setAttendanceRecords(attendanceMap);
+    };
+    let cachedData = null;
+    if (cacheKey) {
+      try {
+        const raw = window.sessionStorage.getItem(cacheKey);
+        const entry = raw ? JSON.parse(raw) : null;
+        if (entry?.savedAt && Date.now() - entry.savedAt < 2 * 60 * 1000 && entry.data?.success) {
+          cachedData = entry.data;
+          applyBootstrap(cachedData);
+        } else if (raw) window.sessionStorage.removeItem(cacheKey);
+      } catch (error) { console.warn('Cache data lokal tidak dapat dibaca:', error); }
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/bootstrap`, { credentials: 'include', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Gagal memuat data aplikasi.');
+      applyBootstrap(data);
+      if (cacheKey) {
+        try { window.sessionStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), data })); }
+        catch (error) { console.warn('Cache lokal penuh atau tidak tersedia:', error); }
+      }
       setIsServerOnline(true);
     } catch (err) {
       setIsServerOnline(false);
-      setLoginError(err.message || 'Server tidak dapat dihubungi.');
+      if (!cachedData) setLoginError(err.message || 'Server tidak dapat dihubungi.');
+      else setToastNotice({ type: 'warning', message: 'Menampilkan data tersimpan sementara. Periksa koneksi untuk memperbarui data.' });
     }
   };
 
@@ -312,6 +333,12 @@ export default function App() {
       console.warn('Backend logout request failed:', err);
     } finally {
       await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2500 - (Date.now() - logoutStartedAt))));
+      try {
+        for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
+          const key = window.sessionStorage.key(i);
+          if (key && key.startsWith('kelasplus.bootstrap.v1.')) window.sessionStorage.removeItem(key);
+        }
+      } catch (error) { console.warn('Cache lokal gagal dibersihkan:', error); }
       setCurrentUser(null);
       setIsLoggingOut(false);
       setUsers([]);

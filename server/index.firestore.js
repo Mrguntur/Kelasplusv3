@@ -37,7 +37,82 @@ const fail = (res, code, message) => res.status(code).json({ success: false, mes
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
 const cookieOptions = () => ({ httpOnly: true, secure: ENV === 'production', sameSite: 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
-const list = async name => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+// Only mutations that can change cached school data should invalidate the read cache.
+// Heartbeats, login/logout, notification-token registration, and cron dispatch do not
+// change any collection in READ_CACHEABLE_COLLECTIONS; invalidating on those requests
+// would discard useful cache entries without improving data consistency.
+const READ_CACHE_NEUTRAL_PATHS = new Set([
+  '/login',
+  '/auth/login',
+  '/auth/activity',
+  '/auth/logout',
+  '/notifications/register',
+  '/internal/notifications/dispatch'
+]);
+app.use('/api', (req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ||
+      READ_CACHE_NEUTRAL_PATHS.has(req.path)) return next();
+  res.once('finish', () => {
+    if (res.statusCode >= 200 && res.statusCode < 400) invalidateReadCache();
+  });
+  next();
+});
+// Short-lived process cache for repeat reads. Never cache authentication/session collections.
+const READ_CACHE_TTL_MS = 8_000;
+const READ_CACHE_MAX_ENTRIES = 200;
+const READ_CACHEABLE_COLLECTIONS = new Set([
+  'classes', 'students', 'attendanceRecords', 'journals', 'teacherAssignmentScores',
+  'assignmentTasks', 'teachingSchedules', 'appSettings', 'announcements',
+  'studentFollowUps', 'teachers'
+]);
+const readCache = new Map();
+const readInFlight = new Map();
+let readCacheGeneration = 0;
+const readCacheKey = (name, query) => name + ':' + JSON.stringify(query);
+async function cachedRead(name, query, loader) {
+  if (!READ_CACHEABLE_COLLECTIONS.has(name)) return loader();
+  const key = readCacheKey(name, query);
+  const now = Date.now();
+  const cached = readCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    readCache.delete(key);
+    readCache.set(key, cached);
+    return cached.value.map(item => ({ ...item }));
+  }
+  if (cached) readCache.delete(key);
+
+  // Coalesce simultaneous identical reads so a burst of requests does not issue
+  // the same Firestore query multiple times.
+  const pending = readInFlight.get(key);
+  if (pending) return (await pending).map(item => ({ ...item }));
+
+  const generation = readCacheGeneration;
+  const request = (async () => {
+    const value = await loader();
+    // Do not repopulate stale data if a write invalidated the cache while this
+    // Firestore read was still in progress.
+    if (generation === readCacheGeneration) {
+      if (readCache.size >= READ_CACHE_MAX_ENTRIES) readCache.delete(readCache.keys().next().value);
+      readCache.set(key, { value: value.map(item => ({ ...item })), expiresAt: Date.now() + READ_CACHE_TTL_MS });
+    }
+    return value;
+  })();
+  readInFlight.set(key, request);
+  try {
+    return (await request).map(item => ({ ...item }));
+  } finally {
+    if (readInFlight.get(key) === request) readInFlight.delete(key);
+  }
+}
+function invalidateReadCache() {
+  readCacheGeneration++;
+  readCache.clear();
+  readInFlight.clear();
+}
+const list = async name => cachedRead(name, ['all'], async () => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
+const listBy = async (name, field, value) => cachedRead(name, [field, value], async () => (await col(name).where(field, '==', value).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
+const listByMany = async (name, field, values) => (await Promise.all([...new Set(values)].map(value => listBy(name, field, value)))).flat();
 const getDoc = async (name, docId) => { const snap = await col(name).doc(String(docId)).get(); return snap.exists ? { id: snap.id, ...snap.data() } : null; };
 const setDoc = (name, docId, data, merge = false) => col(name).doc(String(docId)).set(data, { merge });
 const delDoc = (name, docId) => col(name).doc(String(docId)).delete();
@@ -172,14 +247,25 @@ app.post('/api/auth/logout', auth, async (req, res, next) => {
 
 app.get('/api/bootstrap', auth, async (req, res, next) => {
   try {
-    const [classRows, studentRows, attendanceRows, journalRows, userRows, scoreRows, taskRows, settingsRows] = await Promise.all([
-      list('classes'), list('students'), list('attendanceRecords'), list('journals'), list('users'),
-      list('teacherAssignmentScores'), list('assignmentTasks'), list('appSettings')
-    ]);
+    // Resolve visible classes first so teacher requests only read records for assigned classes.
+    const classRows = await list('classes');
     const activeClasses = classRows.filter(c => c.active !== false).sort((a,b) => a.name.localeCompare(b.name));
     const assigned = req.user.assignedClasses || [];
     const visibleClasses = activeClasses.filter(c => req.user.role !== 'TEACHER' || assigned.includes('ALL') || assigned.includes(c.name));
     const visibleIds = new Set(visibleClasses.map(c => c.id));
+    const teacherOnly = req.user.role === 'TEACHER';
+    const visibleClassIds = [...visibleIds];
+
+    const [studentRows, attendanceRows, journalRows, userRows, scoreRows, taskRows, settingsRows] = await Promise.all([
+      teacherOnly ? (visibleClassIds.length ? listByMany('students', 'classId', visibleClassIds) : Promise.resolve([])) : list('students'),
+      teacherOnly ? (visibleClassIds.length ? listByMany('attendanceRecords', 'classId', visibleClassIds) : Promise.resolve([])) : list('attendanceRecords'),
+      teacherOnly ? listBy('journals', 'teacherId', req.user.id) : list('journals'),
+      teacherOnly ? Promise.resolve([req.user]) : list('users'),
+      teacherOnly ? listBy('teacherAssignmentScores', 'teacherId', req.user.id) : list('teacherAssignmentScores'),
+      teacherOnly ? listBy('assignmentTasks', 'teacherId', req.user.id) : list('assignmentTasks'),
+      list('appSettings')
+    ]);
+
     const students = studentRows.filter(s => s.active !== false && visibleIds.has(s.classId))
       .sort((a,b) => a.name.localeCompare(b.name)).map(s => {
         const cls = classRows.find(c => c.id === s.classId);
@@ -264,7 +350,7 @@ app.post('/api/attendance', auth, allow('ADMIN','TEACHER'), async (req,res,next)
       const clock = schoolClock();
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       if (date !== today) return fail(res, 403, 'Absensi hanya dapat diubah pada tanggal hari ini dan selama jam mengajar.');
-      const schedules = await list('teachingSchedules');
+      const schedules = await listBy('teachingSchedules', 'teacherId', req.user.id);
       const inTeachingWindow = schedules.some(item => item.active !== false && item.teacherId === req.user.id && item.className === className && Number(item.dayOfWeek) === clock.dayOfWeek && clock.time >= item.startTime && clock.time < item.endTime);
       if (!inTeachingWindow) return fail(res, 403, 'Anda tidak berada dalam jam mengajar untuk kelas ini. Absensi hanya dapat diubah selama jadwal mengajar berlangsung.');
     }
@@ -518,7 +604,7 @@ app.delete('/api/announcements/:id', auth, allow('ADMIN'), async (req, res, next
   } catch (err) { next(err); }
 });
 
-registerScheduleRoutes({ app, auth, allow, col, list, getDoc, setDoc, audit, id, adminApp });
+registerScheduleRoutes({ app, auth, allow, col, list, listBy, getDoc, setDoc, audit, id, adminApp });
 
 app.use((err,_req,res,_next) => { console.error('API error:',err); res.status(500).json({success:false,message:'Terjadi kesalahan server. Silakan coba kembali.'}); });
 app.use((_req,res) => fail(res,404,'Endpoint tidak ditemukan.'));
