@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const dir = path.resolve(process.argv[2] || 'dist');
-const required = ['index.html', 'manifest.webmanifest', 'firebase-messaging-sw.js', 'pwa-192.png', 'pwa-512.png'];
+const required = ['index.html', 'manifest.webmanifest', 'firebase-messaging-sw.js', '.htaccess', 'pwa-192.png', 'pwa-512.png'];
 for (const file of required) {
   if (!fs.existsSync(path.join(dir, file))) throw new Error(`PWA build missing: ${file}`);
 }
