@@ -65,7 +65,11 @@ jobs:
           done
           case "$VITE_API_BASE_URL" in
             https://*) ;;
-            *) echo "::error::VITE_API_BASE_URL must be the public HTTPS API base URL ending in /api, not localhost."; exit 1 ;;
+            *) echo "::error::VITE_API_BASE_URL must use HTTPS, not localhost or HTTP."; exit 1 ;;
+          esac
+          case "$VITE_API_BASE_URL" in
+            */api|*/api/) ;;
+            *) echo "::error::VITE_API_BASE_URL must end in /api."; exit 1 ;;
           esac
 
       - name: Build web bundle for Android
