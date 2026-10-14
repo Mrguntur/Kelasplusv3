@@ -40,7 +40,7 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install project dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Install Capacitor toolchain
         run: npm install --no-save --no-audit --no-fund @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
