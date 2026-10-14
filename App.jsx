@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import { auth, firebaseConfigured } from './firebase.js';
 import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { 
@@ -11,7 +10,6 @@ import {
   Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing
 } from 'lucide-react';
 import firebaseApp from './firebase.js';
-import { getMessaging, getToken } from 'firebase/messaging';
 
 
 const APP_VERSION = '2.2.0';
@@ -460,6 +458,8 @@ export default function App() {
       const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
       const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?config=${encodeURIComponent(encodedConfig)}`, { scope: '/' });
       await navigator.serviceWorker.ready;
+      // Load Firebase Messaging only when a user explicitly enables notifications.
+      const { getMessaging, getToken } = await import('firebase/messaging');
       const messaging = getMessaging(firebaseApp);
       const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
       if (!token) throw new Error('Token not berhasil dibuat. Periksa Firebase Cloud Messaging dan VAPID key.');
@@ -516,7 +516,9 @@ export default function App() {
       setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
     } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
   };
-  const downloadStudentTemplate = () => {
+  const downloadStudentTemplate = async () => {
+    // XLSX is sizeable; keep it out of the initial application bundle.
+    const XLSX = await import('xlsx');
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([
       ['Nama Siswa', 'NISN', 'Kelas', 'Jenis Kelamin']
@@ -544,6 +546,8 @@ export default function App() {
     setStudentImportRows([]);
     setStudentImportFileName(file.name);
     try {
+      // Load spreadsheet parsing only when an administrator selects an Excel file.
+      const XLSX = await import('xlsx');
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array' });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -794,13 +798,34 @@ export default function App() {
     finally { setSavingGradesFor(''); }
   };
 
-  // Student monitoring indicators are calculated from saved attendance and grade records.
+  // Pre-index records once per render instead of scanning every attendance/grade row for every student.
+  // This changes student-map calculations from repeated O(students × records) scans to linear indexing.
   const teacherAssignedClasses = currentUser?.role === 'TEACHER' ? (currentUser.assignedClasses || []) : classesList.map(c => c.name);
+  const attendanceByClassStudent = new Map();
+  Object.entries(attendanceRecords).forEach(([key, record]) => {
+    const splitAt = key.lastIndexOf('_');
+    if (splitAt < 0) return;
+    const className = key.slice(0, splitAt);
+    Object.entries(record).forEach(([studentId, status]) => {
+      const metricKey = className + '\\u0000' + studentId;
+      const values = attendanceByClassStudent.get(metricKey) || [];
+      values.push(status);
+      attendanceByClassStudent.set(metricKey, values);
+    });
+  });
+  const gradesByStudent = new Map();
+  assignmentScores.forEach(grade => {
+    if (grade.score === null || grade.score === undefined) return;
+    if (currentUser?.role === 'TEACHER' && (grade.teacherId !== currentUser.id || grade.subject !== (currentUser.subject || 'Umum'))) return;
+    const values = gradesByStudent.get(grade.studentId) || [];
+    values.push(Number(grade.score));
+    gradesByStudent.set(grade.studentId, values);
+  });
   const getStudentMetrics = (student) => {
-    const records = Object.entries(attendanceRecords).filter(([key, row]) => key.startsWith(student.class + '_') && Object.prototype.hasOwnProperty.call(row, student.id)).map(([, row]) => row[student.id]);
+    const records = attendanceByClassStudent.get(student.class + '\\u0000' + student.id) || [];
     const attendanceRate = records.length ? Math.round(records.filter(status => status === 'PRESENT').length / records.length * 100) : null;
-    const subjectGrades = assignmentScores.filter(g => g.studentId === student.id && g.score !== null && g.score !== undefined && (currentUser?.role !== 'TEACHER' || (g.teacherId === currentUser.id && g.subject === (currentUser.subject || 'Umum'))));
-    const averageScore = subjectGrades.length ? Math.round(subjectGrades.reduce((sum, g) => sum + Number(g.score), 0) / subjectGrades.length) : null;
+    const subjectGrades = gradesByStudent.get(student.id) || [];
+    const averageScore = subjectGrades.length ? Math.round(subjectGrades.reduce((sum, score) => sum + score, 0) / subjectGrades.length) : null;
     let statusFlag = 'NO_DATA';
     if (attendanceRate !== null || averageScore !== null) {
       const attendance = attendanceRate === null ? 100 : attendanceRate;
