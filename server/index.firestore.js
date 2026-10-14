@@ -38,9 +38,21 @@ const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.te
 const cookieOptions = () => ({ httpOnly: true, secure: ENV === 'production', sameSite: 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
 
-// Any successful API mutation invalidates cached reads after the response finishes.
+// Only mutations that can change cached school data should invalidate the read cache.
+// Heartbeats, login/logout, notification-token registration, and cron dispatch do not
+// change any collection in READ_CACHEABLE_COLLECTIONS; invalidating on those requests
+// would discard useful cache entries without improving data consistency.
+const READ_CACHE_NEUTRAL_PATHS = new Set([
+  '/login',
+  '/auth/login',
+  '/auth/activity',
+  '/auth/logout',
+  '/notifications/register',
+  '/internal/notifications/dispatch'
+]);
 app.use('/api', (req, res, next) => {
-  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ||
+      READ_CACHE_NEUTRAL_PATHS.has(req.path)) return next();
   res.once('finish', () => {
     if (res.statusCode >= 200 && res.statusCode < 400) invalidateReadCache();
   });
