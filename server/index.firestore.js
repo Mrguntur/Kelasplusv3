@@ -531,7 +531,7 @@ app.delete('/api/announcements/:id', auth, allow('ADMIN'), async (req, res, next
   } catch (err) { next(err); }
 });
 
-registerScheduleRoutes({ app, auth, allow, col, list, getDoc, setDoc, audit, id, adminApp });
+registerScheduleRoutes({ app, auth, allow, col, list, listBy, getDoc, setDoc, audit, id, adminApp });
 
 app.use((err,_req,res,_next) => { console.error('API error:',err); res.status(500).json({success:false,message:'Terjadi kesalahan server. Silakan coba kembali.'}); });
 app.use((_req,res) => fail(res,404,'Endpoint tidak ditemukan.'));
