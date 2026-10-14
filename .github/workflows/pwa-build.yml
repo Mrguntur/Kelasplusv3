@@ -34,6 +34,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Require production FCM VAPID key
+        shell: bash
+        run: |
+          if [ -z "$VITE_FIREBASE_VAPID_KEY" ]; then
+            echo "::error::Set repository variable VITE_FIREBASE_VAPID_KEY to the Firebase Web Push public key before creating a production-ready PWA artifact."
+            exit 1
+          fi
       - name: Check backend and service worker syntax
         run: node --check server/index.firestore.js && node --check server/schedule-routes.js && node --check public/firebase-messaging-sw.js
       - name: Build frontend and generate PWA icons
