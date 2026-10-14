@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - main
+      - perf/kplus-optimization-pass2
 
 jobs:
   build:
@@ -22,5 +23,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Build frontend
+      - name: Check backend and service worker syntax
+        run: node --check server/index.firestore.js && node --check server/schedule-routes.js && node --check public/firebase-messaging-sw.js
+      - name: Build frontend and generate PWA icons
         run: npm run build
+      - name: Validate built PWA files and icon dimensions
+        run: node scripts/verify-pwa-build.mjs dist
+      - name: Upload install-ready web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: kelasplus-pwa-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
