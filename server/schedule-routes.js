@@ -23,7 +23,7 @@ function jakartaParts(date = new Date()) {
   return { date: `${p.year}-${p.month}-${p.day}`, dayOfWeek: days[p.weekday], hour: Number(p.hour), minute: Number(p.minute) };
 }
 
-export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, setDoc, audit, id, adminApp }) {
+export function registerScheduleRoutes({ app, auth, allow, col, list, listBy, getDoc, setDoc, audit, id, adminApp }) {
   const messaging = getMessaging(adminApp);
 
   app.get('/api/schedules', auth, async (req, res, next) => {
@@ -133,8 +133,8 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
       const targetDay = targetMinute >= 1440 ? (current.dayOfWeek % 7) + 1 : current.dayOfWeek;
       const normalizedTargetMinute = targetMinute % 1440;
       const targetTime = `${String(Math.floor(normalizedTargetMinute / 60)).padStart(2, '0')}:${String(normalizedTargetMinute % 60).padStart(2, '0')}`;
-      const scheduleSnapshot = await col('teachingSchedules').where('dayOfWeek', '==', targetDay).where('startTime', '==', targetTime).get();
-      const schedules = scheduleSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => s.active !== false);
+      const scheduleSnapshot = await col('teachingSchedules').where('dayOfWeek', '==', targetDay).get();
+      const schedules = scheduleSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => s.active !== false && s.startTime === targetTime);
       let sent = 0, skipped = 0, failed = 0;
       for (const schedule of schedules) {
         const dispatchId = `${current.date}_${schedule.id}_${targetTime.replace(':', '')}`;
