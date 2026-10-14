@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/teaching-schedule-push]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, feature/teaching-schedule-push]
 
 jobs:
   frontend-build:
@@ -19,5 +19,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Check optimized backend syntax
+        run: node --check server/index.firestore.js && node --check server/schedule-routes.js
       - name: Build frontend
         run: npm run build
