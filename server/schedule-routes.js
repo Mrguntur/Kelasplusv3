@@ -13,9 +13,9 @@ const fail = (res, code, message) => res.status(code).json({ success: false, mes
 const clean = value => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
 
-function jakartaParts(date = new Date()) {
+function schoolTimeParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit',
     weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
   }).formatToParts(date);
   const p = Object.fromEntries(parts.map(item => [item.type, item.value]));
@@ -127,7 +127,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, listBy, ge
           !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
         return fail(res, 401, 'Unauthorized scheduler.');
       }
-      const current = jakartaParts();
+      const current = schoolTimeParts();
       const currentMinute = current.hour * 60 + current.minute;
       const targetMinute = currentMinute + 5;
       const targetDay = targetMinute >= 1440 ? (current.dayOfWeek % 7) + 1 : current.dayOfWeek;
@@ -148,7 +148,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, listBy, ge
         if (!reserved) { skipped++; continue; }
         try {
           const deviceSnapshot = await col('notificationDevices').where('userId', '==', schedule.teacherId).get();
-          const devices = deviceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(d => d.token);
+          const devices = deviceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(d => d.active !== false && d.token);
           if (!devices.length) {
             await dispatchRef.delete();
             skipped++;
@@ -158,7 +158,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, listBy, ge
             tokens: devices.map(d => d.token),
             notification: { title: 'Pengingat Mengajar', body: `5 menit lagi: ${schedule.subject} — ${schedule.className} (${schedule.startTime}).` },
             data: { type: 'teaching_reminder', scheduleId: schedule.id, url: '/?page=schedule' },
-            webpush: { fcmOptions: { link: 'https://kelasplus.my.id/?page=schedule' }, notification: { icon: '/favicon.png', tag: `schedule-${schedule.id}-${current.date}` } },
+            webpush: { fcmOptions: { link: 'https://www.kelasplus.my.id/?page=schedule' }, notification: { icon: '/favicon.png', tag: `schedule-${schedule.id}-${current.date}` } },
             android: { priority: 'high', notification: { channelId: 'teaching-reminders', tag: `schedule-${schedule.id}-${current.date}` } }
           });
           const batch = col('notificationDevices').firestore.batch();
@@ -177,7 +177,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, listBy, ge
           failed++;
         }
       }
-      res.json({ success: true, timezone: 'Asia/Jakarta', targetTime, matchedSchedules: schedules.length, sent, skipped, failed });
+      res.json({ success: true, timezone: 'Asia/Makassar', targetTime, matchedSchedules: schedules.length, sent, skipped, failed });
     } catch (error) { next(error); }
   });
 }
