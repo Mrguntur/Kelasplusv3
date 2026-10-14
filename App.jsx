@@ -26,6 +26,7 @@ export default function App() {
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -204,8 +205,18 @@ export default function App() {
     let cancelled = false;
     fetch(API_BASE_URL + '/auth/me', { credentials: 'include' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (!cancelled && data && data.success) { const user = data.user; setCurrentUser(user); const savedTab = window.sessionStorage.getItem('kelasplus.activeTab'); const roleTabs = user.role === 'ADMIN' ? ['admin_overview','admin_users','admin_teachers','admin_classes','admin_students','announcements','admin_api','schedule','settings'] : user.role === 'LEADER' ? ['leader_overview','schedule','students','admin_teachers','admin_classes','admin_students','leader_followups','reports','settings'] : ['dashboard','classes','attendance','journal','students','reports','ai','schedule','settings']; setActiveTab(roleTabs.includes(savedTab) ? savedTab : user.role === 'ADMIN' ? 'admin_overview' : user.role === 'LEADER' ? 'leader_overview' : 'dashboard'); } })
-      .catch(() => { if (!cancelled) setIsServerOnline(false); });
+      .then(data => {
+        if (cancelled) return;
+        if (data && data.success && data.user) {
+          const user = data.user;
+          setCurrentUser(user);
+          const savedTab = window.sessionStorage.getItem('kelasplus.activeTab');
+          const roleTabs = user.role === 'ADMIN' ? ['admin_overview','admin_users','admin_teachers','admin_classes','admin_students','announcements','admin_api','schedule','settings'] : user.role === 'LEADER' ? ['leader_overview','schedule','students','admin_teachers','admin_classes','admin_students','leader_followups','reports','settings'] : ['dashboard','classes','attendance','journal','students','reports','ai','schedule','settings'];
+          setActiveTab(roleTabs.includes(savedTab) ? savedTab : user.role === 'ADMIN' ? 'admin_overview' : user.role === 'LEADER' ? 'leader_overview' : 'dashboard');
+        }
+      })
+      .catch(() => { if (!cancelled) setIsServerOnline(false); })
+      .finally(() => { if (!cancelled) setIsCheckingSession(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -874,6 +885,20 @@ export default function App() {
   const paginatedAdminStudents = filteredAdminStudents.slice((adminStudentPage - 1) * adminStudentPageSize, adminStudentPage * adminStudentPageSize);
   const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
   const visibleSchedules = schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
+
+  // Keep the app shell visible while restoring the existing session on refresh.
+  // Only show the login form after the session check confirms there is no active session.
+  if (!currentUser && isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans" role="status" aria-live="polite">
+        <div className="flex flex-col items-center text-white">
+          <div className="w-12 h-12 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" />
+          <p className="mt-4 text-lg font-black">KELAS<span className="text-amber-400">+</span></p>
+          <p className="mt-1 text-xs text-slate-300">Memulihkan sesi Anda...</p>
+        </div>
+      </div>
+    );
+  }
 
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
