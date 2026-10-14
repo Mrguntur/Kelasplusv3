@@ -24,6 +24,11 @@ Run `npm install` and `npm run build`. The `prebuild` script generates real 192x
 6. Test Admin, Leader and Teacher login, session restoration, attendance/journals, Learning Map, AI/API requests, and FCM foreground/background notifications.
 7. After another deploy, confirm the service worker activates the new cache version `kelasplus-shell-v2` and the app updates cleanly.
 
+## Build-time configuration
+
+- `VITE_API_BASE_URL` defaults to `/api` for same-origin YoHost routing. If the existing Node/Express API is exposed on a different host or path, set this repository variable to the exact production API base URL before downloading/deploying the artifact.
+- `VITE_FIREBASE_VAPID_KEY` must be set as a GitHub Actions repository variable to preserve browser push-notification registration in the downloadable artifact. Without it, the PWA can install but its notification activation flow will report the missing VAPID key. Use the public Web Push certificate key from the existing Firebase project; do not substitute the Firebase service-account JSON or any private server secret.
+
 ## Deployment safety
 
 This change must not be merged to the production branch or considered live until the GitHub build passes and the built frontend has been deployed and smoke-tested on YoHost. The assistant does not have access to the YoHost control panel or deployment credentials, so the CI artifact is not itself a live production deployment.
