@@ -37,8 +37,44 @@ const fail = (res, code, message) => res.status(code).json({ success: false, mes
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
 const cookieOptions = () => ({ httpOnly: true, secure: ENV === 'production', sameSite: 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
-const list = async name => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
-const listBy = async (name, field, value) => (await col(name).where(field, '==', value).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+// Any successful API mutation invalidates cached reads after the response finishes.
+app.use('/api', (req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  res.once('finish', () => {
+    if (res.statusCode >= 200 && res.statusCode < 400) invalidateReadCache();
+  });
+  next();
+});
+// Short-lived process cache for repeat reads. Never cache authentication/session collections.
+const READ_CACHE_TTL_MS = 8_000;
+const READ_CACHE_MAX_ENTRIES = 200;
+const READ_CACHEABLE_COLLECTIONS = new Set([
+  'classes', 'students', 'attendanceRecords', 'journals', 'teacherAssignmentScores',
+  'assignmentTasks', 'teachingSchedules', 'appSettings', 'announcements',
+  'studentFollowUps', 'teachers'
+]);
+const readCache = new Map();
+const readCacheKey = (name, query) => name + ':' + JSON.stringify(query);
+async function cachedRead(name, query, loader) {
+  if (!READ_CACHEABLE_COLLECTIONS.has(name)) return loader();
+  const key = readCacheKey(name, query);
+  const now = Date.now();
+  const cached = readCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    readCache.delete(key);
+    readCache.set(key, cached);
+    return cached.value.map(item => ({ ...item }));
+  }
+  if (cached) readCache.delete(key);
+  const value = await loader();
+  if (readCache.size >= READ_CACHE_MAX_ENTRIES) readCache.delete(readCache.keys().next().value);
+  readCache.set(key, { value: value.map(item => ({ ...item })), expiresAt: now + READ_CACHE_TTL_MS });
+  return value;
+}
+function invalidateReadCache() { readCache.clear(); }
+const list = async name => cachedRead(name, ['all'], async () => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
+const listBy = async (name, field, value) => cachedRead(name, [field, value], async () => (await col(name).where(field, '==', value).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
 const listByMany = async (name, field, values) => (await Promise.all([...new Set(values)].map(value => listBy(name, field, value)))).flat();
 const getDoc = async (name, docId) => { const snap = await col(name).doc(String(docId)).get(); return snap.exists ? { id: snap.id, ...snap.data() } : null; };
 const setDoc = (name, docId, data, merge = false) => col(name).doc(String(docId)).set(data, { merge });
