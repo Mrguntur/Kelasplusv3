@@ -886,6 +886,16 @@ export default function App() {
   const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
   const visibleSchedules = schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const handleOutsideMenuClick = (event) => {
+      if (event.target.closest('[data-mobile-menu-header]') || event.target.closest('[data-mobile-menu-panel]')) return;
+      setMobileMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', handleOutsideMenuClick);
+    return () => document.removeEventListener('pointerdown', handleOutsideMenuClick);
+  }, [mobileMenuOpen]);
+
   // Keep the app shell visible while restoring the existing session on refresh.
   // Only show the login form after the session check confirms there is no active session.
   if (!currentUser && isCheckingSession) {
@@ -979,7 +989,7 @@ export default function App() {
       {toastNotice && <div data-toast-notice className={`fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 transition-all duration-300 ease-out ${toastVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3 pointer-events-none'}`} role="status" aria-live="polite"><button type="button" onClick={() => { dismissToast(); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="flex min-w-0 flex-1 items-start gap-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-xl" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span></button><button type="button" onClick={(event) => { event.stopPropagation(); dismissToast(); }} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors" aria-label="Tutup notifikasi"><X className="w-4 h-4" /></button></div>}
       
       {/* Mobile Top Navigation */}
-      <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
+      <div data-mobile-menu-header className="lg:hidden fixed top-0 inset-x-0 bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 z-[100] shadow-md">
         <div>
           <h1 className="text-xl font-black text-white">KELAS<span className="text-amber-400">+</span></h1>
           <p className="text-[9px] text-slate-400 tracking-wider">{systemSettings.schoolName}</p>
@@ -990,7 +1000,8 @@ export default function App() {
       </div>
 
       {/* Main Sidebar */}
-      <aside className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'block' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto`}>
+      {mobileMenuOpen && <button type="button" aria-label="Tutup menu" onClick={() => setMobileMenuOpen(false)} className="lg:hidden fixed inset-0 z-[80] bg-slate-950/50 backdrop-blur-[1px]" />}
+      <aside data-mobile-menu-panel className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'fixed left-0 right-0 top-[76px] bottom-0 z-[90] block overflow-y-auto shadow-2xl' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto`}>
         <div>
           <div className="hidden lg:flex p-5 border-b border-slate-800 items-center justify-between">
             <div>
@@ -1083,7 +1094,7 @@ export default function App() {
       </aside>
 
       {/* Dynamic Content Views */}
-      <main className="relative flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full min-w-0">
+      <main className="relative flex-1 pt-24 p-4 md:p-8 lg:pt-8 max-w-7xl mx-auto w-full min-w-0">
         
         {/* TEACHER - DASHBOARD */}
         {currentUser.role === 'TEACHER' && activeTab === 'dashboard' && (
