@@ -38,6 +38,8 @@ const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.te
 const cookieOptions = () => ({ httpOnly: true, secure: ENV === 'production', sameSite: 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
 const list = async name => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
+const listBy = async (name, field, value) => (await col(name).where(field, '==', value).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
+const listByMany = async (name, field, values) => (await Promise.all([...new Set(values)].map(value => listBy(name, field, value)))).flat();
 const getDoc = async (name, docId) => { const snap = await col(name).doc(String(docId)).get(); return snap.exists ? { id: snap.id, ...snap.data() } : null; };
 const setDoc = (name, docId, data, merge = false) => col(name).doc(String(docId)).set(data, { merge });
 const delDoc = (name, docId) => col(name).doc(String(docId)).delete();
@@ -172,14 +174,25 @@ app.post('/api/auth/logout', auth, async (req, res, next) => {
 
 app.get('/api/bootstrap', auth, async (req, res, next) => {
   try {
-    const [classRows, studentRows, attendanceRows, journalRows, userRows, scoreRows, taskRows, settingsRows] = await Promise.all([
-      list('classes'), list('students'), list('attendanceRecords'), list('journals'), list('users'),
-      list('teacherAssignmentScores'), list('assignmentTasks'), list('appSettings')
-    ]);
+    // Resolve visible classes first so teacher requests only read records for assigned classes.
+    const classRows = await list('classes');
     const activeClasses = classRows.filter(c => c.active !== false).sort((a,b) => a.name.localeCompare(b.name));
     const assigned = req.user.assignedClasses || [];
     const visibleClasses = activeClasses.filter(c => req.user.role !== 'TEACHER' || assigned.includes('ALL') || assigned.includes(c.name));
     const visibleIds = new Set(visibleClasses.map(c => c.id));
+    const teacherOnly = req.user.role === 'TEACHER';
+    const visibleClassIds = [...visibleIds];
+
+    const [studentRows, attendanceRows, journalRows, userRows, scoreRows, taskRows, settingsRows] = await Promise.all([
+      teacherOnly && visibleClassIds.length ? listByMany('students', 'classId', visibleClassIds) : list('students'),
+      teacherOnly && visibleClassIds.length ? listByMany('attendanceRecords', 'classId', visibleClassIds) : list('attendanceRecords'),
+      teacherOnly ? listBy('journals', 'teacherId', req.user.id) : list('journals'),
+      teacherOnly ? Promise.resolve([req.user]) : list('users'),
+      teacherOnly ? listBy('teacherAssignmentScores', 'teacherId', req.user.id) : list('teacherAssignmentScores'),
+      teacherOnly ? listBy('assignmentTasks', 'teacherId', req.user.id) : list('assignmentTasks'),
+      list('appSettings')
+    ]);
+
     const students = studentRows.filter(s => s.active !== false && visibleIds.has(s.classId))
       .sort((a,b) => a.name.localeCompare(b.name)).map(s => {
         const cls = classRows.find(c => c.id === s.classId);
@@ -264,7 +277,7 @@ app.post('/api/attendance', auth, allow('ADMIN','TEACHER'), async (req,res,next)
       const clock = schoolClock();
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       if (date !== today) return fail(res, 403, 'Absensi hanya dapat diubah pada tanggal hari ini dan selama jam mengajar.');
-      const schedules = await list('teachingSchedules');
+      const schedules = await listBy('teachingSchedules', 'teacherId', req.user.id);
       const inTeachingWindow = schedules.some(item => item.active !== false && item.teacherId === req.user.id && item.className === className && Number(item.dayOfWeek) === clock.dayOfWeek && clock.time >= item.startTime && clock.time < item.endTime);
       if (!inTeachingWindow) return fail(res, 403, 'Anda tidak berada dalam jam mengajar untuk kelas ini. Absensi hanya dapat diubah selama jadwal mengajar berlangsung.');
     }
