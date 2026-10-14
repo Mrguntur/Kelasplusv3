@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import { auth, firebaseConfigured } from './firebase.js';
 import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { 
@@ -11,7 +10,6 @@ import {
   Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing
 } from 'lucide-react';
 import firebaseApp from './firebase.js';
-import { getMessaging, getToken } from 'firebase/messaging';
 
 
 const APP_VERSION = '2.2.0';
@@ -460,6 +458,8 @@ export default function App() {
       const encodedConfig = btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
       const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?config=${encodeURIComponent(encodedConfig)}`, { scope: '/' });
       await navigator.serviceWorker.ready;
+      // Load Firebase Messaging only when a user explicitly enables notifications.
+      const { getMessaging, getToken } = await import('firebase/messaging');
       const messaging = getMessaging(firebaseApp);
       const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
       if (!token) throw new Error('Token not berhasil dibuat. Periksa Firebase Cloud Messaging dan VAPID key.');
@@ -516,7 +516,9 @@ export default function App() {
       setNewStudent({ name: '', nisn: '', class: 'VII A', gender: 'L' });
     } catch (err) { alert(err.message || 'Data siswa gagal disimpan.'); }
   };
-  const downloadStudentTemplate = () => {
+  const downloadStudentTemplate = async () => {
+    // XLSX is sizeable; keep it out of the initial application bundle.
+    const XLSX = await import('xlsx');
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([
       ['Nama Siswa', 'NISN', 'Kelas', 'Jenis Kelamin']
@@ -544,6 +546,8 @@ export default function App() {
     setStudentImportRows([]);
     setStudentImportFileName(file.name);
     try {
+      // Load spreadsheet parsing only when an administrator selects an Excel file.
+      const XLSX = await import('xlsx');
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array' });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
