@@ -35,7 +35,10 @@ const schoolClock = (date = new Date()) => {
 const id = () => crypto.randomUUID();
 const fail = (res, code, message) => res.status(code).json({ success: false, message });
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
-const cookieOptions = () => ({ httpOnly: true, secure: ENV === 'production', sameSite: 'lax', maxAge: TTL, path: '/' });
+// Capacitor Android serves the bundled UI from https://localhost. Its API requests are cross-site,
+// so the session cookie must use SameSite=None + Secure for that exact app origin.
+const isCapacitorOrigin = req => String(req?.get?.('origin') || '') === 'https://localhost';
+const cookieOptions = req => ({ httpOnly: true, secure: ENV === 'production' || isCapacitorOrigin(req), sameSite: isCapacitorOrigin(req) ? 'none' : 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
 
 // Only mutations that can change cached school data should invalidate the read cache.
@@ -153,7 +156,7 @@ async function auth(req, res, next) {
     if (!user || !user.active) return fail(res, 401, 'Akun tidak aktif. Silakan hubungi administrator.');
     const renewedExpiry = Date.now() + TTL;
     await setDoc('sessions', digest, { expiresAt: renewedExpiry, lastActivityAt: nowIso() }, true);
-    res.cookie(COOKIE, token, cookieOptions());
+    res.cookie(COOKIE, token, cookieOptions(req));
     req.user = publicUser(user);
     req.sessionId = digest;
     next();
@@ -230,7 +233,7 @@ app.post('/api/login', loginRateLimit, async (req, res, next) => {
     const token = crypto.randomBytes(32).toString('base64url');
     const digest = crypto.createHash('sha256').update(token).digest('hex');
     await setDoc('sessions', digest, { userId: user.id, expiresAt: Date.now() + TTL, revokedAt: null, createdAt: nowIso() });
-    res.cookie(COOKIE, token, cookieOptions());
+    res.cookie(COOKIE, token, cookieOptions(req));
     await audit(publicUser(user), 'LOGIN', 'session');
     res.json({ success: true, user: publicUser(user), firebaseCustomToken });
   } catch (error) { next(error); }
@@ -240,7 +243,7 @@ app.post('/api/auth/activity', auth, (req, res) => res.json({ success: true, exp
 app.post('/api/auth/logout', auth, async (req, res, next) => {
   try {
     await setDoc('sessions', req.sessionId, { revokedAt: Date.now() }, true);
-    res.clearCookie(COOKIE, { httpOnly: true, secure: ENV === 'production', sameSite: 'lax', path: '/' });
+    res.clearCookie(COOKIE, { httpOnly: true, secure: ENV === 'production' || isCapacitorOrigin(req), sameSite: isCapacitorOrigin(req) ? 'none' : 'lax', path: '/' });
     res.json({ success: true });
   } catch (error) { next(error); }
 });

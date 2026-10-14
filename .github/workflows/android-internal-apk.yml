@@ -1,0 +1,134 @@
+name: KELAS+ Android Internal APK
+
+on:
+  push:
+    branches: [android/capacitor-internal]
+  pull_request:
+    branches: [perf/firestore-read-optimization]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    name: Build and validate Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install project dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Capacitor toolchain
+        run: npm install --no-save --no-audit --no-fund @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
+
+      - name: Validate required public build variables
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+        run: |
+          set -eu
+          for name in VITE_API_BASE_URL VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID; do
+            eval "value=\${$name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::GitHub Actions repository variable $name is missing. Add it under Settings > Secrets and variables > Actions > Variables."
+              exit 1
+            fi
+          done
+          case "$VITE_API_BASE_URL" in
+            https://*) ;;
+            *) echo "::error::VITE_API_BASE_URL must use HTTPS, not localhost or HTTP."; exit 1 ;;
+          esac
+          case "$VITE_API_BASE_URL" in
+            */api|*/api/) ;;
+            *) echo "::error::VITE_API_BASE_URL must end in /api."; exit 1 ;;
+          esac
+
+      - name: Build web bundle for Android
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY }}
+        run: npm run build
+
+      - name: Generate Capacitor Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Configure session cookies for Android WebView
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          candidates = list(Path("android/app/src/main/java").rglob("MainActivity.java"))
+          if len(candidates) != 1:
+              raise SystemExit(f"Expected one generated MainActivity.java, found {len(candidates)}")
+          path = candidates[0]
+          source = path.read_text()
+          match = re.search(r"^package\s+([\w.]+);", source, re.MULTILINE)
+          if not match:
+              raise SystemExit("Could not determine the generated Android package name")
+          package = match.group(1)
+          path.write_text(
+              f"package {package};\n\n"
+              "import android.os.Bundle;\n"
+              "import android.webkit.CookieManager;\n"
+              "import com.getcapacitor.BridgeActivity;\n\n"
+              "public class MainActivity extends BridgeActivity {\n"
+              "  @Override\n"
+              "  public void onCreate(Bundle savedInstanceState) {\n"
+              "    super.onCreate(savedInstanceState);\n"
+              "    CookieManager.getInstance().setAcceptThirdPartyCookies(getBridge().getWebView(), true);\n"
+              "  }\n"
+              "}\n"
+          )
+          print(f"Configured session-cookie handling in {path}")
+          PY
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload internal test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kelasplus-internal-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
