@@ -1,0 +1,28 @@
+{
+  "id": "/",
+  "name": "KELAS+ UPTD SMP Negeri 2 Bajuin",
+  "short_name": "KELAS+",
+  "description": "Aplikasi administrasi dan pembelajaran UPTD SMP Negeri 2 Bajuin.",
+  "lang": "id-ID",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#123b66",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/pwa-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
