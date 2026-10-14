@@ -917,7 +917,7 @@ export default function App() {
         <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
           <div className="bg-gradient-to-r from-blue-900 to-blue-800 p-8 text-white text-center relative">
             <h1 className="text-3xl font-black tracking-wider text-white">KELAS<span className="text-amber-400">+</span></h1>
-            <p className="text-xs text-blue-200 mt-1 font-semibold">{systemSettings.schoolName}</p>
+            <p className="text-xs text-blue-200 mt-1 font-semibold">UPTS SMP NEGERI 2 BAJUIN</p>
             <p className="text-[11px] text-blue-100 italic mt-3 bg-blue-950/40 py-1.5 px-3 rounded-full inline-block border border-blue-700/50">
               Sistem Informasi & Asisten Pengajaran Digital
             </p>
