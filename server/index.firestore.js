@@ -67,6 +67,8 @@ const READ_CACHEABLE_COLLECTIONS = new Set([
   'studentFollowUps', 'teachers'
 ]);
 const readCache = new Map();
+const readInFlight = new Map();
+let readCacheGeneration = 0;
 const readCacheKey = (name, query) => name + ':' + JSON.stringify(query);
 async function cachedRead(name, query, loader) {
   if (!READ_CACHEABLE_COLLECTIONS.has(name)) return loader();
@@ -79,12 +81,35 @@ async function cachedRead(name, query, loader) {
     return cached.value.map(item => ({ ...item }));
   }
   if (cached) readCache.delete(key);
-  const value = await loader();
-  if (readCache.size >= READ_CACHE_MAX_ENTRIES) readCache.delete(readCache.keys().next().value);
-  readCache.set(key, { value: value.map(item => ({ ...item })), expiresAt: now + READ_CACHE_TTL_MS });
-  return value;
+
+  // Coalesce simultaneous identical reads so a burst of requests does not issue
+  // the same Firestore query multiple times.
+  const pending = readInFlight.get(key);
+  if (pending) return (await pending).map(item => ({ ...item }));
+
+  const generation = readCacheGeneration;
+  const request = (async () => {
+    const value = await loader();
+    // Do not repopulate stale data if a write invalidated the cache while this
+    // Firestore read was still in progress.
+    if (generation === readCacheGeneration) {
+      if (readCache.size >= READ_CACHE_MAX_ENTRIES) readCache.delete(readCache.keys().next().value);
+      readCache.set(key, { value: value.map(item => ({ ...item })), expiresAt: Date.now() + READ_CACHE_TTL_MS });
+    }
+    return value;
+  })();
+  readInFlight.set(key, request);
+  try {
+    return (await request).map(item => ({ ...item }));
+  } finally {
+    if (readInFlight.get(key) === request) readInFlight.delete(key);
+  }
 }
-function invalidateReadCache() { readCache.clear(); }
+function invalidateReadCache() {
+  readCacheGeneration++;
+  readCache.clear();
+  readInFlight.clear();
+}
 const list = async name => cachedRead(name, ['all'], async () => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
 const listBy = async (name, field, value) => cachedRead(name, [field, value], async () => (await col(name).where(field, '==', value).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
 const listByMany = async (name, field, values) => (await Promise.all([...new Set(values)].map(value => listBy(name, field, value)))).flat();
