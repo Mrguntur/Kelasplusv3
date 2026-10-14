@@ -20,6 +20,7 @@ const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasi
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toastNotice, setToastNotice] = useState(null);
+  const [toastVisible, setToastVisible] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(false);
 
@@ -219,10 +220,29 @@ export default function App() {
     if (currentUser) window.sessionStorage.setItem('kelasplus.activeTab', activeTab);
   }, [activeTab, currentUser]);
 
+  const dismissToast = () => {
+    setToastVisible(false);
+    window.setTimeout(() => setToastNotice(null), 280);
+  };
+
   useEffect(() => {
     if (!toastNotice) return undefined;
-    const timer = window.setTimeout(() => setToastNotice(null), 10000);
-    return () => window.clearTimeout(timer);
+    setToastVisible(true);
+    const fadeTimer = window.setTimeout(() => setToastVisible(false), 10000);
+    const removeTimer = window.setTimeout(() => setToastNotice(null), 10280);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, [toastNotice]);
+
+  useEffect(() => {
+    if (!toastNotice) return undefined;
+    const handleOutsideClick = (event) => {
+      if (!event.target.closest('[data-toast-notice]')) dismissToast();
+    };
+    document.addEventListener('pointerdown', handleOutsideClick);
+    return () => document.removeEventListener('pointerdown', handleOutsideClick);
   }, [toastNotice]);
   
   // End sessions after 30 minutes of inactivity and refresh active server sessions.
@@ -931,7 +951,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
       {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
-      {toastNotice && <button type="button" onClick={() => { setToastNotice(null); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg text-left rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 hover:shadow-2xl transition-shadow" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span><X className="w-4 h-4 text-slate-400" /></button>}
+      {toastNotice && <div data-toast-notice className={`fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 transition-all duration-300 ease-out ${toastVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3 pointer-events-none'}`} role="status" aria-live="polite"><button type="button" onClick={() => { dismissToast(); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="flex min-w-0 flex-1 items-start gap-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-xl" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span></button><button type="button" onClick={(event) => { event.stopPropagation(); dismissToast(); }} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors" aria-label="Tutup notifikasi"><X className="w-4 h-4" /></button></div>}
       
       {/* Mobile Top Navigation */}
       <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
