@@ -3,13 +3,13 @@
  * Only the app shell and same-origin static assets are cached. API, auth and
  * Firebase requests are deliberately excluded to avoid stale/private data.
  */
-const KELASPLUS_CACHE = 'kelasplus-shell-v1';
+const KELASPLUS_CACHE = 'kelasplus-shell-v2';
 const KELASPLUS_SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/pwa-192.svg',
-  '/pwa-512.svg'
+  '/pwa-192.png',
+  '/pwa-512.png'
 ];
 
 self.addEventListener('install', event => {
@@ -56,7 +56,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for Vite's fingerprinted assets and same-origin static files.
   if (url.pathname.startsWith('/assets/') || /\.(?:css|js|svg|png|jpg|jpeg|webp|woff2?)$/i.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(KELASPLUS_CACHE);
@@ -107,8 +106,8 @@ try {
       const title = notification.title || 'Pengingat Mengajar';
       const options = {
         body: notification.body || 'Jadwal mengajar Anda akan segera dimulai.',
-        icon: '/pwa-192.svg',
-        badge: '/pwa-192.svg',
+        icon: '/pwa-192.png',
+        badge: '/pwa-192.png',
         tag: data.scheduleId ? 'kelasplus-' + data.scheduleId : 'kelasplus-reminder',
         data: { url: data.url || '/?page=schedule' }
       };
