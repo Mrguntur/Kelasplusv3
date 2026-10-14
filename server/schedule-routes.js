@@ -147,7 +147,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
         });
         if (!reserved) { skipped++; continue; }
         try {
-          const deviceSnapshot = await col('notificationDevices').where('userId', '==', schedule.teacherId).where('active', '==', true).get();
+          const deviceSnapshot = await col('notificationDevices').where('userId', '==', schedule.teacherId).get();
           const devices = deviceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(d => d.token);
           if (!devices.length) {
             await dispatchRef.delete();
