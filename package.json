@@ -7,6 +7,7 @@
     "dev:frontend": "vite",
     "dev:backend": "node server/index.firestore.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "prebuild": "node scripts/generate-pwa-icons.mjs",
     "build": "vite build",
     "start": "node server/index.firestore.js"
   },

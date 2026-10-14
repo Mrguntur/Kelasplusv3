@@ -1,0 +1,90 @@
+name: KELAS+ Android APK
+
+on:
+  push:
+    branches: [feat/android-apk-latest]
+  pull_request:
+    branches: [perf/kplus-optimization-pass2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    name: Build internal Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout latest optimized app
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install project dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Capacitor toolchain
+        run: npm install --no-save --no-audit --no-fund @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
+
+      - name: Build web bundle for Android
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://www.kelasplus.my.id/api' }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY || 'AIzaSyByMPF8z4eBZgLNQehIxxL7b73zecbSTt4' }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN || 'kelasplusgemi.firebaseapp.com' }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID || 'kelasplusgemi' }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET || 'kelasplusgemi.firebasestorage.app' }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID || '716680584392' }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || '1:716680584392:web:9fc26f9f1d523ecdd019fd' }}
+          VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY || 'BBueLRFxQVRxE7AhUk4eQO4dKNDAANZgwUh6-KnjErLuCTTO0kMzCpFpNeo94BxVyVDJ7XyBRK-_ICbF6HhgGqk' }}
+        run: |
+          set -eu
+          case "$VITE_API_BASE_URL" in
+            https://*) ;;
+            *) echo "::error::VITE_API_BASE_URL must use HTTPS"; exit 1 ;;
+          esac
+          case "$VITE_API_BASE_URL" in
+            */api|*/api/) ;;
+            *) echo "::error::VITE_API_BASE_URL must end in /api"; exit 1 ;;
+          esac
+          npm run build
+
+      - name: Generate Capacitor Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APK exists
+        run: test -s android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload internal test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kelasplus-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
