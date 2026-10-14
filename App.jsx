@@ -1001,7 +1001,7 @@ export default function App() {
 
       {/* Main Sidebar */}
       {mobileMenuOpen && <button type="button" aria-label="Tutup menu" onClick={() => setMobileMenuOpen(false)} className="lg:hidden fixed inset-0 z-[80] bg-slate-950/50 backdrop-blur-[1px]" />}
-      <aside data-mobile-menu-panel className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'fixed left-0 right-0 top-[76px] bottom-0 z-[90] block overflow-y-auto shadow-2xl' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto`}>
+      <aside data-mobile-menu-panel className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'fixed left-0 right-0 top-[76px] bottom-auto z-[90] block max-h-[calc(100dvh-100px)] overflow-hidden rounded-b-2xl border-b border-slate-700 shadow-2xl' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:max-h-none lg:overflow-y-auto lg:rounded-none lg:border-0`}>
         <div>
           <div className="hidden lg:flex p-5 border-b border-slate-800 items-center justify-between">
             <div>
@@ -1011,7 +1011,7 @@ export default function App() {
             <span className={`w-2.5 h-2.5 rounded-full ${isServerOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} title={isServerOnline ? 'Server Live' : 'Local Mode'}></span>
           </div>
 
-          <nav className="p-3 space-y-1 text-sm font-medium">
+          <nav className="max-h-[52dvh] overflow-y-auto overscroll-contain p-3 space-y-1 text-sm font-medium [scrollbar-width:thin] lg:max-h-none lg:overflow-visible">
             {currentUser.role === 'TEACHER' && (
               <>
                 <button onClick={() => { setActiveTab('dashboard'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition ${activeTab === 'dashboard' ? 'bg-blue-800 text-white font-bold' : 'text-slate-300 hover:bg-slate-800'}`}>
