@@ -233,7 +233,7 @@ app.post('/api/login', loginRateLimit, async (req, res, next) => {
     const token = crypto.randomBytes(32).toString('base64url');
     const digest = crypto.createHash('sha256').update(token).digest('hex');
     await setDoc('sessions', digest, { userId: user.id, expiresAt: Date.now() + TTL, revokedAt: null, createdAt: nowIso() });
-    res.cookie(COOKIE, token, cookieOptions());
+    res.cookie(COOKIE, token, cookieOptions(req));
     await audit(publicUser(user), 'LOGIN', 'session');
     res.json({ success: true, user: publicUser(user), firebaseCustomToken });
   } catch (error) { next(error); }
