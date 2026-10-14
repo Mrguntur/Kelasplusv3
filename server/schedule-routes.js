@@ -28,8 +28,8 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
 
   app.get('/api/schedules', auth, async (req, res, next) => {
     try {
-      const rows = (await list('teachingSchedules')).filter(row => row.active !== false);
-      const visible = req.user.role === 'TEACHER' ? rows.filter(row => row.teacherId === req.user.id) : rows;
+      const rows = (req.user.role === 'TEACHER' ? await listBy('teachingSchedules', 'teacherId', req.user.id) : await list('teachingSchedules')).filter(row => row.active !== false);
+      const visible = rows;
       visible.sort((a, b) => (a.dayOfWeek - b.dayOfWeek) || a.startTime.localeCompare(b.startTime));
       res.json({ success: true, schedules: visible });
     } catch (error) { next(error); }
@@ -47,8 +47,8 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
       const [teacher, klass] = await Promise.all([getDoc('users', teacherId), getDoc('classes', classId)]);
       if (!teacher || teacher.role !== 'TEACHER' || !teacher.active) return fail(res, 400, 'Guru aktif tidak ditemukan.');
       if (!klass || klass.active === false) return fail(res, 400, 'Kelas aktif tidak ditemukan.');
-      const schedules = await list('teachingSchedules');
-      const conflict = schedules.find(s => s.active !== false && s.teacherId === teacherId && Number(s.dayOfWeek) === dayOfWeek &&
+      const schedules = await listBy('teachingSchedules', 'teacherId', teacherId);
+      const conflict = schedules.find(s => s.active !== false && Number(s.dayOfWeek) === dayOfWeek &&
         startTime < s.endTime && endTime > s.startTime);
       if (conflict) return fail(res, 409, 'Jadwal bertabrakan dengan jadwal guru tersebut.');
       const scheduleId = id(), timestamp = nowIso();
@@ -71,7 +71,7 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
       if (!teacherId || !classId || !subject || !DAYS.has(dayOfWeek) || !TIME_RE.test(startTime) || !TIME_RE.test(endTime) || startTime >= endTime) {
         return fail(res, 400, 'Data jadwal tidak valid.');
       }
-      const [teacher, klass, schedules] = await Promise.all([getDoc('users', teacherId), getDoc('classes', classId), list('teachingSchedules')]);
+      const [teacher, klass, schedules] = await Promise.all([getDoc('users', teacherId), getDoc('classes', classId), listBy('teachingSchedules', 'teacherId', teacherId)]);
       if (!teacher || teacher.role !== 'TEACHER' || !teacher.active) return fail(res, 400, 'Guru aktif tidak ditemukan.');
       if (!klass || klass.active === false) return fail(res, 400, 'Kelas aktif tidak ditemukan.');
       const conflict = schedules.find(s => s.id !== old.id && s.active !== false && s.teacherId === teacherId && Number(s.dayOfWeek) === dayOfWeek && startTime < s.endTime && endTime > s.startTime);
@@ -133,7 +133,8 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
       const targetDay = targetMinute >= 1440 ? (current.dayOfWeek % 7) + 1 : current.dayOfWeek;
       const normalizedTargetMinute = targetMinute % 1440;
       const targetTime = `${String(Math.floor(normalizedTargetMinute / 60)).padStart(2, '0')}:${String(normalizedTargetMinute % 60).padStart(2, '0')}`;
-      const schedules = (await list('teachingSchedules')).filter(s => s.active !== false && Number(s.dayOfWeek) === targetDay && s.startTime === targetTime);
+      const scheduleSnapshot = await col('teachingSchedules').where('dayOfWeek', '==', targetDay).where('startTime', '==', targetTime).get();
+      const schedules = scheduleSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => s.active !== false);
       let sent = 0, skipped = 0, failed = 0;
       for (const schedule of schedules) {
         const dispatchId = `${current.date}_${schedule.id}_${targetTime.replace(':', '')}`;
@@ -146,7 +147,8 @@ export function registerScheduleRoutes({ app, auth, allow, col, list, getDoc, se
         });
         if (!reserved) { skipped++; continue; }
         try {
-          const devices = (await list('notificationDevices')).filter(d => d.userId === schedule.teacherId && d.active !== false && d.token);
+          const deviceSnapshot = await col('notificationDevices').where('userId', '==', schedule.teacherId).where('active', '==', true).get();
+          const devices = deviceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(d => d.token);
           if (!devices.length) {
             await dispatchRef.delete();
             skipped++;
