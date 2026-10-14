@@ -37,7 +37,7 @@ const fail = (res, code, message) => res.status(code).json({ success: false, mes
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
 // Capacitor Android serves the bundled UI from https://localhost. Its API requests are cross-site,
 // so the session cookie must use SameSite=None + Secure for that exact app origin.
-const isCapacitorOrigin = req => /^https:\/\/localhost(?::\\d+)?$/.test(String(req?.get?.('origin') || ''));
+const isCapacitorOrigin = req => String(req?.get?.('origin') || '') === 'https://localhost';
 const cookieOptions = req => ({ httpOnly: true, secure: ENV === 'production' || isCapacitorOrigin(req), sameSite: isCapacitorOrigin(req) ? 'none' : 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
 
