@@ -184,8 +184,8 @@ app.get('/api/bootstrap', auth, async (req, res, next) => {
     const visibleClassIds = [...visibleIds];
 
     const [studentRows, attendanceRows, journalRows, userRows, scoreRows, taskRows, settingsRows] = await Promise.all([
-      teacherOnly && visibleClassIds.length ? listByMany('students', 'classId', visibleClassIds) : list('students'),
-      teacherOnly && visibleClassIds.length ? listByMany('attendanceRecords', 'classId', visibleClassIds) : list('attendanceRecords'),
+      teacherOnly ? (visibleClassIds.length ? listByMany('students', 'classId', visibleClassIds) : Promise.resolve([])) : list('students'),
+      teacherOnly ? (visibleClassIds.length ? listByMany('attendanceRecords', 'classId', visibleClassIds) : Promise.resolve([])) : list('attendanceRecords'),
       teacherOnly ? listBy('journals', 'teacherId', req.user.id) : list('journals'),
       teacherOnly ? Promise.resolve([req.user]) : list('users'),
       teacherOnly ? listBy('teacherAssignmentScores', 'teacherId', req.user.id) : list('teacherAssignmentScores'),
