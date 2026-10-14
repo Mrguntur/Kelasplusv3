@@ -72,36 +72,6 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Configure WebView cookie handling
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          candidates = list(Path("android/app/src/main/java").rglob("MainActivity.java"))
-          if len(candidates) != 1:
-              raise SystemExit(f"Expected one MainActivity.java, found {len(candidates)}")
-          path = candidates[0]
-          source = path.read_text()
-          match = re.search(r"^package\\s+([\\w.]+);", source, re.MULTILINE)
-          if not match:
-              raise SystemExit("Could not determine Android package name")
-          package = match.group(1)
-          path.write_text(
-              f"package {package};\\n\\n"
-              "import android.os.Bundle;\\n"
-              "import android.webkit.CookieManager;\\n"
-              "import com.getcapacitor.BridgeActivity;\\n\\n"
-              "public class MainActivity extends BridgeActivity {\\n"
-              "  @Override\\n"
-              "  public void onCreate(Bundle savedInstanceState) {\\n"
-              "    super.onCreate(savedInstanceState);\\n"
-              "    CookieManager.getInstance().setAcceptThirdPartyCookies(getBridge().getWebView(), true);\\n"
-              "  }\\n"
-              "}\\n"
-          )
-          print(f"Configured WebView cookie handling in {path}")
-          PY
-
       - name: Build debug APK
         run: |
           cd android
