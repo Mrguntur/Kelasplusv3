@@ -38,28 +38,40 @@ const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.te
 const cookieOptions = () => ({ httpOnly: true, secure: ENV === 'production', sameSite: 'lax', maxAge: TTL, path: '/' });
 const clean = value => String(value ?? '').trim();
 
-// Only mutations that can change cached school data should invalidate the read cache.
-// Heartbeats, login/logout, notification-token registration, and cron dispatch do not
-// change any collection in READ_CACHEABLE_COLLECTIONS; invalidating on those requests
-// would discard useful cache entries without improving data consistency.
+// Invalidate only the collections changed by a successful mutation. This keeps
+// unrelated class/student/task caches warm after routine attendance and grade saves.
 const READ_CACHE_NEUTRAL_PATHS = new Set([
-  '/login',
-  '/auth/login',
-  '/auth/activity',
-  '/auth/logout',
-  '/notifications/register',
-  '/internal/notifications/dispatch'
+  '/login', '/auth/login', '/auth/activity', '/auth/logout',
+  '/notifications/register', '/internal/notifications/dispatch'
 ]);
+const MUTATION_CACHE_MAP = [
+  [/^\\/students(?:\\/|$)/, ['students']],
+  [/^\\/attendance(?:\\/|$)/, ['attendanceRecords']],
+  [/^\\/grades(?:\\/|$)/, ['teacherAssignmentScores']],
+  [/^\\/tasks(?:\\/|$)/, ['assignmentTasks', 'teacherAssignmentScores']],
+  [/^\\/teachers(?:\\/|$)/, ['users', 'assignmentTasks']],
+  [/^\\/users(?:\\/|$)/, ['users', 'sessions']],
+  [/^\\/classes(?:\\/|$)/, ['classes']],
+  [/^\\/journals(?:\\/|$)/, ['journals']],
+  [/^\\/schedules(?:\\/|$)/, ['teachingSchedules']],
+  [/^\\/announcements(?:\\/|$)/, ['announcements']],
+  [/^\\/student-follow-ups(?:\\/|$)/, ['studentFollowUps']],
+  [/^\\/settings(?:\\/|$)/, ['appSettings']]
+];
 app.use('/api', (req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ||
       READ_CACHE_NEUTRAL_PATHS.has(req.path)) return next();
+  const matched = MUTATION_CACHE_MAP.find(([pattern]) => pattern.test(req.path));
   res.once('finish', () => {
-    if (res.statusCode >= 200 && res.statusCode < 400) invalidateReadCache();
+    if (res.statusCode >= 200 && res.statusCode < 400) {
+      invalidateReadCache(matched ? matched[1] : null);
+    }
   });
   next();
 });
-// Short-lived process cache for repeat reads. Never cache authentication/session collections.
-const READ_CACHE_TTL_MS = 8_000;
+// Cache repeated collection/query reads across page navigation bursts. Auth, sessions,
+// and credential collections are intentionally excluded from this cache.
+const READ_CACHE_TTL_MS = 60_000;
 const READ_CACHE_MAX_ENTRIES = 200;
 const READ_CACHEABLE_COLLECTIONS = new Set([
   'classes', 'students', 'attendanceRecords', 'journals', 'teacherAssignmentScores',
@@ -105,10 +117,20 @@ async function cachedRead(name, query, loader) {
     if (readInFlight.get(key) === request) readInFlight.delete(key);
   }
 }
-function invalidateReadCache() {
+function invalidateReadCache(collectionNames = null) {
   readCacheGeneration++;
-  readCache.clear();
-  readInFlight.clear();
+  if (!collectionNames) {
+    readCache.clear();
+    readInFlight.clear();
+    return;
+  }
+  const prefixes = new Set(collectionNames.map(name => name + ':'));
+  for (const key of readCache.keys()) {
+    if ([...prefixes].some(prefix => key.startsWith(prefix))) readCache.delete(key);
+  }
+  for (const key of readInFlight.keys()) {
+    if ([...prefixes].some(prefix => key.startsWith(prefix))) readInFlight.delete(key);
+  }
 }
 const list = async name => cachedRead(name, ['all'], async () => (await col(name).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
 const listBy = async (name, field, value) => cachedRead(name, [field, value], async () => (await col(name).where(field, '==', value).get()).docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -334,7 +356,9 @@ app.post('/api/students', auth, allow('ADMIN'), async (req,res,next) => {
     if(!name||!nisn||!className||!['L','P'].includes(gender)) return fail(res,400,'Nama, NISN, kelas, dan jenis kelamin wajib valid.');
     const classes=await list('classes'), cls=classes.find(c=>c.name===className&&c.active!==false);
     if(!cls) return fail(res,400,'Kelas tidak ditemukan.');
-    const students=await list('students'), existing=students.find(s=>s.nisn===nisn);
+    const duplicateSnap=await col('students').where('nisn','==',nisn).limit(1).get();
+    const existingDoc=duplicateSnap.docs[0];
+    const existing=existingDoc?{id:existingDoc.id,...existingDoc.data()}:null;
     if(existing?.active!==false && existing) return fail(res,409,'NISN sudah terdaftar.');
     if(existing) { await setDoc('students',existing.id,{name,classId:cls.id,gender,active:true,updatedAt:nowIso()},true); await audit(req.user,'RESTORE','student',existing.id,{className}); return res.json({success:true,restored:true,student:{id:existing.id,nisn,name,class:className,gender,status:'ACTIVE'}}); }
     const studentId=id(); await setDoc('students',studentId,{nisn,name,classId:cls.id,gender,active:true,createdAt:nowIso()});
@@ -356,7 +380,7 @@ app.post('/api/attendance', auth, allow('ADMIN','TEACHER'), async (req,res,next)
     }
     const classes=await list('classes'), cls=classes.find(c=>c.name===className&&c.active!==false);
     if(!cls) return fail(res,404,'Kelas tidak ditemukan.');
-    const students=await list('students'), batch=db.batch();
+    const students=await listBy('students','classId',cls.id), batch=db.batch();
     for(const [studentId,status] of Object.entries(records)) {
       if(!['PRESENT','ABSENT','SICK','PERMISSION','LATE'].includes(status)) return fail(res,400,'Status presensi tidak valid.');
       const student=students.find(s=>s.id===studentId&&s.classId===cls.id&&s.active!==false);
@@ -373,11 +397,13 @@ app.post('/api/grades', auth, allow('ADMIN','TEACHER'), async (req,res,next) => 
     const b=req.body||{}, studentId=clean(b.studentId), subject=(req.user.role==='TEACHER'?req.user.subject:clean(b.subject)||req.user.subject||'Umum').trim();
     const assignmentNo=Number(b.assignmentNo), score=b.score===null||b.score===''?null:Number(b.score);
     if(!studentId||!subject||!Number.isInteger(assignmentNo)||assignmentNo<1||!(score===null||(Number.isFinite(score)&&score>=0&&score<=100))) return fail(res,400,'Data nilai tidak valid. Tugas harus valid dan nilai 0–100.');
-    const [students,classes,tasks,scores]=await Promise.all([list('students'),list('classes'),list('assignmentTasks'),list('teacherAssignmentScores')]);
-    const student=students.find(s=>s.id===studentId&&s.active!==false), cls=student&&classes.find(c=>c.id===student.classId&&c.active!==false);
-    if(!student||!cls) return fail(res,404,'Siswa aktif tidak ditemukan.');
+    const student=await getDoc('students',studentId);
+    const cls=student&&student.active!==false?await getDoc('classes',student.classId):null;
+    if(!student||student.active===false||!cls||cls.active===false) return fail(res,404,'Siswa aktif tidak ditemukan.');
     if(req.user.role==='TEACHER'&&!req.user.assignedClasses.includes('ALL')&&!req.user.assignedClasses.includes(cls.name)) return fail(res,403,'Anda tidak ditugaskan pada kelas ini.');
+    const tasks=req.user.role==='TEACHER'?await listBy('assignmentTasks','teacherId',req.user.id):await list('assignmentTasks');
     if(req.user.role==='TEACHER'&&!tasks.some(t=>t.teacherId===req.user.id&&t.subject===subject&&Number(t.assignmentNo)===assignmentNo)) return fail(res,404,'Tugas tidak ditemukan atau bukan milik akun Anda.');
+    const scores=req.user.role==='TEACHER'?await listBy('teacherAssignmentScores','teacherId',req.user.id):await listBy('teacherAssignmentScores','studentId',studentId);
     const existing=scores.find(g=>g.studentId===studentId&&g.teacherId===req.user.id&&g.subject===subject&&Number(g.assignmentNo)===assignmentNo);
     const scoreId=existing?.id||id(), data={studentId,classId:cls.id,subject,assignmentNo,score,teacherId:req.user.id,recordedBy:req.user.id,updatedAt:nowIso()};
     await setDoc('teacherAssignmentScores',scoreId,data,true); await audit(req.user,'UPSERT','assignment_score',scoreId,{studentId,subject,assignmentNo,score});
@@ -495,7 +521,7 @@ app.patch('/api/classes/:id', auth, allow('ADMIN'), async (req,res,next) => {
 app.delete('/api/classes/:id', auth, allow('ADMIN'), async (req,res,next) => {
   try {
     const cls=await getDoc('classes',req.params.id); if(!cls) return fail(res,404,'Kelas tidak ditemukan.');
-    if((await list('students')).some(s=>s.classId===cls.id&&s.active!==false)) return fail(res,409,'Kelas masih memiliki siswa aktif.');
+    if((await listBy('students','classId',cls.id)).some(s=>s.active!==false)) return fail(res,409,'Kelas masih memiliki siswa aktif.');
     await setDoc('classes',cls.id,{active:false,updatedAt:nowIso()},true); await audit(req.user,'DEACTIVATE','class',cls.id); res.json({success:true});
   } catch(error) { next(error); }
 });
@@ -503,7 +529,8 @@ app.patch('/api/students/:id', auth, allow('ADMIN'), async (req,res,next) => {
   try {
     const old=await getDoc('students',req.params.id); if(!old) return fail(res,404,'Siswa tidak ditemukan.');
     const b=req.body||{}, nisn=clean(b.nisn===undefined?old.nisn:b.nisn);
-    const duplicate=(await list('students')).find(s=>s.id!==old.id&&s.nisn===nisn&&s.active!==false);
+    const duplicateSnap=await col('students').where('nisn','==',nisn).limit(2).get();
+    const duplicate=duplicateSnap.docs.some(doc=>doc.id!==old.id&&doc.data().active!==false);
     if(duplicate) return fail(res,409,'NISN sudah digunakan.');
     let classId=old.classId;
     if(b.class) { const cls=(await list('classes')).find(c=>c.name===b.class&&c.active!==false); if(!cls) return fail(res,400,'Kelas tidak ditemukan.'); classId=cls.id; }
