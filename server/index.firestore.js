@@ -51,7 +51,7 @@ const MUTATION_CACHE_MAP = [
   [/^\/tasks(?:\/|$)/, ['assignmentTasks', 'teacherAssignmentScores']],
   [/^\/teachers(?:\/|$)/, ['users', 'assignmentTasks']],
   [/^\/users(?:\/|$)/, ['users', 'sessions']],
-  [/^\/classes(?:\/|$)/, ['classes']],
+  [/^\/classes(?:\/|$)/, ['classes', 'users']],
   [/^\/journals(?:\/|$)/, ['journals']],
   [/^\/schedules(?:\/|$)/, ['teachingSchedules']],
   [/^\/announcements(?:\/|$)/, ['announcements']],
