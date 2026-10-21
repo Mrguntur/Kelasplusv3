@@ -22,6 +22,7 @@ const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasi
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toastNotice, setToastNotice] = useState(null);
+  const [toastFading, setToastFading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(false);
 
@@ -227,13 +228,16 @@ export default function App() {
   }, [activeTab, currentUser]);
 
   useEffect(() => {
-    if (!toastNotice) return undefined;
-    const timer = window.setTimeout(() => setToastNotice(null), 6500);
+    if (!toastNotice) { setToastFading(false); return undefined; }
+    setToastFading(false);
+    const fadeTimer = window.setTimeout(() => setToastFading(true), 6000);
+    const removeTimer = window.setTimeout(() => setToastNotice(null), 6500);
     const dismissOnPageAction = () => setToastNotice(null);
     document.addEventListener('pointerdown', dismissOnPageAction, true);
     document.addEventListener('keydown', dismissOnPageAction, true);
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
       document.removeEventListener('pointerdown', dismissOnPageAction, true);
       document.removeEventListener('keydown', dismissOnPageAction, true);
     };
@@ -1012,7 +1016,7 @@ export default function App() {
         <button type="button" onClick={() => setChatOpen(value => !value)} aria-label="Buka robot bantuan KELAS+" className="group relative ml-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-100/70 bg-gradient-to-br from-cyan-300 via-blue-600 to-indigo-900 shadow-[inset_0_2px_3px_rgba(255,255,255,.65),0_8px_22px_rgba(37,99,235,.4)] ring-1 ring-blue-300/50 transition duration-300 hover:-translate-y-1 hover:scale-105 sm:h-[60px] sm:w-[60px] sm:rounded-[21px] border border-cyan-100/70 bg-gradient-to-br from-cyan-300 via-blue-600 to-indigo-900 shadow-[inset_0_3px_4px_rgba(255,255,255,.65),inset_0_-5px_8px_rgba(3,7,18,.28),0_12px_30px_rgba(37,99,235,.42)] ring-1 ring-blue-300/50 transition duration-300 hover:-translate-y-1 hover:scale-105"><span className="absolute inset-[4px] rounded-[19px] border border-white/25"></span><span className="absolute left-3 top-2 h-3 w-7 rotate-[-25deg] rounded-full bg-white/35 blur-[1px]"></span><Bot className="relative h-6 w-6 text-white drop-shadow-[0_3px_3px_rgba(0,0,0,.5)] sm:h-8 sm:w-8" strokeWidth={2.2} /><span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-white bg-emerald-400 shadow-md sm:-right-1 sm:-top-1 sm:h-4 sm:w-4"></span></button>
       </div>
       {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
-      {toastNotice && <div data-toast-notice className="fixed top-3 left-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 animate-[toastIn_.25s_ease-out] rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-xl backdrop-blur"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="mt-1 block text-xs text-slate-600">{toastNotice.message}</span><span className="mt-2 block text-[10px] font-bold text-blue-700">Notifikasi akan tertutup otomatis</span></span><button type="button" onClick={() => setToastNotice(null)} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Tutup notifikasi"><X className="h-4 w-4" /></button></div></div>}
+      {toastNotice && <div data-toast-notice className={"fixed top-3 left-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-xl backdrop-blur transition-all duration-500 " + (toastFading ? "translate-y-[-8px] opacity-0" : "translate-y-0 opacity-100")}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="mt-1 block text-xs text-slate-600">{toastNotice.message}</span><span className="mt-2 block text-[10px] font-bold text-blue-700">Notifikasi akan tertutup otomatis</span></span><button type="button" onClick={() => setToastNotice(null)} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Tutup notifikasi"><X className="h-4 w-4" /></button></div></div>}
       
       {/* Mobile Top Navigation */}
       <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
