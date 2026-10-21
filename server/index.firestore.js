@@ -45,18 +45,18 @@ const READ_CACHE_NEUTRAL_PATHS = new Set([
   '/notifications/register', '/internal/notifications/dispatch'
 ]);
 const MUTATION_CACHE_MAP = [
-  [/^\\/students(?:\\/|$)/, ['students']],
-  [/^\\/attendance(?:\\/|$)/, ['attendanceRecords']],
-  [/^\\/grades(?:\\/|$)/, ['teacherAssignmentScores']],
-  [/^\\/tasks(?:\\/|$)/, ['assignmentTasks', 'teacherAssignmentScores']],
-  [/^\\/teachers(?:\\/|$)/, ['users', 'assignmentTasks']],
-  [/^\\/users(?:\\/|$)/, ['users', 'sessions']],
-  [/^\\/classes(?:\\/|$)/, ['classes']],
-  [/^\\/journals(?:\\/|$)/, ['journals']],
-  [/^\\/schedules(?:\\/|$)/, ['teachingSchedules']],
-  [/^\\/announcements(?:\\/|$)/, ['announcements']],
-  [/^\\/student-follow-ups(?:\\/|$)/, ['studentFollowUps']],
-  [/^\\/settings(?:\\/|$)/, ['appSettings']]
+  [/^\/students(?:\/|$)/, ['students']],
+  [/^\/attendance(?:\/|$)/, ['attendanceRecords']],
+  [/^\/grades(?:\/|$)/, ['teacherAssignmentScores']],
+  [/^\/tasks(?:\/|$)/, ['assignmentTasks', 'teacherAssignmentScores']],
+  [/^\/teachers(?:\/|$)/, ['users', 'assignmentTasks']],
+  [/^\/users(?:\/|$)/, ['users', 'sessions']],
+  [/^\/classes(?:\/|$)/, ['classes']],
+  [/^\/journals(?:\/|$)/, ['journals']],
+  [/^\/schedules(?:\/|$)/, ['teachingSchedules']],
+  [/^\/announcements(?:\/|$)/, ['announcements']],
+  [/^\/student-follow-ups(?:\/|$)/, ['studentFollowUps']],
+  [/^\/settings(?:\/|$)/, ['appSettings']]
 ];
 app.use('/api', (req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ||
