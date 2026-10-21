@@ -8,13 +8,13 @@ import {
   Sparkles, Wifi, ShieldAlert, LogOut, Download, Search, Edit3, Trash2, 
   UserPlus, Filter, Upload, Layers, Key, User, Camera, Lock, Eye, EyeOff, 
   Printer, FileSpreadsheet, Database, RefreshCw, Menu, X, Save, Check,
-  Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing
+  Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing, MessageCircle, Mail, Send
 } from 'lucide-react';
 import firebaseApp from './firebase.js';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.4.0';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 const localDateString = (date = new Date()) => date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
 const SUBJECT_OPTIONS = ['Pendidikan Agama dan Budi Pekerti','Pendidikan Pancasila','Bahasa Indonesia','Matematika','Ilmu Pengetahuan Alam','Ilmu Pengetahuan Sosial','Bahasa Inggris','Pendidikan Jasmani, Olahraga, dan Kesehatan','Informatika','Seni Budaya','Prakarya','Muatan Lokal','Bimbingan dan Konseling','Bahasa Arab','Bahasa Daerah'];
@@ -49,6 +49,10 @@ export default function App() {
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingGradesFor, setSavingGradesFor] = useState('');
   const [gradeDrafts, setGradeDrafts] = useState({});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', text: 'Halo! Saya robot bantuan KELAS+. Saya bisa membantu menjelaskan cara memakai fitur aplikasi. Silakan tanyakan tentang absensi, jurnal, Learning Map, nilai, atau laporan.' }]);
+  const [savingAllGrades, setSavingAllGrades] = useState(false);
   const [systemSettings, setSystemSettings] = useState({ geminiApiKey: '', schoolName: 'UPTD SMPN 2 BAJUIN', academicYear: '2026/2027', schoolAddress: '', schoolPhone: '', schoolEmail: '', principalName: '', principalNip: '', letterheadSubtitle: 'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas' });
   const [letterheadForm, setLetterheadForm] = useState({ schoolName: 'UPTD SMPN 2 BAJUIN', schoolAddress: '', schoolPhone: '', schoolEmail: '', academicYear: '2026/2027', principalName: '', principalNip: '', letterheadSubtitle: 'Sistem Informasi Manajemen Pembelajaran dan Rekapitulasi Kelas' });
   const [letterheadSaving, setLetterheadSaving] = useState(false);
@@ -794,6 +798,65 @@ export default function App() {
     finally { setSavingGradesFor(''); }
   };
 
+  const handleSaveAllGrades = async () => {
+    if (savingAllGrades) return;
+    const entries = [];
+    for (const [studentId, drafts] of Object.entries(gradeDrafts)) {
+      const student = students.find(item => item.id === studentId);
+      if (!student || student.active === false) continue;
+      const cls = classesList.find(item => item.id === student.classId);
+      if (!cls || (currentUser?.role === 'TEACHER' && !(currentUser.assignedClasses || []).includes('ALL') && !(currentUser.assignedClasses || []).includes(cls.name))) continue;
+      for (const task of teacherLearningTasks) {
+        const raw = drafts?.[task.assignmentNo];
+        if (raw === undefined || raw === '') continue;
+        const score = Number(raw);
+        if (!Number.isFinite(score) || score < 0 || score > 100) {
+          alert('Nilai untuk ' + student.name + ' pada ' + task.title + ' harus antara 0 sampai 100.');
+          return;
+        }
+        entries.push({ studentId, subject: currentUser.subject || 'Umum', assignmentNo: task.assignmentNo, score, studentName: student.name, taskTitle: task.title });
+      }
+    }
+    if (!entries.length) { alert('Belum ada perubahan nilai yang diisi. Isi nilai terlebih dahulu, lalu klik Simpan Semua Nilai.'); return; }
+    if (!window.confirm('Simpan ' + entries.length + ' nilai untuk siswa yang memiliki perubahan?')) return;
+    setSavingAllGrades(true);
+    let saved = 0;
+    try {
+      // Reuse the validated grade endpoint for every value; this avoids bypassing role and class checks.
+      for (const entry of entries) {
+        const response = await fetch(API_BASE_URL + '/grades', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentId: entry.studentId, subject: entry.subject, assignmentNo: entry.assignmentNo, score: entry.score })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || ('Gagal menyimpan nilai ' + entry.studentName + ' — ' + entry.taskTitle));
+        saved++;
+      }
+      await fetchBootstrapData();
+      setGradeDrafts({});
+      alert('Berhasil menyimpan ' + saved + ' nilai.');
+    } catch (error) {
+      alert('Sebanyak ' + saved + ' dari ' + entries.length + ' nilai berhasil disimpan. ' + (error.message || 'Silakan coba lagi untuk nilai yang belum tersimpan.'));
+    } finally { setSavingAllGrades(false); }
+  };
+
+  const sendLocalAssistantMessage = () => {
+    const question = chatInput.trim();
+    if (!question) return;
+    const q = question.toLowerCase();
+    let answer = 'Saya belum menemukan jawaban khusus untuk pertanyaan itu. Silakan hubungi call center KELAS+ melalui email atau WhatsApp di bagian atas.';
+    if (/absen|absensi|kehadiran/.test(q)) answer = 'Untuk absensi, buka menu Absensi pada akun guru, pilih kelas dan tanggal sesuai jadwal, tandai status setiap siswa, lalu tekan tombol simpan. Pastikan kelas yang dipilih adalah kelas yang sedang diajar.';
+    else if (/learning map|nilai|tugas|simpan/.test(q)) answer = 'Pada Learning Map, pilih kelas yang diampu, isi nilai pada kolom tugas, lalu gunakan tombol Simpan Semua Nilai untuk mengirim perubahan nilai yang telah diisi. Nilai yang kosong tidak dikirim.';
+    else if (/jurnal/.test(q)) answer = 'Buka menu Jurnal Mengajar setelah pembelajaran. Lengkapi tanggal, kelas, materi/topik, dan informasi pembelajaran, kemudian simpan jurnal.';
+    else if (/laporan|pdf|cetak/.test(q)) answer = 'Buka menu Laporan, tentukan kelas dan rentang tanggal jika tersedia, lalu gunakan pilihan cetak atau simpan PDF.';
+    else if (/jadwal/.test(q)) answer = 'Buka menu Jadwal Mengajar untuk melihat jadwal. Jika jadwal tidak sesuai, hubungi administrator sekolah agar data jadwal diperiksa.';
+    else if (/login|masuk|password|kata sandi/.test(q)) answer = 'Pastikan akun dibuat atau diaktifkan administrator sekolah, lalu periksa nama pengguna dan kata sandi. Jika masih gagal, hubungi call center KELAS+.';
+    else if (/hapus|data/.test(q)) answer = 'Data yang dinonaktifkan atau dihapus perlu mengikuti kebijakan sekolah karena dapat terkait dengan nilai, absensi, dan laporan historis. Hubungi administrator untuk pemeriksaan data.';
+    setChatMessages(prev => [...prev, { role: 'user', text: question }, { role: 'assistant', text: answer }]);
+    setChatInput('');
+  };
+
   // Student monitoring indicators are calculated from saved attendance and grade records.
   const teacherAssignedClasses = currentUser?.role === 'TEACHER' ? (currentUser.assignedClasses || []) : classesList.map(c => c.name);
   const getStudentMetrics = (student) => {
@@ -834,10 +897,17 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
+        <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-2 gap-0 rounded-2xl overflow-hidden shadow-2xl">
+        <section className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-900 p-10 text-white min-h-[620px]">
+          <div><div className="inline-flex items-center gap-3 rounded-2xl bg-white/10 border border-white/15 px-4 py-3"><span className="text-3xl">🤖</span><div><p className="text-xl font-black tracking-wide">KELAS<span className="text-amber-300">+</span></p><p className="text-xs text-blue-100">Sistem Informasi Pembelajaran</p></div></div>
+          <p className="mt-12 text-xs font-bold uppercase tracking-[0.25em] text-amber-300">Selamat datang</p><h2 className="mt-3 text-4xl font-black leading-tight">Dari data menjadi aksi.</h2><p className="mt-5 max-w-md text-sm leading-7 text-blue-100">KELAS+ membantu guru dan pimpinan sekolah mengelola pembelajaran, memantau perkembangan siswa, serta menata administrasi dalam satu aplikasi.</p>
+          <div className="mt-8 space-y-4 text-sm">{[['✓','Absensi dan jurnal pembelajaran'],['✓','Learning Map dan pemantauan nilai'],['✓','Laporan dan pendampingan siswa'],['✓','Asisten digital untuk membantu penggunaan aplikasi']].map(([icon,label])=><div key={label} className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300 font-bold">{icon}</span><span>{label}</span></div>)}</div></div>
+          <div className="border-t border-white/15 pt-5 text-xs text-blue-200"><p className="font-bold text-white">UPTD SMPN 2 BAJUIN</p><p className="mt-1">Platform pendamping administrasi dan pembelajaran sekolah.</p></div>
+        </section>
+        <div className="max-w-md w-full bg-white border border-slate-200">
           <div className="bg-gradient-to-r from-blue-900 to-blue-800 p-8 text-white text-center relative">
             <h1 className="text-3xl font-black tracking-wider text-white">KELAS<span className="text-amber-400">+</span></h1>
-            <p className="text-xs text-blue-200 mt-1 font-semibold">{systemSettings.schoolName}</p>
+            <p className="text-xs text-blue-200 mt-1 font-semibold">UPTD SMPN 2 BAJUIN</p>
             <p className="text-[11px] text-blue-100 italic mt-3 bg-blue-950/40 py-1.5 px-3 rounded-full inline-block border border-blue-700/50">
               Sistem Informasi & Asisten Pengajaran Digital
             </p>
@@ -899,12 +969,26 @@ export default function App() {
             <p className="text-center text-[9px] text-slate-400 tracking-wide">KELAS+ versi {APP_VERSION}</p>
           </form>
         </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
+      <div className="fixed right-4 top-4 z-[90] flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur">
+        <span className="hidden sm:inline px-2 text-[10px] font-black uppercase tracking-wider text-slate-500">Call Center</span>
+        <a href="mailto:guntursaputra.22.gs@gmail.com" title="Email KELAS+" aria-label="Email KELAS+" className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100"><Mail className="h-4 w-4" /></a>
+        <a href="https://wa.me/6285230607122" target="_blank" rel="noreferrer" title="WhatsApp KELAS+" aria-label="WhatsApp KELAS+" className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100"><MessageCircle className="h-4 w-4" /></a>
+      </div>
+      <div className="fixed bottom-5 right-5 z-[95]">
+        {chatOpen && <section className="mb-3 flex h-[min(70vh,470px)] w-[min(92vw,360px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <header className="flex items-center gap-3 bg-gradient-to-r from-blue-950 to-blue-800 p-4 text-white"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15 text-2xl">🤖</div><div className="flex-1"><p className="text-sm font-black">Robot Bantuan KELAS+</p><p className="text-[10px] text-blue-100">Asisten panduan aplikasi</p></div><button type="button" onClick={() => setChatOpen(false)} aria-label="Tutup chatbot" className="rounded-lg p-1 hover:bg-white/15"><X className="h-4 w-4" /></button></header>
+          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3">{chatMessages.map((message,index)=><div key={index} className={message.role==='user'?'flex justify-end':'flex justify-start'}><p className={'max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-xs leading-5 '+(message.role==='user'?'bg-blue-800 text-white':'border border-slate-200 bg-white text-slate-700')}>{message.text}</p></div>)}</div>
+          <form onSubmit={event => { event.preventDefault(); sendLocalAssistantMessage(); }} className="flex gap-2 border-t border-slate-200 p-3"><input value={chatInput} onChange={event=>setChatInput(event.target.value)} placeholder="Tanya cara menggunakan KELAS+..." className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-blue-500" /><button type="submit" aria-label="Kirim pertanyaan" className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-800 text-white"><Send className="h-4 w-4" /></button></form>
+        </section>}
+        <button type="button" onClick={() => setChatOpen(value => !value)} aria-label="Buka robot bantuan KELAS+" className="ml-auto flex h-16 w-16 animate-bounce items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-sky-400 to-blue-800 text-3xl shadow-xl ring-2 ring-blue-200 hover:scale-105">🤖<span className="absolute -right-1 -top-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-400"></span></button>
+      </div>
       {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
       {toastNotice && <button type="button" onClick={() => { setToastNotice(null); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg text-left rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 hover:shadow-2xl transition-shadow" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span><X className="w-4 h-4 text-slate-400" /></button>}
       
@@ -1203,6 +1287,7 @@ export default function App() {
                   <option value="ALL">Semua kelas yang diampu</option>{teacherAssignedClasses.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>Kelas {c}</option>)}
                 </select>
                 <input type="text" placeholder="Cari nama/NISN..." value={studentSearchTerm} onChange={e => setStudentSearchTerm(e.target.value)} className="p-2.5 bg-white border border-slate-300 rounded-xl text-xs" />
+                <button onClick={handleSaveAllGrades} disabled={savingAllGrades} className="px-3 py-2.5 bg-blue-800 text-white rounded-xl text-xs font-bold disabled:opacity-50">{savingAllGrades ? 'Menyimpan…' : 'Simpan Semua Nilai'}</button>
                 <button onClick={handleAddLearningTask} className="px-3 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold">+ Tambah Tugas</button>
               </div>
             </div>
