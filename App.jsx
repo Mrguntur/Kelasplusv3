@@ -228,8 +228,15 @@ export default function App() {
 
   useEffect(() => {
     if (!toastNotice) return undefined;
-    const timer = window.setTimeout(() => setToastNotice(null), 10000);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => setToastNotice(null), 6500);
+    const dismissOnPageAction = () => setToastNotice(null);
+    document.addEventListener('pointerdown', dismissOnPageAction, true);
+    document.addEventListener('keydown', dismissOnPageAction, true);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', dismissOnPageAction, true);
+      document.removeEventListener('keydown', dismissOnPageAction, true);
+    };
   }, [toastNotice]);
   
   // End sessions after 30 minutes of inactivity and refresh active server sessions.
@@ -846,14 +853,21 @@ export default function App() {
     const question = chatInput.trim();
     if (!question || chatSending) return;
     const q = question.toLowerCase();
-    let fallback = 'Saya belum menemukan jawaban khusus untuk pertanyaan itu. Silakan hubungi call center KELAS+ melalui email atau WhatsApp di bagian atas.';
-    if (/absen|absensi|kehadiran/.test(q)) fallback = 'Untuk absensi, buka menu Absensi pada akun guru, pilih kelas dan tanggal sesuai jadwal, tandai status setiap siswa, lalu tekan tombol simpan.';
-    else if (/learning map|nilai|tugas|simpan/.test(q)) fallback = 'Pada Learning Map, pilih kelas yang diampu, isi nilai pada kolom tugas, lalu gunakan tombol Simpan Semua Nilai. Nilai kosong tidak dikirim.';
-    else if (/jurnal/.test(q)) fallback = 'Buka menu Jurnal Mengajar setelah pembelajaran, lengkapi tanggal, kelas, materi/topik, lalu simpan jurnal.';
-    else if (/laporan|pdf|cetak/.test(q)) fallback = 'Buka menu Laporan, pilih kelas dan rentang tanggal, lalu gunakan pilihan cetak atau simpan PDF.';
-    else if (/jadwal/.test(q)) fallback = 'Buka menu Jadwal Mengajar untuk melihat jadwal. Jika tidak sesuai, hubungi administrator sekolah.';
-    else if (/login|masuk|password|kata sandi/.test(q)) fallback = 'Pastikan akun dibuat atau diaktifkan administrator sekolah, lalu periksa nama pengguna dan kata sandi. Jangan bagikan kata sandi melalui chatbot.';
-    else if (/hapus|data/.test(q)) fallback = 'Data yang sudah tidak aktif dapat tetap disimpan untuk menjaga riwayat nilai, absensi, dan laporan. Penghapusan permanen harus mengikuti kebijakan sekolah.';
+    let fallback = 'Saya bisa membantu tentang login, absensi, jurnal, Learning Map, nilai, jadwal, laporan, notifikasi, dan pengaturan akun. Pilih salah satu pertanyaan contoh di bawah atau tulis pertanyaan dengan kata yang lebih spesifik.';
+    if (/hai|halo|assalamu|selamat pagi|selamat siang|selamat sore/.test(q)) fallback = 'Halo! Saya Asisten KELAS+. Saya siap membantu penggunaan aplikasi. Kamu bisa bertanya tentang absensi, jurnal, nilai, jadwal, laporan PDF, akun, notifikasi, atau fitur administrator.';
+    else if (/absen|absensi|kehadiran|hadir|sakit|izin|alpa/.test(q)) fallback = 'Absensi: buka menu Absensi Cepat, pilih kelas dan tanggal sesuai pertemuan, pilih status Hadir/Sakit/Izin/Alpa untuk setiap siswa, lalu tekan Simpan/Kumpulkan Absen. Periksa pesan perubahan yang belum disimpan sebelum berpindah halaman.';
+    else if (/learning map|peta belajar|nilai|tugas|simpan semua/.test(q)) fallback = 'Learning Map: buka menu Learning Map, pilih kelas yang diampu, lalu isi nilai pada kolom tugas yang tersedia. Gunakan Simpan Semua Nilai untuk mengirim nilai yang sudah diisi; kolom kosong tidak dikirim. Periksa kembali kelas dan siswa sebelum menyimpan.';
+    else if (/jurnal|materi mengajar|kegiatan pembelajaran/.test(q)) fallback = 'Jurnal mengajar: buka menu Jurnal Mengajar, isi tanggal, kelas, materi/topik, metode dan catatan pembelajaran sesuai kolom yang tersedia, lalu simpan. Isi jurnal setelah kegiatan pembelajaran agar catatan akurat.';
+    else if (/laporan|pdf|cetak|rekap/.test(q)) fallback = 'Laporan: buka menu Laporan, pilih jenis laporan, kelas dan rentang tanggal yang dibutuhkan, kemudian gunakan tombol cetak atau simpan sebagai PDF. Periksa pratinjau sebelum mencetak.';
+    else if (/jadwal|jam pelajaran|mengajar kapan/.test(q)) fallback = 'Jadwal: buka menu Jadwal Mengajar untuk melihat hari, jam, kelas dan mata pelajaran. Jika jadwal tidak sesuai, sampaikan kepada administrator sekolah agar data jadwal diperiksa.';
+    else if (/login|masuk|password|kata sandi|lupa akun|akun terkunci/.test(q)) fallback = 'Login: gunakan username dan password yang diberikan administrator sekolah. Periksa huruf besar/kecil dan koneksi internet. Jangan mengirim password ke chatbot. Jika akun belum aktif atau lupa password, hubungi administrator.';
+    else if (/siswa|data siswa|nisn|tambah siswa|impor siswa/.test(q)) fallback = 'Data siswa: menu pengelolaan siswa digunakan oleh petugas berwenang untuk menambah, mengubah, atau mengimpor data sesuai akses. Pastikan kelas dan identitas benar. Demi privasi, chatbot tidak menampilkan NISN atau data pribadi siswa satu per satu.';
+    else if (/kelas|rombel|wali kelas|tambah kelas/.test(q)) fallback = 'Manajemen kelas: buka menu Manajemen Kelas sesuai hak akses. Administrator dapat mengelola data kelas; guru hanya menggunakan kelas yang ditugaskan. Periksa keterkaitan kelas dengan siswa, guru, jadwal dan riwayat sebelum mengubah data.';
+    else if (/guru|akun guru|tambah pengguna|user|pengguna/.test(q)) fallback = 'Manajemen guru dan akun: administrator dapat mengelola akun, peran, mata pelajaran dan kelas yang ditugaskan. Berikan akses sesuai tugas. Jangan membagikan akun bersama atau menyimpan password dalam catatan terbuka.';
+    else if (/notifikasi|notif|push/.test(q)) fallback = 'Notifikasi: gunakan menu pengaturan notifikasi di aplikasi, izinkan notifikasi untuk situs KELAS+ pada browser, dan pastikan situs dibuka melalui HTTPS. Jika masih gagal, periksa izin notifikasi browser dan konfigurasi Firebase pada server.';
+    else if (/chatbot|asisten|ai|gemini/.test(q)) fallback = 'Asisten KELAS+ menjawab panduan penggunaan aplikasi. Jika AI server aktif, pertanyaan diteruskan ke layanan AI; jika tidak, panduan lokal tetap tersedia. Integrasi data hanya menggunakan konteks terbatas sesuai izin pengguna dan tidak seharusnya mengirim password atau data pribadi sensitif.';
+    else if (/hapus|hapus permanen|delete|nonaktif/.test(q)) fallback = 'Sebelum menonaktifkan data, pastikan tidak ada kaitan dengan riwayat absensi, nilai atau laporan. Data terkait dapat dipertahankan untuk menjaga riwayat sekolah. Penghapusan permanen harus mengikuti kebijakan retensi dan kewenangan administrator.';
+    else if (/call center|kontak|email|whatsapp|wa/.test(q)) fallback = 'Kontak bantuan tersedia di dalam jendela Asisten KELAS+: gunakan tombol email atau WhatsApp di bagian kontak untuk menghubungi pengelola KELAS+.';
     setChatMessages(prev => [...prev, { role: 'user', text: question }]);
     setChatInput('');
     setChatSending(true);
@@ -861,7 +875,21 @@ export default function App() {
       const response = await fetch(API_BASE_URL + '/ai/chat', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: question })
+        body: JSON.stringify({
+          message: question,
+          context: {
+            role: currentUser?.role || 'unknown',
+            assignedClasses: (currentUser?.assignedClasses || []).slice(0, 20),
+            summary: {
+              activeStudents: students.filter(student => student.active !== false).length,
+              activeClasses: classesList.filter(cls => cls.active !== false).length,
+              visibleJournals: journals.length,
+              visibleSchedules: schedules.length,
+              recordedGradeEntries: assignmentScores.length,
+              attendanceDatesAvailable: Object.keys(attendanceRecords || {}).length
+            }
+          }
+        })
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Asisten AI belum tersedia.');
@@ -975,21 +1003,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
-      <div className="fixed right-4 top-4 z-[90] flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur">
-        <span className="hidden sm:inline px-2 text-[10px] font-black uppercase tracking-wider text-slate-500">Call Center</span>
-        <a href="mailto:guntursaputra.22.gs@gmail.com" title="Email KELAS+" aria-label="Email KELAS+" className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100"><Mail className="h-4 w-4" /></a>
-        <a href="https://wa.me/6285230607122" target="_blank" rel="noreferrer" title="WhatsApp KELAS+" aria-label="WhatsApp KELAS+" className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100"><MessageCircle className="h-4 w-4" /></a>
-      </div>
       <div className="fixed bottom-5 right-5 z-[95]">
-        {chatOpen && <section className="mb-3 flex h-[min(70vh,470px)] w-[min(92vw,360px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <header className="flex items-center gap-3 bg-gradient-to-r from-blue-950 to-blue-800 p-4 text-white"><div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-200/40 bg-gradient-to-br from-cyan-300 via-blue-500 to-indigo-700 shadow-[inset_0_2px_3px_rgba(255,255,255,.65),0_6px_18px_rgba(2,132,199,.35)]"><span className="absolute inset-[3px] rounded-[11px] border border-white/25"></span><Bot className="relative h-6 w-6 text-white drop-shadow-[0_2px_2px_rgba(0,0,0,.45)]" strokeWidth={2.4} /></div><div className="flex-1"><p className="text-sm font-black">Asisten KELAS+</p><p className="text-[10px] text-blue-100">Asisten panduan aplikasi</p></div><button type="button" onClick={() => setChatOpen(false)} aria-label="Tutup chatbot" className="rounded-lg p-1 hover:bg-white/15"><X className="h-4 w-4" /></button></header>
-          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3">{chatMessages.map((message,index)=><div key={index} className={message.role==='user'?'flex justify-end':'flex justify-start'}><p className={'max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-xs leading-5 '+(message.role==='user'?'bg-blue-800 text-white':'border border-slate-200 bg-white text-slate-700')}>{message.text}</p></div>)}</div>
-          <form onSubmit={event => { event.preventDefault(); sendLocalAssistantMessage(); }} className="flex gap-2 border-t border-slate-200 p-3"><input value={chatInput} onChange={event=>setChatInput(event.target.value)} placeholder={chatSending ? "Asisten sedang menjawab…" : "Tanya cara menggunakan KELAS+..."} disabled={chatSending} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-blue-500 disabled:bg-slate-100" /><button type="submit" disabled={chatSending} aria-label="Kirim pertanyaan" className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-800 text-white disabled:opacity-50"><Send className="h-4 w-4" /></button></form>
+        {chatOpen && <section className="mb-2 flex h-[min(76dvh,600px)] w-[min(94vw,410px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:mb-3">
+          <header className="flex items-center gap-3 bg-gradient-to-r from-blue-950 to-blue-800 p-3 sm:p-4 text-white"><div className="relative flex h-9 w-9 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-200/40 bg-gradient-to-br from-cyan-300 via-blue-500 to-indigo-700 shadow-[inset_0_2px_3px_rgba(255,255,255,.65),0_6px_18px_rgba(2,132,199,.35)]"><span className="absolute inset-[3px] rounded-[11px] border border-white/25"></span><Bot className="relative h-5 w-5 sm:h-6 sm:w-6 text-white drop-shadow-[0_2px_2px_rgba(0,0,0,.45)]" strokeWidth={2.4} /></div><div className="min-w-0 flex-1"><p className="text-sm font-black">Asisten KELAS+</p><p className="text-[10px] text-blue-100">Panduan aplikasi & bantuan</p></div><button type="button" onClick={() => setChatOpen(false)} aria-label="Tutup chatbot" className="rounded-lg p-2 hover:bg-white/15"><X className="h-4 w-4" /></button></header>
+          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3 sm:p-4">{chatMessages.map((message,index)=><div key={index} className={message.role==='user'?'flex justify-end':'flex justify-start'}><p className={'max-w-[90%] whitespace-pre-wrap rounded-2xl px-3 py-2.5 text-sm leading-6 '+(message.role==='user'?'bg-blue-800 text-white':'border border-slate-200 bg-white text-slate-700')}>{message.text}</p></div>)}{chatMessages.length < 3 && <div className="rounded-xl border border-blue-100 bg-white p-3"><p className="mb-2 text-xs font-bold text-slate-600">Pertanyaan yang sering ditanyakan</p><div className="flex flex-wrap gap-2">{['Cara mengisi absensi','Cara mengisi jurnal','Cara menyimpan nilai','Cara cetak laporan PDF','Jadwal mengajar','Notifikasi tidak muncul'].map(question=><button key={question} type="button" onClick={()=>{setChatInput(question);}} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 transition hover:bg-blue-100">{question}</button>)}</div></div>}</div>
+          <div className="border-t border-slate-200 bg-white p-3"><div className="mb-2 flex items-center gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Hubungi call center</span><a href="mailto:guntursaputra.22.gs@gmail.com" title="Kirim email ke KELAS+" aria-label="Kirim email ke KELAS+" className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700 transition hover:bg-blue-100"><Mail className="h-4 w-4" /></a><a href="https://wa.me/6285230607122" target="_blank" rel="noreferrer" title="Hubungi melalui WhatsApp" aria-label="Hubungi melalui WhatsApp" className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"><MessageCircle className="h-5 w-5" /></a></div><form onSubmit={event => { event.preventDefault(); sendLocalAssistantMessage(); }} className="flex gap-2"><input value={chatInput} onChange={event=>setChatInput(event.target.value)} placeholder={chatSending ? "Asisten sedang menjawab…" : "Tanya cara menggunakan KELAS+..."} disabled={chatSending} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 disabled:bg-slate-100" /><button type="submit" disabled={chatSending} aria-label="Kirim pertanyaan" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-800 text-white disabled:opacity-50"><Send className="h-4 w-4" /></button></form></div>
         </section>}
-        <button type="button" onClick={() => setChatOpen(value => !value)} aria-label="Buka robot bantuan KELAS+" className="group relative ml-auto flex h-[68px] w-[68px] items-center justify-center rounded-[23px] border border-cyan-100/70 bg-gradient-to-br from-cyan-300 via-blue-600 to-indigo-900 shadow-[inset_0_3px_4px_rgba(255,255,255,.65),inset_0_-5px_8px_rgba(3,7,18,.28),0_12px_30px_rgba(37,99,235,.42)] ring-1 ring-blue-300/50 transition duration-300 hover:-translate-y-1 hover:scale-105"><span className="absolute inset-[4px] rounded-[19px] border border-white/25"></span><span className="absolute left-3 top-2 h-3 w-7 rotate-[-25deg] rounded-full bg-white/35 blur-[1px]"></span><Bot className="relative h-9 w-9 text-white drop-shadow-[0_3px_3px_rgba(0,0,0,.5)]" strokeWidth={2.2} /><span className="absolute -right-1 -top-1 h-4 w-4 rounded-full border-[3px] border-white bg-emerald-400 shadow-md"></span></button>
+        <button type="button" onClick={() => setChatOpen(value => !value)} aria-label="Buka robot bantuan KELAS+" className="group relative ml-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-100/70 bg-gradient-to-br from-cyan-300 via-blue-600 to-indigo-900 shadow-[inset_0_2px_3px_rgba(255,255,255,.65),0_8px_22px_rgba(37,99,235,.4)] ring-1 ring-blue-300/50 transition duration-300 hover:-translate-y-1 hover:scale-105 sm:h-[60px] sm:w-[60px] sm:rounded-[21px] border border-cyan-100/70 bg-gradient-to-br from-cyan-300 via-blue-600 to-indigo-900 shadow-[inset_0_3px_4px_rgba(255,255,255,.65),inset_0_-5px_8px_rgba(3,7,18,.28),0_12px_30px_rgba(37,99,235,.42)] ring-1 ring-blue-300/50 transition duration-300 hover:-translate-y-1 hover:scale-105"><span className="absolute inset-[4px] rounded-[19px] border border-white/25"></span><span className="absolute left-3 top-2 h-3 w-7 rotate-[-25deg] rounded-full bg-white/35 blur-[1px]"></span><Bot className="relative h-6 w-6 text-white drop-shadow-[0_3px_3px_rgba(0,0,0,.5)] sm:h-8 sm:w-8" strokeWidth={2.2} /><span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-white bg-emerald-400 shadow-md sm:-right-1 sm:-top-1 sm:h-4 sm:w-4"></span></button>
       </div>
       {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
-      {toastNotice && <button type="button" onClick={() => { setToastNotice(null); setActiveTab('dashboard'); setMobileMenuOpen(false); }} className="fixed top-3 left-1/2 -translate-x-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg text-left rounded-2xl border border-blue-200 bg-white/95 backdrop-blur shadow-xl p-4 flex items-start gap-3 hover:shadow-2xl transition-shadow" aria-label="Buka dashboard dari notifikasi"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="w-5 h-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="block text-xs text-slate-600 mt-1">{toastNotice.message}</span><span className="block text-[10px] text-blue-700 font-bold mt-2">Ketuk untuk membuka dashboard</span></span><X className="w-4 h-4 text-slate-400" /></button>}
+      {toastNotice && <div data-toast-notice className="fixed top-3 left-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 animate-[toastIn_.25s_ease-out] rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-xl backdrop-blur"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="mt-1 block text-xs text-slate-600">{toastNotice.message}</span><span className="mt-2 block text-[10px] font-bold text-blue-700">Notifikasi akan tertutup otomatis</span></span><button type="button" onClick={() => setToastNotice(null)} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Tutup notifikasi"><X className="h-4 w-4" /></button></div></div>}
       
       {/* Mobile Top Navigation */}
       <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
