@@ -907,84 +907,69 @@ export default function App() {
   const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
   const visibleSchedules = schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
 
-  // UNAUTHENTICATED - LOGIN PAGE
+  // UNAUTHENTICATED - PREMIUM LOGIN PAGE
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-        <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-2 gap-0 rounded-2xl overflow-hidden shadow-2xl">
-        <section className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-900 p-10 text-white min-h-[620px]">
-          <div><div className="inline-flex items-center gap-3 rounded-2xl bg-white/10 border border-white/15 px-4 py-3"><span className="text-3xl">🤖</span><div><p className="text-xl font-black tracking-wide">KELAS<span className="text-amber-300">+</span></p><p className="text-xs text-blue-100">Sistem Informasi Pembelajaran</p></div></div>
-          <p className="mt-12 text-xs font-bold uppercase tracking-[0.25em] text-amber-300">Selamat datang</p><h2 className="mt-3 text-4xl font-black leading-tight">Dari data menjadi aksi.</h2><p className="mt-5 max-w-md text-sm leading-7 text-blue-100">KELAS+ membantu guru dan pimpinan sekolah mengelola pembelajaran, memantau perkembangan siswa, serta menata administrasi dalam satu aplikasi.</p>
-          <div className="mt-8 space-y-4 text-sm">{[['✓','Absensi dan jurnal pembelajaran'],['✓','Learning Map dan pemantauan nilai'],['✓','Laporan dan pendampingan siswa'],['✓','Asisten digital untuk membantu penggunaan aplikasi']].map(([icon,label])=><div key={label} className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300 font-bold">{icon}</span><span>{label}</span></div>)}</div></div>
-          <div className="border-t border-white/15 pt-5 text-xs text-blue-200"><p className="font-bold text-white">UPTD SMPN 2 BAJUIN</p><p className="mt-1">Platform pendamping administrasi dan pembelajaran sekolah.</p></div>
-        </section>
-        <div className="max-w-md w-full bg-white border border-slate-200">
-          <div className="bg-gradient-to-r from-blue-900 to-blue-800 p-8 text-white text-center relative">
-            <h1 className="text-3xl font-black tracking-wider text-white">KELAS<span className="text-amber-400">+</span></h1>
-            <p className="text-xs text-blue-200 mt-1 font-semibold">UPTD SMPN 2 BAJUIN</p>
-            <p className="text-[11px] text-blue-100 italic mt-3 bg-blue-950/40 py-1.5 px-3 rounded-full inline-block border border-blue-700/50">
-              Sistem Informasi & Asisten Pengajaran Digital
-            </p>
-          </div>
-
-          <form onSubmit={handleLogin} className="p-6 space-y-4">
-            <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider text-center">Masuk ke Akun Anda</h2>
-
-            {loginError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-semibold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {loginError}
+      <main className="min-h-screen bg-slate-950 px-3 py-4 sm:px-6 sm:py-8 lg:flex lg:items-center lg:justify-center font-sans">
+        <div className="mx-auto grid w-full max-w-7xl overflow-hidden rounded-[28px] border border-white/15 bg-white shadow-[0_32px_100px_rgba(0,0,0,0.42)] lg:min-h-[720px] lg:grid-cols-[1.08fr_0.92fr]">
+          <section className="relative isolate flex min-h-[520px] flex-col justify-between overflow-hidden bg-gradient-to-br from-[#061b4a] via-[#073b8d] to-[#1268cf] p-7 text-white sm:p-10 lg:min-h-[720px] lg:p-12">
+            <div className="absolute inset-0 -z-20 bg-[radial-gradient(ellipse_at_80%_15%,rgba(56,189,248,0.38),transparent_38%),radial-gradient(ellipse_at_5%_85%,rgba(37,99,235,0.65),transparent_40%)]" />
+            <div className="absolute inset-0 -z-10 opacity-20" style={{backgroundImage:'linear-gradient(135deg,transparent 0%,rgba(255,255,255,.12) 48%,transparent 49%,transparent 100%)',backgroundSize:'44px 44px'}} />
+            <div className="relative">
+              <div className="inline-flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 shadow-lg backdrop-blur-md">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 text-lg font-black tracking-tight">K<span className="text-amber-300">+</span></div>
+                <div><p className="text-xl font-black tracking-wide">KELAS<span className="text-amber-300">+</span></p><p className="text-xs text-blue-100">Sistem Informasi Pembelajaran</p></div>
               </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Username</label>
-              <input
-                type="text"
-                placeholder="Masukkan Username..."
-                value={loginUsername}
-                onChange={e => setLoginUsername(e.target.value)}
-                required
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium"
-              />
+              <p className="mt-10 text-xs font-extrabold uppercase tracking-[0.28em] text-amber-300 sm:mt-14">Selamat datang di KELAS+</p>
+              <h1 className="mt-4 max-w-xl text-4xl font-black leading-[1.08] tracking-tight sm:text-5xl">Dari data menjadi <span className="text-amber-300">aksi.</span></h1>
+              <p className="mt-5 max-w-lg text-sm leading-7 text-blue-100 sm:text-base">Satu platform untuk membantu guru dan pimpinan sekolah mengelola pembelajaran, memantau perkembangan siswa, dan mengambil keputusan yang lebih tepat.</p>
+              <div className="mt-8 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
+                {[['01','Absensi & Jurnal','Pencatatan kegiatan belajar yang tertata'],['02','Learning Map','Pemantauan tugas dan perkembangan nilai'],['03','Laporan Siswa','Informasi untuk pendampingan yang tepat'],['04','Asisten Digital','Bantuan penggunaan aplikasi terintegrasi']].map(([n,title,desc])=>(
+                  <div key={n} className="flex gap-3 rounded-2xl border border-white/15 bg-white/[0.08] p-4 backdrop-blur-sm transition hover:bg-white/[0.13]">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-400/20 text-xs font-black text-sky-200">{n}</span>
+                    <div><p className="text-sm font-bold text-white">{title}</p><p className="mt-1 text-xs leading-5 text-blue-100/85">{desc}</p></div>
+                  </div>
+                ))}
+              </div>
             </div>
+            <div className="mt-8 border-t border-white/20 pt-5">
+              <p className="text-sm font-extrabold tracking-wide">UPTD SMPN 2 BAJUIN</p>
+              <p className="mt-1 text-xs leading-5 text-blue-100">Platform pendamping administrasi dan pembelajaran sekolah.</p>
+            </div>
+          </section>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Masukkan Password..."
-                  value={loginPassword}
-                  onChange={e => setLoginPassword(e.target.value)}
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-600 font-medium pr-9"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          <section className="flex flex-col justify-center bg-white px-6 py-8 sm:px-10 sm:py-12 lg:px-14">
+            <div className="mx-auto w-full max-w-md">
+              <div className="text-center">
+                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-800 ring-1 ring-blue-100">
+                  <BookOpen className="h-7 w-7" />
+                </div>
+                <p className="text-3xl font-black tracking-tight text-slate-950">KELAS<span className="text-blue-700">+</span></p>
+                <p className="mt-2 text-sm font-bold tracking-wide text-slate-700">UPTD SMPN 2 BAJUIN</p>
+                <p className="mt-3 inline-flex rounded-full bg-blue-50 px-4 py-2 text-[11px] font-medium text-blue-800 ring-1 ring-blue-100">Sistem Informasi & Asisten Pengajaran Digital</p>
+              </div>
+
+              <form onSubmit={handleLogin} className="mt-9 space-y-5">
+                <div><h2 className="text-xl font-extrabold tracking-tight text-slate-900">Masuk ke akun Anda</h2><p className="mt-1.5 text-sm leading-6 text-slate-500">Gunakan akun yang telah diberikan oleh administrator sekolah.</p></div>
+                {loginError && <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-700"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> <span>{loginError}</span></div>}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Username</label>
+                  <div className="relative"><User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input type="text" autoComplete="username" placeholder="Masukkan username" value={loginUsername} onChange={e => setLoginUsername(e.target.value)} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" /></div>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">Password</label>
+                  <div className="relative"><Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Masukkan password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" /><button type="button" aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div>
+                </div>
+                <button type="submit" disabled={isLoadingAuth} className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-blue-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-700/20 transition hover:-translate-y-0.5 hover:from-blue-800 hover:to-blue-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60">
+                  {isLoadingAuth ? <><RefreshCw className="h-4 w-4 animate-spin" /> Memverifikasi akun…</> : <>Masuk Sekarang <ChevronRight className="h-4 w-4" /></>}
                 </button>
-              </div>
+                <p className="border-t border-slate-100 pt-5 text-center text-xs leading-5 text-slate-500">Akun akses dikelola oleh administrator sekolah. Jangan bagikan kata sandi Anda kepada siapa pun.</p>
+                <p className="text-center text-[11px] font-medium tracking-wide text-slate-400">KELAS+ · versi {APP_VERSION}</p>
+              </form>
             </div>
-
-            <button
-              type="submit"
-              disabled={isLoadingAuth}
-              className="w-full py-3 bg-blue-800 hover:bg-blue-900 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
-            >
-              {isLoadingAuth ? <><RefreshCw className="w-4 h-4 animate-spin" /> Memverifikasi akun…</> : 'Masuk Sekarang'}
-            </button>
-
-            <p className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-500">
-              Gunakan akun yang dibuat oleh administrator sekolah.
-            </p>
-            <p className="text-center text-[9px] text-slate-400 tracking-wide">KELAS+ versi {APP_VERSION}</p>
-          </form>
+          </section>
         </div>
-        </div>
-      </div>
+      </main>
     );
   }
 
