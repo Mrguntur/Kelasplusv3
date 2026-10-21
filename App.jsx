@@ -1006,7 +1006,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
+    <div onClickCapture={event => { if (mobileMenuOpen && !event.target.closest('aside') && !event.target.closest('header')) setMobileMenuOpen(false); }} className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
       <div className="fixed bottom-5 right-5 z-[95]">
         {chatOpen && <section className="mb-2 flex h-[min(76dvh,600px)] w-[min(94vw,410px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:mb-3">
           <header className="flex items-center gap-3 bg-gradient-to-r from-blue-950 to-blue-800 p-3 sm:p-4 text-white"><div className="relative flex h-9 w-9 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-200/40 bg-gradient-to-br from-cyan-300 via-blue-500 to-indigo-700 shadow-[inset_0_2px_3px_rgba(255,255,255,.65),0_6px_18px_rgba(2,132,199,.35)]"><span className="absolute inset-[3px] rounded-[11px] border border-white/25"></span><Bot className="relative h-5 w-5 sm:h-6 sm:w-6 text-white drop-shadow-[0_2px_2px_rgba(0,0,0,.45)]" strokeWidth={2.4} /></div><div className="min-w-0 flex-1"><p className="text-sm font-black">Asisten KELAS+</p><p className="text-[10px] text-blue-100">Panduan aplikasi & bantuan</p></div><button type="button" onClick={() => setChatOpen(false)} aria-label="Tutup chatbot" className="rounded-lg p-2 hover:bg-white/15"><X className="h-4 w-4" /></button></header>
@@ -1018,19 +1018,26 @@ export default function App() {
       {isLoggingOut && <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white"><div className="w-16 h-16 rounded-full border-4 border-blue-300/30 border-t-amber-400 animate-spin" /><p className="mt-5 text-lg font-black">KELAS+</p><p className="mt-2 text-sm text-slate-200">Mengakhiri sesi…</p></div>}
       {toastNotice && <div data-toast-notice className={"fixed top-3 left-1/2 z-[120] w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-xl backdrop-blur transition-all duration-500 " + (toastFading ? "translate-y-[-8px] opacity-0" : "translate-y-0 opacity-100")}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><BellRing className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-slate-900">{toastNotice.title}</span><span className="mt-1 block text-xs text-slate-600">{toastNotice.message}</span><span className="mt-2 block text-[10px] font-bold text-blue-700">Notifikasi akan tertutup otomatis</span></span><button type="button" onClick={() => setToastNotice(null)} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Tutup notifikasi"><X className="h-4 w-4" /></button></div></div>}
       
-      {/* Mobile Top Navigation */}
-      <div className="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50 shadow-md">
-        <div>
-          <h1 className="text-xl font-black text-white">KELAS<span className="text-amber-400">+</span></h1>
-          <p className="text-[9px] text-slate-400 tracking-wider">{systemSettings.schoolName}</p>
+      {/* Mobile topbar stays fixed above page scrolling; clicking outside closes the menu. */}
+      {mobileMenuOpen && <button type="button" aria-label="Tutup navigasi" onClick={() => setMobileMenuOpen(false)} className="lg:hidden fixed inset-0 z-[60] bg-slate-950/35 backdrop-blur-[2px]" />}
+      <header className="lg:hidden fixed inset-x-0 top-0 z-[70] h-[72px] border-b border-white/10 bg-slate-950/95 text-white shadow-[0_8px_30px_rgba(15,23,42,.18)] backdrop-blur-xl">
+        <div className="flex h-full items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-lg font-black shadow-inner">K<span className="text-amber-400">+</span></div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-black leading-tight tracking-tight">KELAS<span className="text-amber-400">+</span></h1>
+              <p className="max-w-[62vw] truncate text-[9px] font-medium tracking-[0.12em] text-slate-400">{systemSettings.schoolName}</p>
+            </div>
+          </div>
+          <button type="button" aria-expanded={mobileMenuOpen} aria-label={mobileMenuOpen ? "Tutup menu navigasi" : "Buka menu navigasi"} onClick={() => setMobileMenuOpen(value => !value)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12] hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-400/70">
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-slate-300 hover:text-white">
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
-      </div>
+      </header>
+      <div className="lg:hidden h-[72px] shrink-0" aria-hidden="true" />
 
       {/* Main Sidebar */}
-      <aside className={`w-full lg:w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col justify-between ${mobileMenuOpen ? 'block' : 'hidden lg:flex'} lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto`}>
+      <aside className={`fixed inset-x-0 top-[72px] z-[65] max-h-[calc(100dvh-72px)] overflow-y-auto overscroll-contain border-b border-white/10 bg-slate-950 text-white shadow-[0_24px_50px_rgba(15,23,42,.35)] transition-[opacity,transform,visibility] duration-200 lg:static lg:z-auto lg:max-h-none lg:translate-y-0 lg:overflow-visible lg:border-0 lg:bg-slate-900 lg:shadow-none ${mobileMenuOpen ? 'visible translate-y-0 opacity-100' : 'invisible -translate-y-2 opacity-0 pointer-events-none lg:visible lg:translate-y-0 lg:opacity-100 lg:pointer-events-auto'} lg:w-64 lg:flex-shrink-0 lg:flex lg:flex-col lg:justify-between lg:h-screen lg:sticky lg:top-0`}>
         <div>
           <div className="hidden lg:flex p-5 border-b border-slate-800 items-center justify-between">
             <div>
