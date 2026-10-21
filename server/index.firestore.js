@@ -444,6 +444,25 @@ app.post('/api/journals', auth, allow('ADMIN','TEACHER'), async (req,res,next) =
     await audit(req.user,'CREATE','journal',journalId); res.status(201).json({success:true,journal:{id:journalId}});
   } catch(error) { next(error); }
 });
+app.post('/api/ai/chat', auth, async (req,res,next) => {
+  try {
+    const question = clean(req.body?.message).slice(0, 1200);
+    if (!question) return fail(res, 400, 'Pertanyaan chatbot wajib diisi.');
+    if (!process.env.GEMINI_API_KEY) return fail(res, 503, 'AI belum dikonfigurasi pada server. Gunakan panduan bantuan lokal atau hubungi call center.');
+    const roleLabel = req.user.role === 'ADMIN' ? 'administrator' : req.user.role === 'LEADER' ? 'pimpinan sekolah' : 'guru';
+    const prompt = 'Anda adalah robot bantuan KELAS+, aplikasi administrasi pembelajaran UPTD SMPN 2 BAJUIN. Jawab dalam Bahasa Indonesia, ramah, ringkas, dan praktis. Pengguna adalah ' + roleLabel + '. Bantu menjelaskan penggunaan fitur aplikasi, absensi, jurnal, Learning Map, nilai, jadwal, dan laporan. Jangan mengarang data siswa, nilai, atau konfigurasi. Jangan meminta kata sandi, token, atau data sensitif. Jika pertanyaan membutuhkan akses data atau tindakan administratif, arahkan pengguna ke menu yang sesuai atau administrator. Pertanyaan: ' + question;
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + (process.env.GEMINI_MODEL || 'gemini-3.8-flash') + ':generateContent?key=' + encodeURIComponent(process.env.GEMINI_API_KEY), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 450, temperature: 0.4 } })
+    });
+    const data = await response.json();
+    if (!response.ok) return fail(res, response.status === 429 ? 503 : 502, 'Asisten AI sementara tidak tersedia. Silakan coba lagi atau hubungi call center.');
+    const answer = clean(data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n'));
+    if (!answer) return fail(res, 502, 'Asisten AI belum memberikan jawaban. Silakan coba kembali.');
+    res.json({ success: true, answer });
+  } catch (error) { next(error); }
+});
+
 app.post('/api/ai/teaching-recommendations', auth, async (req,res,next) => {
   try {
     const b=req.body||{}; if(!clean(b.topic)) return fail(res,400,'Topik wajib diisi.');
