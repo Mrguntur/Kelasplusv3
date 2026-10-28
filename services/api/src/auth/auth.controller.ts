@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   HttpCode,
+  Get,
+  UseGuards,
   HttpStatus,
   Post,
   Req,
@@ -12,6 +14,8 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { LoginDto } from './auth.dto';
 import { Throttle } from '@nestjs/throttler';
+import { CurrentUser } from './current-user.decorator';
+import { SessionAuthGuard } from './session-auth.guard';
 
 const SESSION_COOKIE = 'kelasplus_session';
 
@@ -36,6 +40,12 @@ export class AuthController {
     });
     response.cookie(SESSION_COOKIE, result.rawToken, this.cookieOptions(result.expiresAt));
     return { user: result.user, expiresAt: result.expiresAt };
+  }
+
+  @Get('me')
+  @UseGuards(SessionAuthGuard)
+  me(@CurrentUser() user: { id: string; email: string; displayName: string }) {
+    return { user };
   }
 
   @Post('logout')
