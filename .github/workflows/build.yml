@@ -2,9 +2,9 @@ name: KELAS+ Build
 
 on:
   push:
-    branches: [feature/teaching-schedule-push, perf/kplus-optimization-pass2]
+    branches: [feature/teaching-schedule-push, perf/kplus-optimization-pass2, feat/kelasplus-landing-page]
   pull_request:
-    branches: [main, master, feature/teaching-schedule-push, perf/firestore-read-optimization]
+    branches: [main, master, feature/teaching-schedule-push, perf/firestore-read-optimization, perf/kplus-optimization-pass2]
 
 jobs:
   frontend-build:
