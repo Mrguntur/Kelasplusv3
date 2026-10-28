@@ -71,4 +71,3 @@ ROLLBACK;
 RESET ROLE;
 
 REVOKE ALL ON "schools", "school_memberships", "sessions", "users" FROM kelasplus_runtime;
-DROP ROLE IF EXISTS kelasplus_runtime;
