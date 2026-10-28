@@ -75,3 +75,6 @@ jobs:
 
       - name: Unit tests
         run: npm test -- --runInBand
+
+      - name: API security e2e tests
+        run: npm run test:e2e -- --runInBand
