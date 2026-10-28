@@ -6,14 +6,27 @@
 ALTER TABLE "schools" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "schools" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "schools_tenant_scope" ON "schools"
-  USING ("id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid)
-  WITH CHECK ("id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid);
+  USING (
+    "id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid
+    AND EXISTS (
+      SELECT 1 FROM "school_memberships" m
+      WHERE m."school_id" = "schools"."id"
+        AND m."user_id" = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+    )
+  )
+  WITH CHECK (false); -- school creation/onboarding uses a separately reviewed path
 
 ALTER TABLE "school_memberships" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "school_memberships" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "memberships_tenant_scope" ON "school_memberships"
-  USING ("school_id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid)
-  WITH CHECK ("school_id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid);
+CREATE POLICY "memberships_self_scope" ON "school_memberships"
+  USING (
+    "school_id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid
+    AND "user_id" = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+  )
+  WITH CHECK (
+    "school_id" = NULLIF(current_setting('app.current_school_id', true), '')::uuid
+    AND "user_id" = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+  );
 
 ALTER TABLE "sessions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "sessions" FORCE ROW LEVEL SECURITY;
