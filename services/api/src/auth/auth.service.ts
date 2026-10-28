@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, TooManyRequestsException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -24,7 +24,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
     const now = new Date();
     if (user?.lockedUntil && user.lockedUntil > now) {
-      throw new TooManyRequestsException('Login sementara dibatasi. Coba lagi nanti.');
+      throw new HttpException('Login sementara dibatasi. Coba lagi nanti.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const hash = user?.passwordHash ?? await this.dummyHash;
