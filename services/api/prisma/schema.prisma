@@ -27,6 +27,12 @@ enum SchoolRole {
   SCHOOL_OPERATOR
 }
 
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model School {
   id          String            @id @default(uuid()) @db.Uuid
   slug        String            @unique @db.VarChar(80)
@@ -86,4 +92,23 @@ model Session {
   @@index([userId, expiresAt])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+
+model SchoolRegistrationRequest {
+  id             String             @id @default(uuid()) @db.Uuid
+  schoolName     String             @map("school_name") @db.VarChar(200)
+  requestedSlug  String             @map("requested_slug") @db.VarChar(80)
+  contactName    String             @map("contact_name") @db.VarChar(200)
+  email          String             @db.VarChar(320)
+  phone          String?            @db.VarChar(40)
+  status         RegistrationStatus @default(PENDING)
+  reviewedAt     DateTime?          @map("reviewed_at") @db.Timestamptz(6)
+  reviewedBy     String?            @map("reviewed_by") @db.Uuid
+  rejectionReason String?           @map("rejection_reason") @db.VarChar(500)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([email, createdAt])
+  @@map("school_registration_requests")
 }
