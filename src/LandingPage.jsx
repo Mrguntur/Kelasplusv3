@@ -173,6 +173,21 @@ function DashboardPreview() {
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-700"><Sparkles className="h-4 w-4" /></span>
         <span><span className="block text-[10px] font-extrabold text-slate-800 sm:text-xs">Dukungan AI</span><span className="mt-0.5 block text-[9px] text-slate-500">Bantu siapkan pembelajaran</span></span>
       </div>
+      <div className="absolute -bottom-1 right-2 hidden items-center gap-3 rounded-2xl border border-white bg-white/95 p-3 shadow-xl shadow-slate-900/10 backdrop-blur sm:flex lg:right-1">
+        <svg viewBox="0 0 72 72" className="h-14 w-14 shrink-0" role="img" aria-label="Ilustrasi guru">
+          <circle cx="36" cy="36" r="34" fill="#e0f2fe"/>
+          <path d="M13 63c2-13 11-21 23-21s21 8 23 21" fill="#0f766e"/>
+          <path d="M23 28c0-12 6-19 15-19 10 0 15 8 15 19v6H23z" fill="#172554"/>
+          <circle cx="37" cy="29" r="13" fill="#f2c6a0"/>
+          <path d="M24 26c1-11 8-17 16-17 7 0 12 5 13 12-7 0-13-3-17-7-2 5-6 9-12 12z" fill="#172554"/>
+          <path d="M29 32c2 2 4 3 8 3s6-1 8-3" fill="none" stroke="#9a5b43" strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M30 27h.5M44 27h.5" stroke="#334155" strokeWidth="3" strokeLinecap="round"/>
+          <path d="M29 47l8 7 8-7" fill="#ffffff"/>
+          <rect x="45" y="45" width="15" height="18" rx="3" fill="#fbbf24" stroke="#ffffff" strokeWidth="2"/>
+          <path d="M49 50h7M49 54h7M49 58h5" stroke="#92400e" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        <span className="pr-1"><span className="block text-[10px] font-extrabold text-slate-800 sm:text-xs">Berpusat pada guru</span><span className="mt-0.5 block text-[9px] text-slate-500">Teknologi untuk pembelajaran</span></span>
+      </div>
     </div>
   );
 }
