@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
   BarChart3,
-  BookOpenCheck,
   CalendarCheck,
   CheckCircle2,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   Menu,
   ShieldCheck,
   Sparkles,
-  UsersRound,
   X,
 } from 'lucide-react';
 
