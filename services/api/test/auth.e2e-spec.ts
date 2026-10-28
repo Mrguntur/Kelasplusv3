@@ -62,6 +62,15 @@ describe('Auth API security (e2e)', () => {
     expect(authService.login).not.toHaveBeenCalled();
   });
 
+  it('rejects cookie authentication when Origin is missing', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'teacher@example.com', password: 'a-long-test-password' })
+      .expect(403);
+
+    expect(authService.login).not.toHaveBeenCalled();
+  });
+
   it('issues an HttpOnly session cookie for an allowed origin', async () => {
     const expiresAt = new Date('2030-01-01T00:00:00.000Z');
     authService.login.mockResolvedValue({
@@ -95,6 +104,7 @@ describe('Auth API security (e2e)', () => {
   it('rejects unexpected request fields rather than silently accepting them', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
+      .set('Origin', 'https://app.kelasplus.example')
       .send({
         email: 'teacher@example.com',
         password: 'a-long-test-password',
