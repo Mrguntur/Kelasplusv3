@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: kelasplus-v2-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kelasplus_dev
+      POSTGRES_USER: kelasplus_dev
+      POSTGRES_PASSWORD: local_dev_password_only
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - kelasplus_v2_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kelasplus_dev -d kelasplus_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  kelasplus_v2_pgdata:
