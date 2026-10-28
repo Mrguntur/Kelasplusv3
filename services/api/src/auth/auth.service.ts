@@ -31,14 +31,23 @@ export class AuthService {
     const valid = await argon2.verify(hash, input.password).catch(() => false);
     if (!user || user.status !== UserStatus.ACTIVE || !user.passwordHash || !valid) {
       if (user) {
-        const attempts = user.failedLoginAttempts + 1;
-        await this.prisma.user.update({
-          where: { id: user.id },
-          data: {
-            failedLoginAttempts: attempts >= MAX_FAILED_ATTEMPTS ? 0 : attempts,
-            lockedUntil: attempts >= MAX_FAILED_ATTEMPTS ? new Date(now.getTime() + LOCKOUT_MS) : null,
-          },
-        });
+        // One SQL statement serializes concurrent failures on the user row so parallel
+        // requests cannot all read the same counter and bypass the lockout threshold.
+        await this.prisma.$executeRaw`
+          UPDATE "users"
+          SET
+            "failed_login_attempts" = CASE
+              WHEN "failed_login_attempts" + 1 >= ${MAX_FAILED_ATTEMPTS} THEN 0
+              ELSE "failed_login_attempts" + 1
+            END,
+            "locked_until" = CASE
+              WHEN "failed_login_attempts" + 1 >= ${MAX_FAILED_ATTEMPTS}
+                THEN ${new Date(now.getTime() + LOCKOUT_MS)}
+              ELSE NULL
+            END,
+            "updated_at" = ${now}
+          WHERE "id" = ${user.id}::uuid
+        `;
       }
       throw new UnauthorizedException('Email atau kata sandi tidak valid.');
     }
