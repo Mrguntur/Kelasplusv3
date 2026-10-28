@@ -931,6 +931,7 @@ export default function App() {
               Gunakan akun yang dibuat oleh administrator sekolah.
             </p>
             <p className="text-center text-[9px] text-slate-400 tracking-wide">KELAS+ versi {APP_VERSION}</p>
+            <button type="button" onClick={() => setShowLogin(false)} className="mx-auto block rounded-lg px-3 py-2 text-[11px] font-bold text-blue-800 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">Kembali ke halaman utama</button>
           </form>
         </div>
       </div>
