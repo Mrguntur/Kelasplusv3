@@ -79,7 +79,7 @@ export class AuthService {
   }
 
   async validateSession(rawToken: string) {
-    return this.withSession(rawToken, async (tx, session) => {
+    const authenticatedUser = await this.withSession(rawToken, async (tx, session) => {
       if (session.revokedAt || session.expiresAt <= new Date() || session.user.status !== UserStatus.ACTIVE) {
         throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir.');
       }
