@@ -1,11 +1,6 @@
 \set ON_ERROR_STOP on
 -- Runs only against disposable CI PostgreSQL after Prisma migrations.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kelasplus_runtime') THEN
-    CREATE ROLE kelasplus_runtime LOGIN PASSWORD 'runtime_ci_only' NOSUPERUSER NOBYPASSRLS;
-  END IF;
-END $$;
+CREATE ROLE kelasplus_runtime LOGIN PASSWORD 'runtime_ci_only' NOSUPERUSER NOBYPASSRLS;
 
 GRANT USAGE ON SCHEMA public TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessions", "users" TO kelasplus_runtime;
@@ -49,6 +44,14 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "school_memberships" WHERE "school_id" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') THEN
     RAISE EXCEPTION 'RLS failure: School A can see School B memberships';
   END IF;
+
+  BEGIN
+    INSERT INTO "school_memberships" ("id","school_id","user_id","role","created_at")
+    VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc33','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01','TEACHER',now());
+    RAISE EXCEPTION 'RLS failure: cross-school membership write unexpectedly succeeded';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected row-level security denial
+  END;
 END $$;
 ROLLBACK;
 RESET ROLE;
