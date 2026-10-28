@@ -22,6 +22,20 @@ permissions:
 jobs:
   api-checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kelasplus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kelasplus_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
     defaults:
       run:
         working-directory: services/api
@@ -44,6 +58,14 @@ jobs:
         run: npx prisma validate
         env:
           DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/ci_db
+
+      - name: Apply migrations to disposable CI database
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kelasplus_test?schema=public
+
+      - name: Test PostgreSQL tenant RLS policies
+        run: psql "postgresql://postgres:postgres@localhost:5432/kelasplus_test" -f test/rls.integration.sql
 
       - name: Type check
         run: npm run typecheck
