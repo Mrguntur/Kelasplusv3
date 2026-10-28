@@ -11,6 +11,7 @@ import {
   Activity, Award, BookMarked, TrendingUp, HelpCircle, Layers3, Bell, BellRing
 } from 'lucide-react';
 import firebaseApp from './firebase.js';
+import LandingPage from './src/LandingPage.jsx';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 
@@ -23,6 +24,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toastNotice, setToastNotice] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(false);
 
   // Authentication State
@@ -830,6 +832,11 @@ export default function App() {
   const filteredLeaderStudents = leaderLearningStudents.filter(student => (mapClassFilter === 'ALL' || student.class === mapClassFilter) && (student.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) || String(student.nisn || '').includes(studentSearchTerm)));
   const visibleSchedules = schedules.filter(item => Number(item.dayOfWeek) === Number(selectedScheduleDay) && (currentUser?.role !== 'LEADER' || scheduleFilterClass === 'ALL' || item.className === scheduleFilterClass) && (currentUser?.role !== 'LEADER' || scheduleFilterTeacher === 'ALL' || item.teacherId === scheduleFilterTeacher));
 
+  // Public landing page is shown first; existing login and server auth stay unchanged.
+  if (!currentUser && !showLogin) {
+    return <LandingPage onLogin={() => setShowLogin(true)} />;
+  }
+
   // UNAUTHENTICATED - LOGIN PAGE
   if (!currentUser) {
     return (
@@ -897,6 +904,7 @@ export default function App() {
               Gunakan akun yang dibuat oleh administrator sekolah.
             </p>
             <p className="text-center text-[9px] text-slate-400 tracking-wide">KELAS+ versi {APP_VERSION}</p>
+            <button type="button" onClick={() => setShowLogin(false)} className="mx-auto block rounded-lg px-3 py-2 text-[11px] font-bold text-blue-800 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">Kembali ke halaman utama</button>
           </form>
         </div>
       </div>

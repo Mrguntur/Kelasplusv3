@@ -2,9 +2,9 @@ name: KELAS+ Build
 
 on:
   push:
-    branches: [feature/teaching-schedule-push]
+    branches: [feature/teaching-schedule-push, feat/kelasplus-platform-staging]
   pull_request:
-    branches: [main, master, feature/teaching-schedule-push]
+    branches: [main, master, feature/teaching-schedule-push, perf/firestore-overread-hotfix-v3]
 
 jobs:
   frontend-build:
