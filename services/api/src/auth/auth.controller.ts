@@ -1,5 +1,6 @@
 import {
   Body,
+  ForbiddenException,
   Controller,
   HttpCode,
   Get,
@@ -34,6 +35,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
     @Body() body: LoginDto,
   ) {
+    this.assertTrustedOrigin(request);
     const result = await this.authService.login(body, {
       ipAddress: request.ip,
       userAgent: request.get('user-agent')?.slice(0, 200),
@@ -54,6 +56,7 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
+    this.assertTrustedOrigin(request);
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (token) await this.authService.revokeToken(token);
     response.clearCookie(SESSION_COOKIE, this.cookieOptions(new Date(0)));
@@ -65,11 +68,20 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
+    this.assertTrustedOrigin(request);
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (token) {
       await this.authService.revokeAllForCurrentToken(token);
     }
     response.clearCookie(SESSION_COOKIE, this.cookieOptions(new Date(0)));
+  }
+
+  private assertTrustedOrigin(request: Request): void {
+    const origin = request.get('origin');
+    if (!origin) return; // Native clients may not send Origin; browser CORS remains allowlisted.
+    const allowed = (this.config.get<string>('CORS_ORIGINS') ?? 'http://localhost:5173')
+      .split(',').map((value) => value.trim()).filter(Boolean);
+    if (!allowed.includes(origin)) throw new ForbiddenException('Origin tidak diizinkan.');
   }
 
   private cookieOptions(expires: Date) {
