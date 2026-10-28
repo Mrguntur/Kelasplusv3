@@ -89,6 +89,8 @@ export class AuthService {
       });
       return { id: session.user.id, email: session.user.email, displayName: session.user.displayName };
     });
+    if (!authenticatedUser) throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir.');
+    return authenticatedUser;
   }
 
 
