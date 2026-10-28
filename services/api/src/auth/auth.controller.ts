@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   HttpCode,
   HttpStatus,
@@ -10,6 +11,7 @@ import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { LoginDto } from './auth.dto';
+import { Throttle } from '@nestjs/throttler';
 
 const SESSION_COOKIE = 'kelasplus_session';
 
@@ -21,12 +23,12 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async login(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-    // DTO body is extracted explicitly to keep the public contract narrow.
-    body: LoginDto,
+    @Body() body: LoginDto,
   ) {
     const result = await this.authService.login(body, {
       ipAddress: request.ip,
