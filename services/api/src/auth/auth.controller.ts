@@ -94,7 +94,9 @@ export class AuthController {
 
   private assertTrustedOrigin(request: Request): void {
     const origin = request.get('origin');
-    if (!origin) return; // Native clients may not send Origin; browser CORS remains allowlisted.
+    // Cookie-authenticated routes are browser-only until a separate native-token flow exists.
+    // Reject missing Origin as well as untrusted Origin to avoid ambiguous CSRF behavior.
+    if (!origin) throw new ForbiddenException('Header Origin wajib untuk autentikasi berbasis cookie.');
     const allowed = (this.config.get<string>('CORS_ORIGINS') ?? 'http://localhost:5173')
       .split(',').map((value) => value.trim()).filter(Boolean);
     if (!allowed.includes(origin)) throw new ForbiddenException('Origin tidak diizinkan.');
