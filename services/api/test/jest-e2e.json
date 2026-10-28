@@ -4,7 +4,7 @@
   "testEnvironment": "node",
   "testRegex": ".*\\.e2e-spec\\.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "../tsconfig.json" }]
+    "^.+\\.(t|j)s$": ["ts-jest"]
   },
   "testTimeout": 15000,
   "verbose": true
