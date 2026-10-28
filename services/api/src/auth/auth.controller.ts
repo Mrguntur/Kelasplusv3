@@ -17,6 +17,7 @@ import { LoginDto } from './auth.dto';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from './current-user.decorator';
 import { SessionAuthGuard } from './session-auth.guard';
+import { ChangePasswordDto } from './change-password.dto';
 
 const SESSION_COOKIE = 'kelasplus_session';
 
@@ -48,6 +49,19 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   me(@CurrentUser() user: { id: string; email: string; displayName: string }) {
     return { user };
+  }
+
+
+  @Post('change-password')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async changePassword(
+    @CurrentUser() user: { id: string },
+    @Body() body: ChangePasswordDto,
+    @Req() request: Request,
+  ): Promise<void> {
+    this.assertTrustedOrigin(request);
+    await this.authService.changePassword(user.id, body);
   }
 
   @Post('logout')
