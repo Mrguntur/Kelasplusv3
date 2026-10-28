@@ -1,0 +1,53 @@
+# KELAS+ Platform V2 — Tenant Isolation Contract
+
+Status: design guardrails; implementation and tests are still required before tenant data endpoints.
+
+## Threat model
+
+A signed-in user may belong to more than one school. A client may alter school IDs, object IDs, filters, request bodies, cached keys, or replay an old request after membership revocation. Authorization must not rely on hidden UI controls or a school ID supplied by the client.
+
+## Required request flow
+
+1. Authenticate the user and validate session status/expiry/revocation.
+2. Resolve the requested active school from the user's active membership on the server.
+3. Begin a database transaction.
+4. Set the authenticated user and active school using transaction-local PostgreSQL settings (for example, set_config('app.current_user_id', ..., true) and set_config('app.current_school_id', ..., true)).
+5. Perform tenant-scoped reads/writes inside that same transaction and connection.
+6. Commit/rollback; transaction-local settings must not leak into a pooled connection.
+7. Write audit events for privileged operations and sensitive changes.
+
+Never use session-level SET for tenant context with pooled connections. Do not accept an arbitrary school ID as authorization proof.
+
+## RLS policy requirements
+
+- Tenant-owned tables must enable and FORCE ROW LEVEL SECURITY.
+- Policies must use NULL-safe context retrieval and deny access when context is absent or invalid.
+- Runtime database role must be a dedicated non-owner role with no SUPERUSER and no BYPASSRLS.
+- Migration role is separate and must never be used by the API runtime.
+- Do not grant direct database access to web/mobile clients.
+- Any cross-tenant platform support action must use a separate, narrow, audited workflow; it must not silently disable RLS.
+- Tables with references between tenant-owned records must use tenant-aware constraints so a record from school A cannot point to a record from school B.
+
+## Test matrix required before tenant endpoints
+
+For at least two synthetic schools (A and B), test:
+- No tenant context returns no tenant rows and rejects writes.
+- Context A can read/write A records.
+- Context A cannot read, update, or delete B records even when the B UUID is supplied directly.
+- Context B cannot access A records.
+- Missing/expired/revoked membership prevents context establishment.
+- Pooled connection reused after transaction A does not retain tenant A context.
+- Cross-school foreign-key references are rejected.
+- Runtime role cannot bypass RLS; migration role is not configured in the application.
+- Background jobs and exports carry and revalidate tenant context.
+- Tests run against disposable PostgreSQL in CI, never a shared or production database.
+
+## Safe implementation sequence
+
+1. Commit schema migrations.
+2. Create dedicated local/test runtime and migration roles in an isolated test database.
+3. Add SQL RLS policies and integration tests using the runtime role.
+4. Verify Prisma transactions and transaction-local context with connection pooling.
+5. Only then implement identity/membership endpoints and tenant-owned data modules.
+
+No production database, credentials, deployment, or student data is used by this document.
