@@ -18,6 +18,13 @@ A signed-in user may belong to more than one school. A client may alter school I
 
 Never use session-level SET for tenant context with pooled connections. Do not accept an arbitrary school ID as authorization proof.
 
+## Authentication boundary
+
+- Browser cookie-authenticated mutations require an explicit `Origin` header matching the configured `CORS_ORIGINS` allowlist. Missing and untrusted origins are rejected.
+- Do not weaken this check to accommodate native clients. A dedicated mobile authentication flow (short-lived access token plus revocable refresh/session credential, secure device storage, rotation and revocation) must be designed and tested separately before Flutter clients are connected.
+- Session cookies are HttpOnly, SameSite=Lax, scoped to `/api/v1/auth`, and Secure in production. Production deployment must configure HTTPS and an exact origin allowlist; wildcard origins are not acceptable.
+- Login failure counters must be updated atomically in the database to prevent concurrent requests from bypassing account lockout.
+
 ## RLS policy requirements
 
 - Tenant-owned tables must enable and FORCE ROW LEVEL SECURITY.
