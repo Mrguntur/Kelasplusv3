@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { Prisma, UserStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './auth.dto';
+import { ChangePasswordDto } from './change-password.dto';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 8;
@@ -87,6 +88,31 @@ export class AuthService {
         data: { lastSeenAt: new Date() },
       });
       return { id: session.user.id, email: session.user.email, displayName: session.user.displayName };
+    });
+  }
+
+
+  async changePassword(userId: string, input: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status !== UserStatus.ACTIVE || !user.passwordHash) {
+      throw new UnauthorizedException('Akun tidak dapat digunakan.');
+    }
+    const currentIsValid = await argon2.verify(user.passwordHash, input.currentPassword).catch(() => false);
+    if (!currentIsValid) throw new UnauthorizedException('Kata sandi saat ini tidak valid.');
+    if (input.currentPassword === input.newPassword) {
+      throw new UnauthorizedException('Kata sandi baru harus berbeda dari kata sandi saat ini.');
+    }
+    const nextHash = await this.hashPassword(input.newPassword);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash: nextHash, failedLoginAttempts: 0, lockedUntil: null },
+      });
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     });
   }
 
