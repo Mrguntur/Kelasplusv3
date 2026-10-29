@@ -67,3 +67,11 @@ No production database, credentials, deployment, or student data is used by this
 - Membership discovery is allowed without an active-school context only for rows whose `user_id` matches the authenticated user context. This is a read-only exception to support school selection; membership writes still require an explicit active-school context and remain subject to the stricter existing policy.
 - Each school record is fetched after setting its candidate school context transaction-locally, so the schools RLS policy remains in force. The client cannot use a submitted school ID as proof of membership.
 - This endpoint does not yet establish a persistent active-school session or authorize academic operations. Tenant-owned modules must independently resolve and validate active membership within each request/transaction.
+
+## Active school session boundary
+
+- The authenticated `POST /api/v1/auth/select-school` endpoint accepts a school UUID only as a selector. The service rechecks that the authenticated identity has a membership and that the school is ACTIVE before saving the choice on that session.
+- Active school is stored per session, not as a global user preference, so different sessions/devices may choose different schools.
+- Session transactions initialize `app.current_school_id` from the session's active school or an empty value. Selection replaces it transaction-locally only after membership validation.
+- School selection is audited as `auth.school_selected`. A failed membership or inactive-school check must not update the session.
+- This is groundwork for tenant-aware requests, not a replacement for per-request authorization. Each future academic service must still validate membership and perform tenant queries inside one transaction with user and school context set.
