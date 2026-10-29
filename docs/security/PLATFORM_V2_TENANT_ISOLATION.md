@@ -60,3 +60,10 @@ For at least two synthetic schools (A and B), test:
 6. Only then implement tenant-owned academic data modules.
 
 No production database, credentials, deployment, or student data is used by this document.
+
+## School discovery boundary
+
+- The authenticated `GET /api/v1/auth/schools` endpoint lists only active schools linked to the current identity.
+- Membership discovery is allowed without an active-school context only for rows whose `user_id` matches the authenticated user context. This is a read-only exception to support school selection; membership writes still require an explicit active-school context and remain subject to the stricter existing policy.
+- Each school record is fetched after setting its candidate school context transaction-locally, so the schools RLS policy remains in force. The client cannot use a submitted school ID as proof of membership.
+- This endpoint does not yet establish a persistent active-school session or authorize academic operations. Tenant-owned modules must independently resolve and validate active membership within each request/transaction.
