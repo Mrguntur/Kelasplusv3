@@ -37,7 +37,7 @@ ON CONFLICT ("id") DO NOTHING;
 INSERT INTO "terms" ("id","school_id","academic_year_id","name","sequence","start_date","end_date","created_at","updated_at")
 VALUES
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa73','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa71','Semester 1',1,'2026-07-01','2026-12-31',now(),now()),
- ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb74','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','Semester 1',1,'2026-07-01','2026-12-31',now(),now())
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb74','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','Semester 1',1,'2026-07-01','2026-12-31',now(),now())
 ON CONFLICT ("id") DO NOTHING;
 
 SET ROLE kelasplus_runtime;
