@@ -13,6 +13,7 @@ describe('Auth API security (e2e)', () => {
   const authService = {
     login: jest.fn(),
     validateSession: jest.fn(),
+    listSchoolsForUser: jest.fn(),
     changePassword: jest.fn(),
     revokeToken: jest.fn(),
     revokeAllForCurrentToken: jest.fn(),
@@ -99,6 +100,50 @@ describe('Auth API security (e2e)', () => {
       .expect(401);
 
     expect(authService.validateSession).not.toHaveBeenCalled();
+  });
+
+  it('returns only the authenticated user school memberships from the protected school discovery endpoint', async () => {
+    authService.validateSession.mockResolvedValue({
+      id: 'user-1',
+      email: 'teacher@example.com',
+      displayName: 'Teacher',
+    });
+    authService.listSchoolsForUser.mockResolvedValue([
+      {
+        id: 'school-1',
+        slug: 'smp-example',
+        name: 'SMP Example',
+        timezone: 'Asia/Makassar',
+        locale: 'id-ID',
+        role: 'TEACHER',
+      },
+    ]);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/auth/schools')
+      .set('Cookie', 'kelasplus_session=opaque-test-session-token')
+      .expect(200);
+
+    expect(authService.validateSession).toHaveBeenCalledWith('opaque-test-session-token');
+    expect(authService.listSchoolsForUser).toHaveBeenCalledWith('user-1');
+    expect(response.body).toEqual([
+      {
+        id: 'school-1',
+        slug: 'smp-example',
+        name: 'SMP Example',
+        timezone: 'Asia/Makassar',
+        locale: 'id-ID',
+        role: 'TEACHER',
+      },
+    ]);
+  });
+
+  it('does not call school discovery without a valid session', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/schools')
+      .expect(401);
+
+    expect(authService.listSchoolsForUser).not.toHaveBeenCalled();
   });
 
   it('rejects unexpected request fields rather than silently accepting them', async () => {
