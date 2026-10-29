@@ -240,6 +240,11 @@ export class AcademicController {
     return this.academic.listReportClasses(user);
   }
 
+  @Get('reports/classes')
+  listReportClasses(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listReportClasses(user);
+  }
+
   @Get('reports/classes/:classId')
   getClassAcademicReport(
     @CurrentUser() user: AuthenticatedUser,
