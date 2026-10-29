@@ -1,59 +1,43 @@
 # KELAS+ Platform V2 — Foundation Status
 
-Branch: `feat/platform-v2-foundation`
+Development branch: `feat/platform-v2-foundation`
 
-## Implemented in this branch
+## Implemented foundation
 
-- NestJS + TypeScript API skeleton with DTO validation, Helmet security headers, explicit CORS allowlist and versioned `/api/v1` prefix.
-- Health endpoint, local PostgreSQL 17 development service, Prisma schema and versioned migrations.
-- Global identity, schools, memberships, sessions, registration requests, audit events, and school-admin invitation data models.
-- Fail-closed PostgreSQL RLS policies for tenant rows, school membership discovery, registration review, audit writes, platform-admin provisioning, and token-scoped invitation acceptance.
-- Authentication foundation: Argon2id password hashing, opaque random session tokens stored as SHA-256 hashes, HttpOnly cookie sessions, lockout and throttling, session validation, school discovery/selection, logout, logout-all, and password change with session revocation.
-- Public school registration intake that creates only a pending request.
-- Platform-admin registration review endpoints, pending-school approval, invitation email integration through Resend, and invitation acceptance that creates the school admin membership and activates the school.
-- Unit, API e2e, and disposable PostgreSQL RLS tests.
-- Security contracts and architecture notes.
-- Academic data model proposal in `docs/architecture/PLATFORM_V2_ACADEMIC_DATA_MODEL.md`; this is design only and is not yet migrated into the database.
+- NestJS + TypeScript API skeleton, DTO validation, Helmet, explicit CORS allowlist and versioned `/api/v1` prefix.
+- PostgreSQL 17 development service and Prisma-backed schema/migrations.
+- Global identities, schools, memberships, sessions, registration requests, audit events and school-admin invitations.
+- Authentication foundation using Argon2id, opaque random session tokens stored as SHA-256 hashes, HttpOnly cookies, lockout/throttling, session validation, school selection and logout/password-change flows.
+- School registration intake, platform-admin review/approval, invitation email integration and invitation acceptance.
+- Fail-closed RLS baseline and disposable PostgreSQL integration checks.
+- Architecture and security contract documents.
 
-## Verification status
+## Academic schema added on this branch
 
-- On the latest invitation-acceptance run inspected, Prisma validation and all migrations passed, but the PostgreSQL RLS integration test failed due to two malformed dollar-quote delimiters in `services/api/test/rls.integration.sql`.
-- The delimiter typo was corrected in commit `e1cc67048b3b804c8eeb209291dedd03a95173cc`. The follow-up CI result must be checked before calling the branch green; do not infer success from the fix alone.
-- The legacy KELAS+ CI run for that previous commit passed. The Platform V2 API CI did not pass because the RLS script stopped at the SQL syntax error; typecheck/build/unit/e2e steps were skipped by the workflow.
-- Static inspection of the latest `services/api/test/rls.integration.sql` confirms 12 `DO $` blocks, 12 `END $;` closers, 24 `$` tokens, and no remaining malformed `DO # KELAS+ Platform V2 — Foundation Status
-
-Branch: `feat/platform-v2-foundation`
-
-## Implemented in this branch
-
-- NestJS + TypeScript API skeleton with DTO validation, Helmet security headers, explicit CORS allowlist and versioned `/api/v1` prefix.
-- Health endpoint, local PostgreSQL 17 development service, Prisma schema and versioned migrations.
-- Global identity, schools, memberships, sessions, registration requests, audit events, and school-admin invitation data models.
-- Fail-closed PostgreSQL RLS policies for tenant rows, school membership discovery, registration review, audit writes, platform-admin provisioning, and token-scoped invitation acceptance.
-- Authentication foundation: Argon2id password hashing, opaque random session tokens stored as SHA-256 hashes, HttpOnly cookie sessions, lockout and throttling, session validation, school discovery/selection, logout, logout-all, and password change with session revocation.
-- Public school registration intake that creates only a pending request.
-- Platform-admin registration review endpoints, pending-school approval, invitation email integration through Resend, and invitation acceptance that creates the school admin membership and activates the school.
-- Unit, API e2e, and disposable PostgreSQL RLS tests.
-- Security contracts and architecture notes.
-- Academic data model proposal in `docs/architecture/PLATFORM_V2_ACADEMIC_DATA_MODEL.md`; this is design only and is not yet migrated into the database.
+- Academic years and terms.
+- Staff profiles and student records with limited personal data.
+- School classes, class enrollments and same-school composite foreign keys.
+- Subjects and teaching assignments.
+- Attendance sessions and attendance records.
+- Teaching journals, assessments and assessment scores.
+- RLS enabled and forced on academic tables, with tenant policies requiring transaction-local school context and a matching membership.
+- SQL integration coverage expanded for academic year/term visibility, missing context and cross-school term references.
 
 ## Verification status
 
-- On the latest invitation-acceptance run inspected, Prisma validation and all migrations passed, but the PostgreSQL RLS integration test failed due to two malformed dollar-quote delimiters in `services/api/test/rls.integration.sql`.
-- The delimiter typo was corrected in commit `e1cc67048b3b804c8eeb209291dedd03a95173cc`. The follow-up CI result must be checked before calling the branch green; do not infer success from the fix alone.
-- The legacy KELAS+ CI run for that previous commit passed. The Platform V2 API CI did not pass because the RLS script stopped at the SQL syntax error; typecheck/build/unit/e2e steps were skipped by the workflow.
- / `END $;` pattern. This is only a delimiter check; PostgreSQL execution must still pass in CI.
+- The last previously confirmed green CI commit was `2daeaff513c60e98b77eb7d1744f48c6394c1e84`; it predates the academic schema changes.
+- The academic schema and migrations have been committed to this development branch, but the latest schema validation, migration execution, RLS SQL test, typecheck, build and API tests have **not yet been confirmed green**. Do not treat these changes as production-ready until the CI run is inspected and any failures are fixed.
+- The schema/migration work is still being reviewed for consistency, including composite foreign keys, Prisma relation validation and SQL constraint behavior.
 - No production database migration, data import, deployment, or YoHost/Firebase configuration change has occurred.
 
-## Remaining foundation risks / next steps
+## Next steps
 
-1. Confirm the corrected RLS integration test passes in CI; inspect and fix any subsequent failures before adding more runtime features.
-2. Review invitation acceptance and all RLS policies using the non-owner runtime role and exact production-like grants.
-3. Add database-backed authentication/invitation integration tests, including concurrent invitation claims, expired/revoked tokens, duplicate email races, and session creation after invitation acceptance.
-4. Implement password recovery, verified email, MFA, platform-admin bootstrap and role-checked school user management before real accounts are allowed.
-5. After the security baseline is green, implement the academic schema in small migration batches following the academic data model proposal, with tenant isolation and cross-school foreign-key tests for every batch.
-6. Add React web and Flutter clients after the API contract and authorization boundaries stabilize.
+1. Get CI green for the academic schema and migration batch; inspect actual job logs rather than infer success.
+2. Add robust RLS tests for all academic tables and cross-school write/update denials, not only year/term reads.
+3. Implement role-checked API modules and integration tests for academic years, terms, staff, students, classes, subjects, assignments, attendance, journals and assessments.
+4. Add score correction audit history and finalized attendance protections before enabling real school workflows.
+5. Continue security hardening before connecting a production client.
 
 ## Deployment boundary
 
-This is development work on `feat/platform-v2-foundation`. Draft PRs remain unmerged. Do not deploy, import legacy data, change production credentials, or run migrations against YoHost/Firebase without explicit approval.
+Work remains confined to `feat/platform-v2-foundation`. The `main` branch is not the development target. Do not merge, deploy, import legacy data, alter production credentials or run migrations against YoHost/Firebase without explicit approval.
