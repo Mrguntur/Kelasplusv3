@@ -127,7 +127,7 @@ export class AuthController {
       httpOnly: true,
       secure: production,
       sameSite: 'lax' as const,
-      path: '/api/v1/auth',
+      path: '/api/v1',
       expires,
     };
   }
