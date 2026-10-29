@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText, Printer, RefreshCw } from 'lucide-react';
 import { api } from './api';
 
@@ -19,6 +19,7 @@ export default function AcademicReportManager() {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const reportRequestId = useRef(0);
   useEffect(() => {
     let active = true;
     api<SchoolClass[]>('/academic/reports/classes')
@@ -29,13 +30,25 @@ export default function AcademicReportManager() {
   }, []);
 
   async function loadReport() {
-    if (!classId) return;
+    if (!classId) { setReport(null); return; }
+    const requestId = ++reportRequestId.current;
     setLoading(true); setError('');
-    try { setReport(await api<Report>('/academic/reports/classes/' + classId)); }
-    catch (e) { setReport(null); setError(e instanceof Error ? e.message : 'Laporan akademik gagal dimuat.'); }
-    finally { setLoading(false); }
+    try {
+      const result = await api<Report>('/academic/reports/classes/' + classId);
+      if (requestId === reportRequestId.current) setReport(result);
+    } catch (e) {
+      if (requestId === reportRequestId.current) {
+        setReport(null);
+        setError(e instanceof Error ? e.message : 'Laporan akademik gagal dimuat.');
+      }
+    } finally {
+      if (requestId === reportRequestId.current) setLoading(false);
+    }
   }
-  useEffect(() => { if (classId) void loadReport(); }, [classId]);
+  useEffect(() => {
+    setReport(null);
+    if (classId) void loadReport();
+  }, [classId]);
 
   return <section className="academic-section">
     <div className="attendance-heading"><div><span className="eyebrow">REKAPITULASI AKADEMIK</span><h3><FileText size={18}/> Laporan kelas</h3><p>Ringkasan kehadiran, penilaian terpublikasi, dan perkembangan setiap siswa.</p></div><div className="form-actions"><button className="secondary-button" onClick={() => void loadReport()} disabled={loading || !classId}><RefreshCw size={14}/> Perbarui</button><button className="primary-button" onClick={() => window.print()} disabled={!report}><Printer size={14}/> Cetak / Simpan PDF</button></div></div>
