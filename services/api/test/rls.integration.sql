@@ -274,7 +274,7 @@ BEGIN
   IF visible_years <> 0 OR visible_terms <> 0 THEN
     RAISE EXCEPTION 'RLS failure: no context should see no academic data, got years %, terms %', visible_years, visible_terms;
   END IF;
-END $;
+END $$;
 ROLLBACK;
 RESET ROLE;
 
