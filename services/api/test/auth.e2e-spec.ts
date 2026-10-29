@@ -14,6 +14,7 @@ describe('Auth API security (e2e)', () => {
     login: jest.fn(),
     validateSession: jest.fn(),
     listSchoolsForUser: jest.fn(),
+    selectSchool: jest.fn(),
     changePassword: jest.fn(),
     revokeToken: jest.fn(),
     revokeAllForCurrentToken: jest.fn(),
@@ -144,6 +145,48 @@ describe('Auth API security (e2e)', () => {
       .expect(401);
 
     expect(authService.listSchoolsForUser).not.toHaveBeenCalled();
+  });
+
+  it('selects a school only through an authenticated, trusted-origin request', async () => {
+    authService.validateSession.mockResolvedValue({
+      id: 'user-1',
+      email: 'teacher@example.com',
+      displayName: 'Teacher',
+      activeSchoolId: null,
+    });
+    authService.selectSchool.mockResolvedValue({
+      id: 'school-1',
+      slug: 'smp-example',
+      name: 'SMP Example',
+      timezone: 'Asia/Makassar',
+      locale: 'id-ID',
+      role: 'TEACHER',
+      activeSchoolId: '11111111-1111-4111-8111-111111111111',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/select-school')
+      .set('Origin', 'https://app.kelasplus.example')
+      .set('Cookie', 'kelasplus_session=opaque-test-session-token')
+      .send({ schoolId: '11111111-1111-4111-8111-111111111111' })
+      .expect(201);
+
+    expect(authService.selectSchool).toHaveBeenCalledWith(
+      'opaque-test-session-token',
+      '11111111-1111-4111-8111-111111111111',
+    );
+    expect(response.body.activeSchoolId).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('rejects malformed school IDs before attempting selection', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/select-school')
+      .set('Origin', 'https://app.kelasplus.example')
+      .set('Cookie', 'kelasplus_session=opaque-test-session-token')
+      .send({ schoolId: 'not-a-uuid' })
+      .expect(400);
+
+    expect(authService.selectSchool).not.toHaveBeenCalled();
   });
 
   it('rejects unexpected request fields rather than silently accepting them', async () => {
