@@ -20,6 +20,29 @@ Branch: `feat/platform-v2-foundation`
 - On the latest invitation-acceptance run inspected, Prisma validation and all migrations passed, but the PostgreSQL RLS integration test failed due to two malformed dollar-quote delimiters in `services/api/test/rls.integration.sql`.
 - The delimiter typo was corrected in commit `e1cc67048b3b804c8eeb209291dedd03a95173cc`. The follow-up CI result must be checked before calling the branch green; do not infer success from the fix alone.
 - The legacy KELAS+ CI run for that previous commit passed. The Platform V2 API CI did not pass because the RLS script stopped at the SQL syntax error; typecheck/build/unit/e2e steps were skipped by the workflow.
+- Static inspection of the latest `services/api/test/rls.integration.sql` confirms 12 `DO $` blocks, 12 `END $;` closers, 24 `$` tokens, and no remaining malformed `DO # KELAS+ Platform V2 — Foundation Status
+
+Branch: `feat/platform-v2-foundation`
+
+## Implemented in this branch
+
+- NestJS + TypeScript API skeleton with DTO validation, Helmet security headers, explicit CORS allowlist and versioned `/api/v1` prefix.
+- Health endpoint, local PostgreSQL 17 development service, Prisma schema and versioned migrations.
+- Global identity, schools, memberships, sessions, registration requests, audit events, and school-admin invitation data models.
+- Fail-closed PostgreSQL RLS policies for tenant rows, school membership discovery, registration review, audit writes, platform-admin provisioning, and token-scoped invitation acceptance.
+- Authentication foundation: Argon2id password hashing, opaque random session tokens stored as SHA-256 hashes, HttpOnly cookie sessions, lockout and throttling, session validation, school discovery/selection, logout, logout-all, and password change with session revocation.
+- Public school registration intake that creates only a pending request.
+- Platform-admin registration review endpoints, pending-school approval, invitation email integration through Resend, and invitation acceptance that creates the school admin membership and activates the school.
+- Unit, API e2e, and disposable PostgreSQL RLS tests.
+- Security contracts and architecture notes.
+- Academic data model proposal in `docs/architecture/PLATFORM_V2_ACADEMIC_DATA_MODEL.md`; this is design only and is not yet migrated into the database.
+
+## Verification status
+
+- On the latest invitation-acceptance run inspected, Prisma validation and all migrations passed, but the PostgreSQL RLS integration test failed due to two malformed dollar-quote delimiters in `services/api/test/rls.integration.sql`.
+- The delimiter typo was corrected in commit `e1cc67048b3b804c8eeb209291dedd03a95173cc`. The follow-up CI result must be checked before calling the branch green; do not infer success from the fix alone.
+- The legacy KELAS+ CI run for that previous commit passed. The Platform V2 API CI did not pass because the RLS script stopped at the SQL syntax error; typecheck/build/unit/e2e steps were skipped by the workflow.
+ / `END $;` pattern. This is only a delimiter check; PostgreSQL execution must still pass in CI.
 - No production database migration, data import, deployment, or YoHost/Firebase configuration change has occurred.
 
 ## Remaining foundation risks / next steps
