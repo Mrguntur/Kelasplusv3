@@ -153,6 +153,42 @@ export class AuthService {
   }
 
 
+
+  async listSchoolsForUser(userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+
+      // Membership rows are visible only for this identity. School records are then
+      // fetched under each candidate school context so the School RLS policy remains
+      // active instead of bypassing tenant isolation.
+      const memberships = await tx.schoolMembership.findMany({
+        where: { userId },
+        select: { schoolId: true, role: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const result: Array<{
+        id: string;
+        slug: string;
+        name: string;
+        timezone: string;
+        locale: string;
+        role: string;
+      }> = [];
+
+      for (const membership of memberships) {
+        await tx.$executeRaw`SELECT set_config('app.current_school_id', ${membership.schoolId}, true)`;
+        const school = await tx.school.findFirst({
+          where: { id: membership.schoolId, status: 'ACTIVE' },
+          select: { id: true, slug: true, name: true, timezone: true, locale: true },
+        });
+        if (school) result.push({ ...school, role: membership.role });
+      }
+
+      return result;
+    });
+  }
+
   async changePassword(userId: string, input: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.status !== UserStatus.ACTIVE || !user.passwordHash) {
