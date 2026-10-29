@@ -13,6 +13,7 @@ describe('School registration API security (e2e)', () => {
     requestRegistration: jest.fn(),
     listPendingRegistrations: jest.fn(),
     rejectRegistration: jest.fn(),
+    approveRegistration: jest.fn(),
   };
   const sessionGuard = { canActivate: (context: any) => {
     context.switchToHttp().getRequest().user = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', email: 'platform@example.test', displayName: 'Platform Admin' };
@@ -89,6 +90,28 @@ describe('School registration API security (e2e)', () => {
       .expect(200);
     expect(schoolsService.listPendingRegistrations).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01');
     expect(response.body).toHaveLength(1);
+  });
+
+
+  it('approves a pending registration through the protected route', async () => {
+    schoolsService.approveRegistration.mockResolvedValue({
+      requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      school: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', status: 'PENDING' },
+      status: 'APPROVED',
+      nextStep: 'Verifikasi kontak dan undang administrator sekolah sebelum aktivasi.',
+    });
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/schools/admin/registration-requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01/approve')
+      .expect(200);
+    expect(schoolsService.approveRegistration).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01');
+    expect(response.body.school.status).toBe('PENDING');
+  });
+
+  it('validates UUID before approving a registration', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/schools/admin/registration-requests/not-a-uuid/approve')
+      .expect(400);
+    expect(schoolsService.approveRegistration).not.toHaveBeenCalled();
   });
 
   it('validates registration request UUID before rejection', async () => {
