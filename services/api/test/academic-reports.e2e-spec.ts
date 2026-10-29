@@ -14,6 +14,7 @@ describe('Academic dashboard and class reports API (e2e)', () => {
   const academicService = {
     getDashboardSummary: jest.fn(),
     getClassAcademicReport: jest.fn(),
+    listReportClasses: jest.fn(),
   };
 
   const teacher = {
@@ -85,6 +86,27 @@ describe('Academic dashboard and class reports API (e2e)', () => {
 
     expect(authService.validateSession).toHaveBeenCalledWith('valid-test-session');
     expect(academicService.getDashboardSummary).toHaveBeenCalledWith(teacher);
+    expect(response.body).toEqual(payload);
+  });
+
+  it('requires a valid session before listing report classes', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/academic/reports/classes')
+      .expect(401);
+
+    expect(academicService.listReportClasses).not.toHaveBeenCalled();
+  });
+
+  it('returns only the report class options authorized by the service', async () => {
+    const payload = [{ id: '33333333-3333-4333-8333-333333333333', name: 'VII A', gradeLevel: 7, academicYear: { name: '2026/2027' } }];
+    academicService.listReportClasses.mockResolvedValue(payload);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/academic/reports/classes')
+      .set('Cookie', 'kelasplus_session=valid-test-session')
+      .expect(200);
+
+    expect(academicService.listReportClasses).toHaveBeenCalledWith(teacher);
     expect(response.body).toEqual(payload);
   });
 
