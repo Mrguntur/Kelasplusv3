@@ -191,7 +191,6 @@ model AcademicYear {
   school    School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   terms     Term[]
   schoolClasses SchoolClass[]
-  schoolClasses SchoolClass[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, name])
@@ -383,7 +382,6 @@ model TeachingAssignment {
   schoolClass    SchoolClass  @relation(fields: [schoolId, classId], references: [schoolId, id], onDelete: Restrict)
   subject        Subject      @relation(fields: [schoolId, subjectId], references: [schoolId, id], onDelete: Restrict)
   staffProfile   StaffProfile @relation(fields: [schoolId, staffProfileId], references: [schoolId, id], onDelete: Restrict)
-  term           Term?        @relation(fields: [schoolId, termId], references: [schoolId, id], onDelete: Restrict)
   journals       TeachingJournal[]
   assessments    Assessment[]
 
