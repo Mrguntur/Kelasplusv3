@@ -79,6 +79,31 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
+-- A session cannot point at a school that does not exist.
+SET ROLE kelasplus_runtime;
+BEGIN;
+SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
+SELECT set_config('app.current_school_id','',true);
+DO $
+BEGIN
+  BEGIN
+    INSERT INTO "sessions" ("id", "user_id", "active_school_id", "token_hash", "expires_at", "created_at")
+    VALUES (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc51',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      'rls-invalid-active-school-session-token-hash',
+      now() + interval '1 day',
+      now()
+    );
+    RAISE EXCEPTION 'RLS failure: session accepted a nonexistent active school';
+  EXCEPTION WHEN foreign_key_violation THEN
+    NULL; -- expected referential-integrity denial
+  END;
+END $;
+ROLLBACK;
+RESET ROLE;
+
 -- Audit events are append-only and actor-scoped under the runtime role.
 SET ROLE kelasplus_runtime;
 BEGIN;
