@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Plus, Search, Users, GraduationCap, RefreshCw } from 'lucide-react';
 import { api } from './api';
 import ClassEnrollmentManager from './ClassEnrollmentManager';
+import ClassAttendanceManager from './ClassAttendanceManager';
 
 type Student = {
   id: string; studentNumber: string | null; fullName: string;
