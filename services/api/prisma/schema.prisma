@@ -112,3 +112,22 @@ model SchoolRegistrationRequest {
   @@index([email, createdAt])
   @@map("school_registration_requests")
 }
+
+
+model AuditEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  schoolId    String?  @map("school_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(100)
+  outcome     String   @db.VarChar(20)
+  requestId   String?  @map("request_id") @db.VarChar(100)
+  ipAddress   String?  @map("ip_address") @db.VarChar(64)
+  userAgent   String?  @map("user_agent") @db.VarChar(200)
+  metadata    Json     @default("{}") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([actorUserId, createdAt])
+  @@index([schoolId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("audit_events")
+}
