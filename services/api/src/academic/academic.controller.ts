@@ -4,6 +4,8 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AcademicService } from './academic.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
+import { CreateStudentDto } from './dto/create-student.dto';
+import { CreateClassDto } from './dto/create-class.dto';
 
 @Controller('academic')
 @UseGuards(SessionAuthGuard)
@@ -38,4 +40,27 @@ export class AcademicController {
   ) {
     return this.academic.createTerm(user, yearId, body);
   }
+
+  @Get('students')
+  listStudents(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listStudents(user);
+  }
+
+  @Post('students')
+  @HttpCode(HttpStatus.CREATED)
+  createStudent(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateStudentDto) {
+    return this.academic.createStudent(user, body);
+  }
+
+  @Get('classes')
+  listClasses(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listClasses(user);
+  }
+
+  @Post('classes')
+  @HttpCode(HttpStatus.CREATED)
+  createClass(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateClassDto) {
+    return this.academic.createClass(user, body);
+  }
+
 }
