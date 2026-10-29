@@ -23,20 +23,30 @@ Development branch: `feat/platform-v2-foundation`
 - RLS enabled and forced on academic tables, with tenant policies requiring transaction-local school context and a matching membership.
 - SQL integration coverage expanded for academic year/term visibility, missing context and cross-school term references.
 
+## Client implementation on this branch
+
+- React + TypeScript web workspace under `apps/web`, with session-aware API client and role-aware workspace shell.
+- Academic year/term, class roster, attendance session, teaching journal and assessment workflows.
+- Assessment scoring validates score ranges, saves scores before publication, requires all active students to have a score, and locks published assessments in the client.
+- Class academic report summarizes finalized attendance and published assessments and supports browser print / Save as PDF.
+- Responsive styles for academic forms, tables and report printing.
+- These screens are development UI only. They are not deployed to YoHost and do not connect to the existing production Firebase app.
+
 ## Verification status
 
-- The last previously confirmed green CI commit was `2daeaff513c60e98b77eb7d1744f48c6394c1e84`; it predates the academic schema changes.
-- The academic schema and migrations have been committed to this development branch, but the latest schema validation, migration execution, RLS SQL test, typecheck, build and API tests have **not yet been confirmed green**. Do not treat these changes as production-ready until the CI run is inspected and any failures are fixed.
-- The schema/migration work is still being reviewed for consistency, including composite foreign keys, Prisma relation validation and SQL constraint behavior.
-- No production database migration, data import, deployment, or YoHost/Firebase configuration change has occurred.
+- Latest confirmed commit: `46423e33d0a894ed182201f59a1b4baf572bdc4c` (2026-10-29).
+- GitHub Actions for that commit passed: KELAS+ Platform V2 Web CI, KELAS+ Platform V2 API CI, and KELAS+ CI. The API workflow includes Prisma schema validation/generation, migration checks against disposable PostgreSQL, RLS SQL tests, TypeScript checks/build and API tests; the web workflow validates/builds the client.
+- Passing CI is a code-quality gate, not a live end-to-end test against a real school database or proof of production readiness.
+- The pull request remains a draft for review. No merge, production database migration, data import, deployment, or YoHost/Firebase configuration change has occurred.
 
-## Next steps
+## Remaining release work
 
-1. Get CI green for the academic schema and migration batch; inspect actual job logs rather than infer success.
-2. Add robust RLS tests for all academic tables and cross-school write/update denials, not only year/term reads.
-3. Implement role-checked API modules and integration tests for academic years, terms, staff, students, classes, subjects, assignments, attendance, journals and assessments.
-4. Add score correction audit history and finalized attendance protections before enabling real school workflows.
-5. Continue security hardening before connecting a production client.
+1. Review and expand automated authorization tests for each role, tenant boundary and academic write operation.
+2. Add explicit tests for score correction/audit history and finalized attendance protections before real school use.
+3. Run a complete local smoke test with synthetic data: login, select school, roster, attendance, journal, scoring, publication and PDF report.
+4. Review accessibility, mobile behavior, loading/error/empty states, and print layout.
+5. Complete security and operational review (backups, migration rollback, logging/monitoring, secrets, rate limits and incident recovery).
+6. Prepare a separate release checklist and obtain explicit approval before any merge, migration or deployment.
 
 ## Deployment boundary
 
