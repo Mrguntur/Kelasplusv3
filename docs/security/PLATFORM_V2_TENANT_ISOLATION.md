@@ -91,3 +91,11 @@ No production database, credentials, deployment, or student data is used by this
 - Approval creates a school with status `PENDING` only. It does not create an account, create a school membership, or activate school access. Contact verification and a dedicated administrator invitation/acceptance flow must be completed before activation.
 - The platform-admin RLS policy is transaction-local and is set only inside service methods reached after the application guard. Runtime database grants must remain least-privilege; platform administration must not use a database-owner or migration connection.
 - The CI RLS integration test verifies that the platform-admin context can create a pending school. Further production-readiness work must test denial without the context and must verify role grants against the exact deployment role.
+
+## School administrator invitation storage boundary
+
+- The initial `school_admin_invitations` schema stores only a unique SHA-256 token digest, target email, school, expiry, acceptance/revocation timestamps, and creator identity. Raw invitation secrets must never be stored in PostgreSQL, audit metadata, application logs, or normal API responses.
+- Invitation rows have RLS enabled and forced. At this stage, access is limited to the platform-admin transaction context. This intentionally means invitations cannot yet be accepted by a public endpoint.
+- Do not issue invitations until a delivery provider and a dedicated acceptance transaction are implemented. The acceptance flow must hash the submitted high-entropy token, enforce expiry and single use atomically, verify email ownership, prevent duplicate memberships, and audit success/failure without recording the token.
+- Accepting an invitation must not activate a school unless the school is still PENDING and all required verification checks pass. The school administrator identity must be activated only after verified ownership and password setup; an invitation link alone must not authenticate a session.
+- Before enabling the flow, add tests for expired, revoked, reused, wrong-email, wrong-school, and concurrent acceptance attempts against disposable PostgreSQL using the non-owner runtime role. No production migration or deployment is authorized by this implementation.
