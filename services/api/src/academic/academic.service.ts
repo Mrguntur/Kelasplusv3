@@ -351,9 +351,12 @@ export class AcademicService {
   async listTeachingAssignments(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
+        ? { schoolId: user.activeSchoolId!, archivedAt: null }
+        : { schoolId: user.activeSchoolId!, archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' as const } };
       return tx.teachingAssignment.findMany({
-        where: { schoolId: user.activeSchoolId!, archivedAt: null },
+        where,
         orderBy: [{ schoolClass: { gradeLevel: 'asc' } }, { schoolClass: { name: 'asc' } }, { subject: { name: 'asc' } }],
         take: 300,
         include: {
