@@ -1172,4 +1172,181 @@ export class AcademicService {
     });
   }
 
+
+  async getDashboardSummary(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum membuka dashboard.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const schoolId = user.activeSchoolId!;
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+      if (membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER || membership.role === SchoolRole.SCHOOL_OPERATOR) {
+        const [
+          activeStudents,
+          activeClasses,
+          activeStaff,
+          activeAcademicYear,
+          finalizedSessionsThisMonth,
+          submittedJournalsThisMonth,
+          publishedAssessments,
+          attendanceCounts,
+          recentJournals,
+        ] = await Promise.all([
+          tx.student.count({ where: { schoolId, status: 'ACTIVE', archivedAt: null } }),
+          tx.schoolClass.count({ where: { schoolId, status: 'ACTIVE' } }),
+          tx.staffProfile.count({ where: { schoolId, status: 'ACTIVE' } }),
+          tx.academicYear.findFirst({
+            where: { schoolId, status: 'ACTIVE' },
+            select: { id: true, name: true, startDate: true, endDate: true },
+          }),
+          tx.attendanceSession.count({
+            where: { schoolId, status: 'FINALIZED', date: { gte: monthStart, lt: nextMonthStart } },
+          }),
+          tx.teachingJournal.count({
+            where: { schoolId, status: 'SUBMITTED', submittedAt: { gte: monthStart, lt: nextMonthStart } },
+          }),
+          tx.assessment.count({ where: { schoolId, status: 'PUBLISHED' } }),
+          tx.attendanceRecord.groupBy({
+            by: ['status'],
+            where: {
+              schoolId,
+              attendanceSession: { status: 'FINALIZED', date: { gte: monthStart, lt: nextMonthStart } },
+            },
+            _count: { _all: true },
+          }),
+          tx.teachingJournal.findMany({
+            where: { schoolId, status: 'SUBMITTED' },
+            orderBy: { submittedAt: 'desc' },
+            take: 5,
+            select: {
+              id: true,
+              journalDate: true,
+              topic: true,
+              submittedAt: true,
+              createdBy: { select: { displayName: true } },
+              assignment: {
+                select: {
+                  schoolClass: { select: { name: true } },
+                  subject: { select: { name: true } },
+                },
+              },
+            },
+          }),
+        ]);
+
+        const attendance = { PRESENT: 0, LATE: 0, SICK: 0, EXCUSED: 0, ABSENT: 0 };
+        for (const row of attendanceCounts) attendance[row.status] = row._count._all;
+        const recorded = Object.values(attendance).reduce((sum, count) => sum + count, 0);
+        const attended = attendance.PRESENT + attendance.LATE;
+        return {
+          role: membership.role,
+          period: { from: monthStart.toISOString(), to: nextMonthStart.toISOString() },
+          activeAcademicYear,
+          metrics: {
+            activeStudents,
+            activeClasses,
+            activeStaff,
+            finalizedSessionsThisMonth,
+            submittedJournalsThisMonth,
+            publishedAssessments,
+            attendanceRate: recorded ? Math.round((attended / recorded) * 10000) / 100 : null,
+          },
+          attendance,
+          recentJournals: recentJournals.map((journal) => ({
+            id: journal.id,
+            journalDate: journal.journalDate,
+            topic: journal.topic,
+            submittedAt: journal.submittedAt,
+            teacherName: journal.createdBy.displayName,
+            className: journal.assignment.schoolClass.name,
+            subjectName: journal.assignment.subject.name,
+          })),
+        };
+      }
+
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId, userId: user.id, status: 'ACTIVE' },
+        select: { id: true, displayName: true },
+      });
+      if (!staff) throw new ForbiddenException('Profil guru aktif tidak ditemukan di sekolah ini.');
+
+      const assignments = await tx.teachingAssignment.findMany({
+        where: { schoolId, staffProfileId: staff.id, archivedAt: null },
+        select: { id: true, classId: true },
+        take: 500,
+      });
+      const classIds = [...new Set(assignments.map((assignment) => assignment.classId))];
+      const assignmentIds = assignments.map((assignment) => assignment.id);
+      const [
+        assignedStudents,
+        finalizedSessionsThisMonth,
+        submittedJournalsThisMonth,
+        publishedAssessments,
+        attendanceCounts,
+        recentJournals,
+      ] = await Promise.all([
+        classIds.length ? tx.classEnrollment.findMany({
+          where: { schoolId, classId: { in: classIds }, status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } },
+          distinct: ['studentId'],
+          select: { studentId: true },
+          take: 5000,
+        }) : Promise.resolve([]),
+        classIds.length ? tx.attendanceSession.count({
+          where: { schoolId, classId: { in: classIds }, status: 'FINALIZED', date: { gte: monthStart, lt: nextMonthStart } },
+        }) : Promise.resolve(0),
+        assignmentIds.length ? tx.teachingJournal.count({
+          where: { schoolId, teachingAssignmentId: { in: assignmentIds }, status: 'SUBMITTED', submittedAt: { gte: monthStart, lt: nextMonthStart } },
+        }) : Promise.resolve(0),
+        assignmentIds.length ? tx.assessment.count({
+          where: { schoolId, teachingAssignmentId: { in: assignmentIds }, status: 'PUBLISHED' },
+        }) : Promise.resolve(0),
+        classIds.length ? tx.attendanceRecord.groupBy({
+          by: ['status'],
+          where: {
+            schoolId,
+            attendanceSession: { classId: { in: classIds }, status: 'FINALIZED', date: { gte: monthStart, lt: nextMonthStart } },
+          },
+          _count: { _all: true },
+        }) : Promise.resolve([]),
+        assignmentIds.length ? tx.teachingJournal.findMany({
+          where: { schoolId, teachingAssignmentId: { in: assignmentIds }, status: 'SUBMITTED' },
+          orderBy: { submittedAt: 'desc' },
+          take: 5,
+          select: {
+            id: true, journalDate: true, topic: true, submittedAt: true,
+            assignment: { select: { schoolClass: { select: { name: true } }, subject: { select: { name: true } } } },
+          },
+        }) : Promise.resolve([]),
+      ]);
+      const attendance = { PRESENT: 0, LATE: 0, SICK: 0, EXCUSED: 0, ABSENT: 0 };
+      for (const row of attendanceCounts) attendance[row.status] = row._count._all;
+      const recorded = Object.values(attendance).reduce((sum, count) => sum + count, 0);
+      const attended = attendance.PRESENT + attendance.LATE;
+      return {
+        role: membership.role,
+        period: { from: monthStart.toISOString(), to: nextMonthStart.toISOString() },
+        teacher: staff,
+        metrics: {
+          assignedClasses: classIds.length,
+          assignedStudents: assignedStudents.length,
+          finalizedSessionsThisMonth,
+          submittedJournalsThisMonth,
+          publishedAssessments,
+          attendanceRate: recorded ? Math.round((attended / recorded) * 10000) / 100 : null,
+        },
+        attendance,
+        recentJournals: recentJournals.map((journal) => ({
+          id: journal.id,
+          journalDate: journal.journalDate,
+          topic: journal.topic,
+          submittedAt: journal.submittedAt,
+          className: journal.assignment.schoolClass.name,
+          subjectName: journal.assignment.subject.name,
+        })),
+      };
+    });
+  }
+
 }
