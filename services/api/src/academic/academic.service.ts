@@ -529,7 +529,7 @@ export class AcademicService {
       ]);
       if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan atau tidak aktif di sekolah ini.');
       if (!staff) throw new ForbiddenException('Akun harus memiliki profil staf aktif untuk membuat presensi.');
-      if (![SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER].includes(membership.role)) {
+      if (membership.role !== SchoolRole.SCHOOL_ADMIN && membership.role !== SchoolRole.SCHOOL_LEADER) {
         const assignment = await tx.teachingAssignment.findFirst({
           where: { schoolId: user.activeSchoolId!, classId, staffProfileId: staff.id, archivedAt: null },
           select: { id: true },
