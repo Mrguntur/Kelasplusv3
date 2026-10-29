@@ -229,4 +229,13 @@ export class AcademicController {
     return this.academic.publishAssessment(user, assessmentId);
   }
 
+
+  @Get('reports/classes/:classId')
+  getClassAcademicReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('classId', new ParseUUIDPipe()) classId: string,
+  ) {
+    return this.academic.getClassAcademicReport(user, classId);
+  }
+
 }
