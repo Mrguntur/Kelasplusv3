@@ -64,6 +64,67 @@ export class SchoolsService {
     });
   }
 
+
+  async approveRegistration(adminUserId: string, requestId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+      const existing = await tx.schoolRegistrationRequest.findUnique({
+        where: { id: requestId },
+        select: {
+          id: true,
+          schoolName: true,
+          requestedSlug: true,
+          contactName: true,
+          email: true,
+          status: true,
+        },
+      });
+      if (!existing) throw new NotFoundException('Permohonan sekolah tidak ditemukan.');
+      if (existing.status !== 'PENDING') {
+        throw new ConflictException('Permohonan sudah ditinjau sebelumnya.');
+      }
+      const existingSlug = await tx.school.findUnique({
+        where: { slug: existing.requestedSlug },
+        select: { id: true },
+      });
+      if (existingSlug) {
+        throw new ConflictException('Slug sekolah sudah digunakan. Perbarui slug sebelum menyetujui permohonan.');
+      }
+
+      // Approval creates only a PENDING school shell. It does not create an account,
+      // grant a membership, or activate access before contact verification/invitation.
+      const school = await tx.school.create({
+        data: {
+          slug: existing.requestedSlug,
+          name: existing.schoolName,
+          status: 'PENDING',
+        },
+        select: { id: true, slug: true, name: true, status: true, createdAt: true },
+      });
+      const reviewedAt = new Date();
+      await tx.schoolRegistrationRequest.update({
+        where: { id: requestId },
+        data: { status: 'APPROVED', reviewedAt, reviewedBy: adminUserId, rejectionReason: null },
+      });
+      await this.audit.record({
+        actorUserId: adminUserId,
+        schoolId: school.id,
+        eventType: 'school.registration_approved',
+        outcome: 'SUCCESS',
+        metadata: { requestId, requestedSlug: existing.requestedSlug, contactEmail: existing.email },
+      }, tx);
+      return {
+        requestId,
+        school,
+        status: 'APPROVED',
+        reviewedAt,
+        nextStep: 'Verifikasi kontak dan undang administrator sekolah sebelum aktivasi.',
+      };
+    });
+  }
+
   async rejectRegistration(adminUserId: string, requestId: string, input: RejectRegistrationDto) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
