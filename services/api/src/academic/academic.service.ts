@@ -436,12 +436,35 @@ export class AcademicService {
   async listClassEnrollments(user: AuthenticatedUser, classId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
       const schoolClass = await tx.schoolClass.findFirst({
         where: { id: classId, schoolId: user.activeSchoolId! },
-        select: { id: true },
+        select: { id: true, homeroomStaffProfileId: true },
       });
       if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+
+      const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
+      if (!privileged) {
+        if (membership.role !== SchoolRole.TEACHER) {
+          throw new ForbiddenException('Peran akun ini tidak memiliki akses ke daftar siswa kelas.');
+        }
+        const [assignment, homeroom] = await Promise.all([
+          tx.teachingAssignment.findFirst({
+            where: { schoolId: user.activeSchoolId!, classId, archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' } },
+            select: { id: true },
+          }),
+          schoolClass.homeroomStaffProfileId
+            ? tx.staffProfile.findFirst({
+                where: { id: schoolClass.homeroomStaffProfileId, schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        if (!assignment && !homeroom) {
+          throw new ForbiddenException('Daftar siswa hanya dapat diakses oleh guru yang ditugaskan pada kelas tersebut, wali kelas, atau pimpinan sekolah.');
+        }
+      }
+
       return tx.classEnrollment.findMany({
         where: { schoolId: user.activeSchoolId!, classId, status: 'ACTIVE' },
         orderBy: { student: { fullName: 'asc' } },
