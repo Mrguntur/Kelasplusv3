@@ -15,6 +15,8 @@ import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
+import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
+import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 
 @Injectable()
 export class AcademicService {
@@ -30,7 +32,7 @@ export class AcademicService {
     });
     if (!membership) throw new ForbiddenException('Keanggotaan sekolah tidak ditemukan.');
     if (mutate && !([SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER] as SchoolRole[]).includes(membership.role)) {
-      throw new ForbiddenException('Hanya administrator atau pimpinan sekolah yang dapat mengubah kalender akademik.');
+      throw new ForbiddenException('Hanya administrator atau pimpinan sekolah yang dapat mengubah data akademik.');
     }
     return membership;
   }
@@ -333,6 +335,150 @@ export class AcademicService {
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           throw new ConflictException('Nama mata pelajaran sudah digunakan di sekolah ini.');
+        }
+        throw error;
+      }
+    });
+  }
+
+
+  async listTeachingAssignments(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      return tx.teachingAssignment.findMany({
+        where: { schoolId: user.activeSchoolId!, archivedAt: null },
+        orderBy: [{ schoolClass: { gradeLevel: 'asc' } }, { schoolClass: { name: 'asc' } }, { subject: { name: 'asc' } }],
+        take: 300,
+        include: {
+          schoolClass: { select: { id: true, name: true, gradeLevel: true, academicYearId: true } },
+          subject: { select: { id: true, code: true, name: true } },
+          staffProfile: { select: { id: true, displayName: true, employeeNumber: true } },
+          term: { select: { id: true, name: true, sequence: true } },
+        },
+      });
+    });
+  }
+
+  async createTeachingAssignment(user: AuthenticatedUser, input: CreateTeachingAssignmentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const [schoolClass, subject, staff] = await Promise.all([
+        tx.schoolClass.findFirst({
+          where: { id: input.classId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+          select: { id: true, academicYearId: true },
+        }),
+        tx.subject.findFirst({
+          where: { id: input.subjectId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+          select: { id: true },
+        }),
+        tx.staffProfile.findFirst({
+          where: { id: input.staffProfileId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+          select: { id: true },
+        }),
+      ]);
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan atau tidak aktif di sekolah ini.');
+      if (!subject) throw new BadRequestException('Mata pelajaran tidak ditemukan atau tidak aktif di sekolah ini.');
+      if (!staff) throw new BadRequestException('Profil guru tidak ditemukan atau tidak aktif di sekolah ini.');
+
+      if (input.termId) {
+        const term = await tx.term.findFirst({
+          where: { id: input.termId, schoolId: user.activeSchoolId!, academicYearId: schoolClass.academicYearId },
+          select: { id: true },
+        });
+        if (!term) throw new BadRequestException('Semester tidak sesuai dengan tahun ajaran kelas atau bukan milik sekolah aktif.');
+      }
+
+      const duplicate = await tx.teachingAssignment.findFirst({
+        where: {
+          schoolId: user.activeSchoolId!,
+          classId: input.classId,
+          subjectId: input.subjectId,
+          staffProfileId: input.staffProfileId,
+          termId: input.termId ?? null,
+          archivedAt: null,
+        },
+        select: { id: true },
+      });
+      if (duplicate) throw new ConflictException('Penugasan guru untuk kelas dan mata pelajaran ini sudah ada.');
+
+      const assignment = await tx.teachingAssignment.create({
+        data: {
+          schoolId: user.activeSchoolId!,
+          classId: input.classId,
+          subjectId: input.subjectId,
+          staffProfileId: input.staffProfileId,
+          termId: input.termId ?? null,
+        },
+        select: { id: true, classId: true, subjectId: true, staffProfileId: true, termId: true, createdAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.teaching_assignment_created',
+        outcome: 'SUCCESS',
+        metadata: { teachingAssignmentId: assignment.id, classId: assignment.classId, subjectId: assignment.subjectId, staffProfileId: assignment.staffProfileId },
+      }, tx);
+      return assignment;
+    });
+  }
+
+  async listClassEnrollments(user: AuthenticatedUser, classId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const schoolClass = await tx.schoolClass.findFirst({
+        where: { id: classId, schoolId: user.activeSchoolId! },
+        select: { id: true },
+      });
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+      return tx.classEnrollment.findMany({
+        where: { schoolId: user.activeSchoolId!, classId, status: 'ACTIVE' },
+        orderBy: { student: { fullName: 'asc' } },
+        take: 500,
+        include: {
+          student: { select: { id: true, studentNumber: true, fullName: true, preferredName: true, status: true } },
+        },
+      });
+    });
+  }
+
+  async enrollStudent(user: AuthenticatedUser, classId: string, input: CreateEnrollmentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const [schoolClass, student] = await Promise.all([
+        tx.schoolClass.findFirst({
+          where: { id: classId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+          select: { id: true },
+        }),
+        tx.student.findFirst({
+          where: { id: input.studentId, schoolId: user.activeSchoolId!, status: 'ACTIVE', archivedAt: null },
+          select: { id: true },
+        }),
+      ]);
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan atau tidak aktif di sekolah ini.');
+      if (!student) throw new BadRequestException('Siswa tidak ditemukan atau tidak aktif di sekolah ini.');
+      try {
+        const enrollment = await tx.classEnrollment.create({
+          data: { schoolId: user.activeSchoolId!, classId, studentId: input.studentId },
+          select: { id: true, classId: true, studentId: true, enrolledAt: true, status: true },
+        });
+        await this.audit.record({
+          actorUserId: user.id,
+          schoolId: user.activeSchoolId,
+          eventType: 'academic.student_enrolled',
+          outcome: 'SUCCESS',
+          metadata: { enrollmentId: enrollment.id, classId, studentId: input.studentId },
+        }, tx);
+        return enrollment;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('Siswa sudah terdaftar aktif di kelas ini.');
+        }
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          throw new BadRequestException('Kelas atau siswa tidak valid untuk sekolah aktif.');
         }
         throw error;
       }
