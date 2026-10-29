@@ -14,6 +14,8 @@ import { CreateAttendanceSessionDto } from './dto/create-attendance-session.dto'
 import { SubmitAttendanceDto } from './dto/submit-attendance.dto';
 import { CreateTeachingJournalDto } from './dto/create-teaching-journal.dto';
 import { UpdateTeachingJournalDto } from './dto/update-teaching-journal.dto';
+import { CreateAssessmentDto } from './dto/create-assessment.dto';
+import { UpsertAssessmentScoresDto } from './dto/upsert-assessment-scores.dto';
 
 @Controller('academic')
 @UseGuards(SessionAuthGuard)
@@ -188,6 +190,43 @@ export class AcademicController {
     @Body() body: UpdateTeachingJournalDto,
   ) {
     return this.academic.updateTeachingJournal(user, journalId, body);
+  }
+
+
+  @Get('assessments')
+  listAssessments(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listAssessments(user);
+  }
+
+  @Post('assessments')
+  @HttpCode(HttpStatus.CREATED)
+  createAssessment(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateAssessmentDto) {
+    return this.academic.createAssessment(user, body);
+  }
+
+  @Get('assessments/:assessmentId/scores')
+  listAssessmentScores(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
+  ) {
+    return this.academic.listAssessmentScores(user, assessmentId);
+  }
+
+  @Post('assessments/:assessmentId/scores')
+  upsertAssessmentScores(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
+    @Body() body: UpsertAssessmentScoresDto,
+  ) {
+    return this.academic.upsertAssessmentScores(user, assessmentId, body);
+  }
+
+  @Post('assessments/:assessmentId/publish')
+  publishAssessment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
+  ) {
+    return this.academic.publishAssessment(user, assessmentId);
   }
 
 }
