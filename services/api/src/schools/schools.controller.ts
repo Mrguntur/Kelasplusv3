@@ -35,6 +35,17 @@ export class SchoolsController {
     return this.schoolsService.approveRegistration(user.id, requestId);
   }
 
+  @Post('admin/registration-requests/:id/invite-admin')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  inviteSchoolAdmin(
+    @CurrentUser() user: { id: string },
+    @Param('id', new ParseUUIDPipe()) requestId: string,
+  ) {
+    return this.schoolsService.inviteSchoolAdmin(user.id, requestId);
+  }
+
   @Post('admin/registration-requests/:id/reject')
   @UseGuards(SessionAuthGuard, PlatformAdminGuard)
   @HttpCode(HttpStatus.OK)
