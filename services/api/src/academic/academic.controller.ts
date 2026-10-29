@@ -10,6 +10,8 @@ import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+import { CreateAttendanceSessionDto } from './dto/create-attendance-session.dto';
+import { SubmitAttendanceDto } from './dto/submit-attendance.dto';
 
 @Controller('academic')
 @UseGuards(SessionAuthGuard)
@@ -119,6 +121,42 @@ export class AcademicController {
     @Body() body: CreateEnrollmentDto,
   ) {
     return this.academic.enrollStudent(user, classId, body);
+  }
+
+
+  @Get('classes/:classId/attendance-sessions')
+  listAttendanceSessions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('classId', new ParseUUIDPipe()) classId: string,
+  ) {
+    return this.academic.listAttendanceSessions(user, classId);
+  }
+
+  @Post('classes/:classId/attendance-sessions')
+  @HttpCode(HttpStatus.CREATED)
+  createAttendanceSession(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('classId', new ParseUUIDPipe()) classId: string,
+    @Body() body: CreateAttendanceSessionDto,
+  ) {
+    return this.academic.createAttendanceSession(user, classId, body);
+  }
+
+  @Post('attendance-sessions/:sessionId/records')
+  submitAttendance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+    @Body() body: SubmitAttendanceDto,
+  ) {
+    return this.academic.submitAttendance(user, sessionId, body);
+  }
+
+  @Post('attendance-sessions/:sessionId/finalize')
+  finalizeAttendance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+  ) {
+    return this.academic.finalizeAttendance(user, sessionId);
   }
 
 }
