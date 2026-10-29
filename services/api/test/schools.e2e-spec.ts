@@ -15,6 +15,7 @@ describe('School registration API security (e2e)', () => {
     rejectRegistration: jest.fn(),
     approveRegistration: jest.fn(),
     inviteSchoolAdmin: jest.fn(),
+    acceptSchoolAdminInvitation: jest.fn(),
   };
   const sessionGuard = { canActivate: (context: any) => {
     context.switchToHttp().getRequest().user = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', email: 'platform@example.test', displayName: 'Platform Admin' };
@@ -129,6 +130,35 @@ describe('School registration API security (e2e)', () => {
     );
     expect(response.body.status).toBe('SENT');
     expect(JSON.stringify(response.body)).not.toContain('token');
+  });
+
+  it('accepts a school administrator invitation through the public endpoint', async () => {
+    schoolsService.acceptSchoolAdminInvitation.mockResolvedValue({
+      user: { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddd81', email: 'admin@smpcontoh.sch.id', status: 'ACTIVE' },
+      school: { id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee81', status: 'ACTIVE' },
+      message: 'Akun administrator berhasil dibuat.',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/schools/invitations/accept')
+      .send({ token: 'a'.repeat(43), password: 'A-strong-password-2026', displayName: 'Admin Sekolah' })
+      .expect(200);
+
+    expect(schoolsService.acceptSchoolAdminInvitation).toHaveBeenCalledWith({
+      token: 'a'.repeat(43),
+      password: 'A-strong-password-2026',
+      displayName: 'Admin Sekolah',
+    });
+    expect(response.body.user.status).toBe('ACTIVE');
+    expect(JSON.stringify(response.body)).not.toContain('passwordHash');
+  });
+
+  it('rejects invalid invitation acceptance input before service execution', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/schools/invitations/accept')
+      .send({ token: 'short', password: 'short', displayName: 'A' })
+      .expect(400);
+    expect(schoolsService.acceptSchoolAdminInvitation).not.toHaveBeenCalled();
   });
 
   it('validates UUID before creating an administrator invitation', async () => {
