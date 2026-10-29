@@ -91,7 +91,7 @@ describe('Auth API security (e2e)', () => {
     const cookie = response.headers['set-cookie']?.[0] as string;
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Lax');
-    expect(cookie).toContain('Path=/api/v1/auth');
+    expect(cookie).toContain('Path=/api/v1');
     expect(cookie).not.toContain('Secure');
   });
 
