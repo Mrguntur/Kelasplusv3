@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -146,7 +146,7 @@ export class AuthService {
         where: { id: session.id, userId: session.userId, revokedAt: null },
         data: { lastSeenAt: new Date() },
       });
-      return { id: session.user.id, email: session.user.email, displayName: session.user.displayName };
+      return { id: session.user.id, email: session.user.email, displayName: session.user.displayName, activeSchoolId: session.activeSchoolId };
     });
     if (!authenticatedUser) throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir.');
     return authenticatedUser;
@@ -187,6 +187,50 @@ export class AuthService {
 
       return result;
     });
+  }
+
+  async selectSchool(rawToken: string, schoolId: string) {
+    const selected = await this.withSession(rawToken, async (tx, session) => {
+      if (session.revokedAt || session.expiresAt <= new Date() || session.user.status !== UserStatus.ACTIVE) {
+        throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir.');
+      }
+
+      // Scope both membership and school lookup to the candidate tenant. A client-supplied
+      // school ID is only a selector; it never grants membership by itself.
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      const membership = await tx.schoolMembership.findFirst({
+        where: { userId: session.userId, schoolId },
+        select: { role: true },
+      });
+      if (!membership) {
+        throw new ForbiddenException('Akun tidak memiliki akses ke sekolah yang dipilih.');
+      }
+
+      const school = await tx.school.findFirst({
+        where: { id: schoolId, status: SchoolStatus.ACTIVE },
+        select: { id: true, slug: true, name: true, timezone: true, locale: true },
+      });
+      if (!school) {
+        throw new ForbiddenException('Sekolah tidak aktif atau tidak tersedia.');
+      }
+
+      await tx.session.updateMany({
+        where: { id: session.id, userId: session.userId, revokedAt: null },
+        data: { activeSchoolId: schoolId, lastSeenAt: new Date() },
+      });
+      await this.audit.record({
+        actorUserId: session.userId,
+        schoolId,
+        eventType: 'auth.school_selected',
+        outcome: 'SUCCESS',
+        metadata: { role: membership.role },
+      }, tx);
+
+      return { ...school, role: membership.role, activeSchoolId: schoolId };
+    });
+
+    if (!selected) throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir.');
+    return selected;
   }
 
   async changePassword(userId: string, input: ChangePasswordDto): Promise<void> {
@@ -243,6 +287,7 @@ export class AuthService {
       });
       if (!session) return undefined;
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${session.userId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${session.activeSchoolId ?? ''}, true)`;
       return operation(tx, session);
     });
   }
