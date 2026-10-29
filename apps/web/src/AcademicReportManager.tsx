@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileText, Printer, RefreshCw } from 'lucide-react';
+import { Download, FileText, Printer, RefreshCw } from 'lucide-react';
 import { api } from './api';
 
 type SchoolClass = { id: string; name: string; gradeLevel: number; academicYear?: { name: string } | null };
@@ -55,8 +55,39 @@ export default function AcademicReportManager() {
     }
   }, [classId]);
 
+  function exportCsv() {
+    if (!report || loading) return;
+    const safeCell = (value: string | number | null) => {
+      const raw = String(value ?? '');
+      const escaped = /^[\\s]*[=+@-]/.test(raw) ? "'" + raw : raw;
+      return '"' + escaped.replace(/"/g, '""') + '"';
+    };
+    const rows: (string | number | null)[][] = [
+      ['Laporan Akademik Kelas', report.class.name],
+      ['Tahun Ajaran', report.class.academicYear?.name ?? ''],
+      ['Tanggal Laporan', report.generatedAt],
+      [],
+      ['Nama Siswa', 'NIS', 'Hadir', 'Terlambat', 'Izin', 'Sakit', 'Alpa', 'Kehadiran (%)', 'Rerata Nilai (%)'],
+      ...report.students.map(student => [
+        student.fullName, student.studentNumber, student.attendance.PRESENT,
+        student.attendance.LATE, student.attendance.EXCUSED, student.attendance.SICK,
+        student.attendance.ABSENT, student.attendance.attendanceRate,
+        student.assessment.averagePercentage,
+      ]),
+    ];
+    const csv = '\\uFEFF' + rows.map(row => row.map(safeCell).join(',')).join('\\r\\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'laporan-akademik-' + report.class.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   return <section className="academic-section">
-    <div className="attendance-heading"><div><span className="eyebrow">REKAPITULASI AKADEMIK</span><h3><FileText size={18}/> Laporan kelas</h3><p>Ringkasan kehadiran, penilaian terpublikasi, dan perkembangan setiap siswa.</p></div><div className="form-actions"><button className="secondary-button" onClick={() => void loadReport()} disabled={loading || !classId}><RefreshCw size={14}/> Perbarui</button><button className="primary-button" onClick={() => window.print()} disabled={!report}><Printer size={14}/> Cetak / Simpan PDF</button></div></div>
+    <div className="attendance-heading"><div><span className="eyebrow">REKAPITULASI AKADEMIK</span><h3><FileText size={18}/> Laporan kelas</h3><p>Ringkasan kehadiran, penilaian terpublikasi, dan perkembangan setiap siswa.</p></div><div className="form-actions"><button className="secondary-button" onClick={() => void loadReport()} disabled={loading || !classId}><RefreshCw size={14}/> Perbarui</button><button className="secondary-button" onClick={exportCsv} disabled={!report || loading}><Download size={14}/> Ekspor CSV</button><button className="primary-button" onClick={() => window.print()} disabled={!report || loading}><Printer size={14}/> Cetak / Simpan PDF</button></div></div>
     <div className="academic-form"><label>Pilih kelas<select value={classId} onChange={e => setClassId(e.target.value)}><option value="">Pilih kelas</option>{classes.filter(c => c.id).map(c => <option key={c.id} value={c.id}>{c.name} · Tingkat {c.gradeLevel}{c.academicYear?.name ? ' · ' + c.academicYear.name : ''}</option>)}</select></label></div>
     {error && <div className="alert error" role="alert">{error}</div>}
     {(loading || classesLoading) && <div className="academic-empty">Menyiapkan laporan…</div>}
