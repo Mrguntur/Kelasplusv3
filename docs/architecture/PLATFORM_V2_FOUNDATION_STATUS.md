@@ -4,43 +4,33 @@ Branch: `feat/platform-v2-foundation`
 
 ## Implemented in this branch
 
-- NestJS + TypeScript API skeleton with global DTO validation, Helmet security headers, explicit CORS origin allowlist and versioned `/api/v1` prefix.
-- Liveness endpoint at `GET /api/v1/health`.
-- PostgreSQL 17 local development service bound to loopback on port 5433.
-- Prisma models and committed migrations for schools, users, memberships, sessions, lockout counters and school registration requests.
-- Initial fail-closed RLS policies for schools, memberships and sessions.
-- Disposable PostgreSQL CI service that applies migrations and runs cross-school RLS read/write denial tests.
-- Opaque random session tokens; only SHA-256 token hashes are stored in the database.
-- Argon2id password verification and hashing helper, generic login failure message, per-account temporary lockout after repeated failures, login rate limiting, HttpOnly session cookie, logout, logout-all, session validation, and protected `GET /api/v1/auth/me`.
-- Password rotation endpoint that revokes active sessions.
-- Browser Origin validation on cookie-changing auth routes.
-- Public `POST /api/v1/schools/registration-requests` intake endpoint with DTO validation and rate limiting. It creates only a pending request; it does not create a school or user account.
-- Unit tests for health response and cookie security policy.
+- NestJS + TypeScript API skeleton with DTO validation, Helmet security headers, explicit CORS allowlist and versioned `/api/v1` prefix.
+- Health endpoint, local PostgreSQL 17 development service, Prisma schema and versioned migrations.
+- Global identity, schools, memberships, sessions, registration requests, audit events, and school-admin invitation data models.
+- Fail-closed PostgreSQL RLS policies for tenant rows, school membership discovery, registration review, audit writes, platform-admin provisioning, and token-scoped invitation acceptance.
+- Authentication foundation: Argon2id password hashing, opaque random session tokens stored as SHA-256 hashes, HttpOnly cookie sessions, lockout and throttling, session validation, school discovery/selection, logout, logout-all, and password change with session revocation.
+- Public school registration intake that creates only a pending request.
+- Platform-admin registration review endpoints, pending-school approval, invitation email integration through Resend, and invitation acceptance that creates the school admin membership and activates the school.
+- Unit, API e2e, and disposable PostgreSQL RLS tests.
+- Security contracts and architecture notes.
+- Academic data model proposal in `docs/architecture/PLATFORM_V2_ACADEMIC_DATA_MODEL.md`; this is design only and is not yet migrated into the database.
 
-## Verification
+## Verification status
 
-- The earlier backend-only CI run passed schema validation, type checking, build and unit tests before the database integration test was added.
-- The RLS integration test exposed a cleanup-only failure: the test role still had schema privileges. The script was corrected to rely on disposable CI database teardown instead of dropping that role.
-- The latest workflow after the auth and registration changes is running; do not treat this branch as green until the newest run completes successfully.
+- On the latest invitation-acceptance run inspected, Prisma validation and all migrations passed, but the PostgreSQL RLS integration test failed due to two malformed dollar-quote delimiters in `services/api/test/rls.integration.sql`.
+- The delimiter typo was corrected in commit `e1cc67048b3b804c8eeb209291dedd03a95173cc`. The follow-up CI result must be checked before calling the branch green; do not infer success from the fix alone.
+- The legacy KELAS+ CI run for that previous commit passed. The Platform V2 API CI did not pass because the RLS script stopped at the SQL syntax error; typecheck/build/unit/e2e steps were skipped by the workflow.
+- No production database migration, data import, deployment, or YoHost/Firebase configuration change has occurred.
 
-## Important security gaps — not production-ready
+## Remaining foundation risks / next steps
 
-- No school registration review/approval flow or school-admin user-management endpoints yet.
-- No email verification, invitation acceptance, password recovery, MFA, or platform-admin bootstrap flow yet.
-- Rate limiting currently uses the in-process throttler; multi-instance production needs a shared store and proxy/IP trust configuration.
-- RLS needs additional review for all future tenant-owned tables, plus explicit runtime/migration DB-role provisioning and tests using the exact runtime grants.
-- No dedicated audit-event pipeline yet.
-- No end-to-end API tests for login, logout, password rotation, expired/revoked sessions, or concurrent failed-login attempts yet.
-- No React web client or Flutter client in this foundation branch.
-- No shared/production database migration has been run. No deployment or changes to YoHost/Firebase have occurred.
+1. Confirm the corrected RLS integration test passes in CI; inspect and fix any subsequent failures before adding more runtime features.
+2. Review invitation acceptance and all RLS policies using the non-owner runtime role and exact production-like grants.
+3. Add database-backed authentication/invitation integration tests, including concurrent invitation claims, expired/revoked tokens, duplicate email races, and session creation after invitation acceptance.
+4. Implement password recovery, verified email, MFA, platform-admin bootstrap and role-checked school user management before real accounts are allowed.
+5. After the security baseline is green, implement the academic schema in small migration batches following the academic data model proposal, with tenant isolation and cross-school foreign-key tests for every batch.
+6. Add React web and Flutter clients after the API contract and authorization boundaries stabilize.
 
-## Immediate next tasks
+## Deployment boundary
 
-1. Get the newest CI run green and fix any schema, SQL, type, or test failures.
-2. Expand auth integration tests against disposable PostgreSQL and verify runtime DB grants.
-3. Implement platform-admin bootstrap, verified registration review, invitation acceptance and role-checked user management.
-4. Complete recovery/MFA/audit and threat-model review before real accounts are allowed.
-5. Add academic modules only after tenant authorization and RLS tests are reliable.
-6. Add React web and Flutter clients against the versioned API after the API contract stabilizes.
-
-No production deployment, data migration, or production credential change is authorized by this work.
+This is development work on `feat/platform-v2-foundation`. Draft PRs remain unmerged. Do not deploy, import legacy data, change production credentials, or run migrations against YoHost/Firebase without explicit approval.
