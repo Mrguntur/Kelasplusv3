@@ -51,11 +51,6 @@ model School {
   schoolClasses SchoolClass[]
   enrollments ClassEnrollment[]
   subjects Subject[]
-  attendanceSessions AttendanceSession[]
-  attendanceRecords AttendanceRecord[]
-  teachingJournals TeachingJournal[]
-  assessments Assessment[]
-  assessmentScores AssessmentScore[]
   @@map("schools")
 }
 
@@ -207,7 +202,6 @@ model Term {
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   academicYear   AcademicYear @relation(fields: [schoolId, academicYearId], references: [schoolId, id], onDelete: Restrict)
-  teachingAssignments TeachingAssignment[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, academicYearId, sequence])
