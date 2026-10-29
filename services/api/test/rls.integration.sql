@@ -103,16 +103,16 @@ INSERT INTO "school_admin_invitations"
   ("id", "school_id", "email", "token_hash", "expires_at", "created_by", "created_at")
 VALUES
   ('cccccccc-cccc-4ccc-8ccc-cccccccccc81', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'invite@example.test', repeat('a', 64), now() + interval '1 day', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', now());
-DO $
+DO $$
 DECLARE visible_invitations integer;
 BEGIN
   SELECT count(*) INTO visible_invitations FROM "school_admin_invitations";
   IF visible_invitations <> 1 THEN
     RAISE EXCEPTION 'RLS failure: platform admin could not access invitation storage';
   END IF;
-END $;
+END $$;
 SELECT set_config('app.is_platform_admin','false',true);
-DO $
+DO $$
 DECLARE visible_invitations integer;
 BEGIN
   SELECT count(*) INTO visible_invitations FROM "school_admin_invitations";
@@ -128,7 +128,7 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-END $;
+END $$;
 SELECT set_config('app.is_platform_admin','true',true);
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
 VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc71','rls-approved-pending','RLS Approved Pending School','PENDING','Asia/Makassar','id-ID',now(),now());
