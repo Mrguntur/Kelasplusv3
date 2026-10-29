@@ -594,7 +594,7 @@ export class AcademicService {
               studentId: record.studentId,
               status: record.status,
               note: record.note?.trim() || null,
-              recordedByUserId: user.id,
+              enteredByUserId: user.id,
             },
             update: {
               status: record.status,
@@ -800,7 +800,7 @@ export class AcademicService {
       const membership = await this.establishTenant(tx, user);
       const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
         ? { schoolId: user.activeSchoolId! }
-        : { schoolId: user.activeSchoolId!, teachingAssignment: { staffProfile: { userId: user.id } } };
+        : { schoolId: user.activeSchoolId!, assignment: { staffProfile: { userId: user.id } } };
       return tx.assessment.findMany({
         where,
         orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
