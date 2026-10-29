@@ -35,6 +35,7 @@ const typeLabel = (value: string) => assessmentTypes.find(([key]) => key === val
 
 export default function AssessmentManager({ role }: { role: string }) {
   const isPrivileged = role === 'SCHOOL_ADMIN' || role === 'SCHOOL_LEADER';
+  const canCreate = role === 'TEACHER';
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -134,6 +135,7 @@ export default function AssessmentManager({ role }: { role: string }) {
   async function publishAssessment() {
     const assessment = assessments.find(item => item.id === selectedId);
     if (!assessment) return;
+    if (!enrollments.length) { setError('Tidak ada siswa aktif terdaftar di kelas ini. Penilaian belum dapat dipublikasikan.'); return; }
     const missing = enrollments.filter(item => scores[item.studentId] === undefined || scores[item.studentId].trim() === '').length;
     if (missing > 0) { setError(`Masih ada ${missing} siswa tanpa nilai. Lengkapi nilai sebelum publikasi.`); return; }
     if (!window.confirm('Publikasikan penilaian ini? Nilai tidak dapat diubah setelah dipublikasikan.')) return;
@@ -159,12 +161,12 @@ export default function AssessmentManager({ role }: { role: string }) {
 
   const selected = assessments.find(item => item.id === selectedId);
   const selectedAssignment = selected?.assignment ?? assignments.find(item => item.id === selected?.teachingAssignmentId);
-  const canEditSelected = !isPrivileged && selected?.status === 'DRAFT';
+  const canEditSelected = canCreate && selected?.status === 'DRAFT';
 
   return <section className="academic-section">
     <div className="attendance-heading"><div><span className="eyebrow">EVALUASI PEMBELAJARAN</span><h3><ClipboardCheck size={18}/> Penilaian & nilai siswa</h3><p>Buat penilaian, catat nilai per siswa, lalu publikasikan setelah seluruh nilai lengkap.</p></div><button className="secondary-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14}/> Perbarui</button></div>
     {error && <div className="alert error" role="alert">{error}</div>}{notice && <div className="alert success" role="status">{notice}</div>}
-    {!isPrivileged && <form className="academic-form" onSubmit={createAssessment}>
+    {canCreate && <form className="academic-form" onSubmit={createAssessment}>
       <h3><Plus size={16}/> Buat penilaian</h3>
       <label>Penugasan mengajar *<select required value={assignmentId} onChange={e=>setAssignmentId(e.target.value)}><option value="">Pilih kelas dan mata pelajaran</option>{assignments.map(a=><option key={a.id} value={a.id}>{a.schoolClass.name} · {a.subject.name}{a.term ? ` · ${a.term.name}` : ''}</option>)}</select></label>
       <label>Nama penilaian *<input required minLength={2} maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder="Contoh: Speaking Performance"/></label>
@@ -177,6 +179,6 @@ export default function AssessmentManager({ role }: { role: string }) {
       <form className="table-wrap" onSubmit={saveScores}><table className="academic-table"><thead><tr><th>Siswa</th><th>NIS</th><th>{'Nilai / ' + selected.maxScore}</th><th>Umpan balik</th></tr></thead><tbody>{enrollments.map(enrollment=><tr key={enrollment.studentId}><td><strong>{enrollment.student.fullName}</strong>{enrollment.student.preferredName&&<span className="table-subtitle">{enrollment.student.preferredName}</span>}</td><td>{enrollment.student.studentNumber??'—'}</td><td><input aria-label={`Nilai ${enrollment.student.fullName}`} className="score-input" type="number" min="0" max={Number(selected.maxScore)} step="0.01" value={scores[enrollment.studentId]??''} disabled={!canEditSelected||saving} onChange={e=>setScores(current=>({...current,[enrollment.studentId]:e.target.value}))}/></td><td><input aria-label={`Umpan balik ${enrollment.student.fullName}`} value={feedback[enrollment.studentId]??''} disabled={!canEditSelected||saving} maxLength={500} onChange={e=>setFeedback(current=>({...current,[enrollment.studentId]:e.target.value}))}/></td></tr>)}</tbody></table>{!enrollments.length&&<div className="academic-empty">Belum ada siswa aktif terdaftar di kelas penilaian ini.</div>}{canEditSelected&&<div className="form-actions"><button className="primary-button" disabled={saving||!enrollments.length}><Save size={14}/>{saving?'Menyimpan…':'Simpan nilai'}</button><button type="button" className="secondary-button" disabled={saving} onClick={()=>void publishAssessment()}><Send size={14}/> Publikasikan</button></div>}</form>
       {!canEditSelected&&<p className="muted role-note">{selected.status==='PUBLISHED'?'Penilaian sudah dipublikasikan dan terkunci.':'Mode pemantauan: nilai tidak dapat diubah dari akun ini.'}</p>}
     </>}
-    <div className="table-footer">{isPrivileged?'Pemantauan penilaian sekolah aktif.':'Guru hanya dapat mengelola penilaian pada penugasan miliknya.'}</div>
+    <div className="table-footer">{isPrivileged?'Pemantauan penilaian sekolah aktif.':canCreate?'Guru hanya dapat mengelola penilaian pada penugasan miliknya.':'Akses penilaian mengikuti peran dan penugasan akun.'}</div>
   </section>;
 }
