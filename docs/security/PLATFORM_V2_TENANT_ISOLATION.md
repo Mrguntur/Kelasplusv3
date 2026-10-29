@@ -84,3 +84,10 @@ No production database, credentials, deployment, or student data is used by this
 - Rejection requires a reason, is allowed only while the request is `PENDING`, and writes an audit event in the same transaction.
 - This first review increment deliberately does not provision or activate a school and does not create an account. Approval/provisioning requires a separate reviewed workflow, verified contact ownership, duplicate-email handling, and narrowly scoped provisioning policies.
 - Before deployment, configure `PLATFORM_ADMIN_EMAILS` with verified administrator identities and provision a least-privilege runtime database role with the required table grants. Do not reuse a migration or database-owner role for runtime traffic.
+## School approval and provisioning boundary
+
+- `POST /api/v1/schools/admin/registration-requests/:id/approve` requires a valid session and an email listed in `PLATFORM_ADMIN_EMAILS`.
+- Approval checks that the request is still `PENDING` and that its requested slug is not already used. The status update, creation of a school shell, and audit event occur in one database transaction.
+- Approval creates a school with status `PENDING` only. It does not create an account, create a school membership, or activate school access. Contact verification and a dedicated administrator invitation/acceptance flow must be completed before activation.
+- The platform-admin RLS policy is transaction-local and is set only inside service methods reached after the application guard. Runtime database grants must remain least-privilege; platform administration must not use a database-owner or migration connection.
+- The CI RLS integration test verifies that the platform-admin context can create a pending school. Further production-readiness work must test denial without the context and must verify role grants against the exact deployment role.
