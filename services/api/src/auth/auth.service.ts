@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@n
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
-import { Prisma, UserStatus } from '@prisma/client';
+import { Prisma, SchoolStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './auth.dto';
 import { ChangePasswordDto } from './change-password.dto';
@@ -179,7 +179,7 @@ export class AuthService {
       for (const membership of memberships) {
         await tx.$executeRaw`SELECT set_config('app.current_school_id', ${membership.schoolId}, true)`;
         const school = await tx.school.findFirst({
-          where: { id: membership.schoolId, status: 'ACTIVE' },
+          where: { id: membership.schoolId, status: SchoolStatus.ACTIVE },
           select: { id: true, slug: true, name: true, timezone: true, locale: true },
         });
         if (school) result.push({ ...school, role: membership.role });
