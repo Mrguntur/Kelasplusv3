@@ -137,10 +137,21 @@ export default function AssessmentManager({ role }: { role: string }) {
     const missing = enrollments.filter(item => scores[item.studentId] === undefined || scores[item.studentId].trim() === '').length;
     if (missing > 0) { setError(`Masih ada ${missing} siswa tanpa nilai. Lengkapi nilai sebelum publikasi.`); return; }
     if (!window.confirm('Publikasikan penilaian ini? Nilai tidak dapat diubah setelah dipublikasikan.')) return;
+    const entries = enrollments.map(item => ({
+      studentId: item.studentId,
+      score: Number(scores[item.studentId]),
+      ...(feedback[item.studentId]?.trim() ? { feedback: feedback[item.studentId].trim() } : {}),
+    }));
+    if (entries.some(item => !Number.isFinite(item.score) || item.score < 0 || item.score > Number(assessment.maxScore))) {
+      setError('Pastikan semua nilai berupa angka antara 0 dan ' + assessment.maxScore + '.'); return;
+    }
     setSaving(true); setError(''); setNotice('');
     try {
-      await api(`/academic/assessments/${selectedId}/publish`, { method: 'POST' });
-      setNotice('Penilaian berhasil dipublikasikan.');
+      await api('/academic/assessments/' + selectedId + '/scores', {
+        method: 'POST', body: JSON.stringify({ scores: entries }),
+      });
+      await api('/academic/assessments/' + selectedId + '/publish', { method: 'POST' });
+      setNotice('Nilai berhasil disimpan dan penilaian dipublikasikan.');
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Penilaian gagal dipublikasikan.'); }
     finally { setSaving(false); }
