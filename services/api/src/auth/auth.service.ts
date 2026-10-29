@@ -6,6 +6,7 @@ import { Prisma, UserStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './auth.dto';
 import { ChangePasswordDto } from './change-password.dto';
+import { AuditService } from '../audit/audit.service';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 8;
@@ -15,7 +16,11 @@ const LOCKOUT_MS = 15 * 60 * 1000;
 export class AuthService {
   private readonly dummyHash: Promise<string>;
 
-  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly audit: AuditService,
+  ) {
     this.dummyHash = argon2.hash(randomBytes(32).toString('hex'), { type: argon2.argon2id });
   }
 
@@ -65,6 +70,13 @@ export class AuthService {
       await tx.session.create({
         data: { userId: user.id, tokenHash, expiresAt, deviceLabel: metadata.userAgent?.slice(0, 200) },
       });
+      await this.audit.record({
+        actorUserId: user.id,
+        eventType: 'auth.login',
+        outcome: 'SUCCESS',
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      }, tx);
     });
     return { rawToken, expiresAt, user: { id: user.id, email: user.email, displayName: user.displayName } };
   }
@@ -75,6 +87,11 @@ export class AuthService {
         where: { id: session.id, userId: session.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      await this.audit.record({
+        actorUserId: session.userId,
+        eventType: 'auth.logout',
+        outcome: 'SUCCESS',
+      }, tx);
     });
   }
 
@@ -84,6 +101,11 @@ export class AuthService {
         where: { userId: session.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      await this.audit.record({
+        actorUserId: session.userId,
+        eventType: 'auth.logout_all',
+        outcome: 'SUCCESS',
+      }, tx);
     });
   }
 
@@ -124,6 +146,11 @@ export class AuthService {
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      await this.audit.record({
+        actorUserId: userId,
+        eventType: 'auth.password_changed',
+        outcome: 'SUCCESS',
+      }, tx);
     });
   }
 
