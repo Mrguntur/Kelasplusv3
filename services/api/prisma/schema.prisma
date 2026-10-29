@@ -56,8 +56,6 @@ model School {
   teachingJournals TeachingJournal[]
   assessments Assessment[]
   assessmentScores AssessmentScore[]
-  teachingAssignments TeachingAssignment[]
-
   @@map("schools")
 }
 
@@ -209,11 +207,11 @@ model Term {
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   academicYear   AcademicYear @relation(fields: [schoolId, academicYearId], references: [schoolId, id], onDelete: Restrict)
-
-  @@unique([schoolId, academicYearId, sequence])
-  @@index([schoolId, academicYearId])
   teachingAssignments TeachingAssignment[]
 
+  @@unique([schoolId, id])
+  @@unique([schoolId, academicYearId, sequence])
+  @@index([schoolId, academicYearId])
   @@map("terms")
 }
 
