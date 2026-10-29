@@ -9,34 +9,35 @@ export class SchoolsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   async requestRegistration(input: SchoolRegistrationDto) {
-    const request = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.schoolRegistrationRequest.create({
-      data: {
-        schoolName: input.schoolName.trim(),
-        requestedSlug: input.requestedSlug.trim().toLowerCase(),
-        contactName: input.contactName.trim(),
-        email: input.email.trim().toLowerCase(),
-        phone: input.phone?.trim() || null,
-      },
-      select: {
-        id: true,
-        schoolName: true,
-        status: true,
-        createdAt: true,
-      },
-      });
+    const requestId = randomUUID();
+    const submittedAt = new Date();
+    const schoolName = input.schoolName.trim();
+    const requestedSlug = input.requestedSlug.trim().toLowerCase();
+    const contactName = input.contactName.trim();
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone?.trim() || null;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Use INSERT without RETURNING: public intake is allowed to insert pending
+      // requests but intentionally cannot read the global registration queue.
+      await tx.$executeRaw`
+        INSERT INTO "school_registration_requests"
+          ("id", "school_name", "requested_slug", "contact_name", "email", "phone", "status", "created_at")
+        VALUES
+          (${requestId}::uuid, ${schoolName}, ${requestedSlug}, ${contactName}, ${email}, ${phone}, 'PENDING'::"RegistrationStatus", ${submittedAt})
+      `;
       await this.audit.record({
         eventType: 'school.registration_requested',
         outcome: 'SUCCESS',
-        metadata: { requestId: created.id, requestedSlug: input.requestedSlug.trim().toLowerCase() },
+        metadata: { requestId, requestedSlug },
       }, tx);
-      return created;
     });
+
     return {
-      requestId: request.id,
-      schoolName: request.schoolName,
-      status: request.status,
-      submittedAt: request.createdAt,
+      requestId,
+      schoolName,
+      status: 'PENDING',
+      submittedAt,
       message: 'Permohonan diterima untuk ditinjau. Akun belum dibuat dan sekolah belum diaktifkan.',
     };
   }
