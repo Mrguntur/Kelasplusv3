@@ -45,6 +45,8 @@ model School {
   memberships SchoolMembership[]
   activeSessions Session[] @relation("SessionActiveSchool")
   adminInvitations SchoolAdminInvitation[]
+  academicYears AcademicYear[]
+  terms Term[]
 
   @@map("schools")
 }
@@ -153,4 +155,47 @@ model SchoolAdminInvitation {
   @@index([schoolId, email, createdAt])
   @@index([expiresAt])
   @@map("school_admin_invitations")
+}
+
+
+enum AcademicYearStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+model AcademicYear {
+  id        String            @id @default(uuid()) @db.Uuid
+  schoolId  String            @map("school_id") @db.Uuid
+  name      String            @db.VarChar(40)
+  startDate DateTime          @map("start_date") @db.Date
+  endDate   DateTime          @map("end_date") @db.Date
+  status    AcademicYearStatus @default(PLANNED)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  school    School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  terms     Term[]
+
+  @@unique([schoolId, id])
+  @@unique([schoolId, name])
+  @@index([schoolId, status, startDate])
+  @@map("academic_years")
+}
+
+model Term {
+  id             String       @id @default(uuid()) @db.Uuid
+  schoolId       String       @map("school_id") @db.Uuid
+  academicYearId String       @map("academic_year_id") @db.Uuid
+  name           String       @db.VarChar(80)
+  sequence       Int
+  startDate      DateTime     @map("start_date") @db.Date
+  endDate        DateTime     @map("end_date") @db.Date
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear   AcademicYear @relation(fields: [schoolId, academicYearId], references: [schoolId, id], onDelete: Restrict)
+
+  @@unique([schoolId, academicYearId, sequence])
+  @@index([schoolId, academicYearId])
+  @@map("terms")
 }
