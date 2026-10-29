@@ -102,7 +102,7 @@ SELECT set_config('app.is_platform_admin','true',true);
 INSERT INTO "school_admin_invitations"
   ("id", "school_id", "email", "token_hash", "expires_at", "created_by", "created_at")
 VALUES
-  ('cccccccc-cccc-4ccc-8ccc-cccccccccc81', 'cccccccc-cccc-4ccc-8ccc-cccccccccc71', 'invite@example.test', repeat('a', 64), now() + interval '1 day', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', now());
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc81', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'invite@example.test', repeat('a', 64), now() + interval '1 day', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', now());
 DO $
 DECLARE visible_invitations integer;
 BEGIN
