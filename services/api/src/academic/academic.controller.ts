@@ -230,6 +230,11 @@ export class AcademicController {
   }
 
 
+  @Get('dashboard/summary')
+  getDashboardSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.getDashboardSummary(user);
+  }
+
   @Get('reports/classes/:classId')
   getClassAcademicReport(
     @CurrentUser() user: AuthenticatedUser,
