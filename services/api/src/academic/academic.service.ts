@@ -516,7 +516,7 @@ export class AcademicService {
   async createAttendanceSession(user: AuthenticatedUser, classId: string, input: CreateAttendanceSessionDto) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
       const [schoolClass, staff] = await Promise.all([
         tx.schoolClass.findFirst({
           where: { id: classId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
@@ -529,6 +529,13 @@ export class AcademicService {
       ]);
       if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan atau tidak aktif di sekolah ini.');
       if (!staff) throw new ForbiddenException('Akun harus memiliki profil staf aktif untuk membuat presensi.');
+      if (![SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER].includes(membership.role)) {
+        const assignment = await tx.teachingAssignment.findFirst({
+          where: { schoolId: user.activeSchoolId!, classId, staffProfileId: staff.id, archivedAt: null },
+          select: { id: true },
+        });
+        if (!assignment) throw new ForbiddenException('Guru hanya dapat membuat presensi untuk kelas yang menjadi penugasan mengajarnya.');
+      }
       try {
         const session = await tx.attendanceSession.create({
           data: {
