@@ -594,7 +594,7 @@ export class AcademicService {
               studentId: record.studentId,
               status: record.status,
               note: record.note?.trim() || null,
-              enteredByUserId: user.id,
+              recordedByUserId: user.id,
             },
             update: {
               status: record.status,
