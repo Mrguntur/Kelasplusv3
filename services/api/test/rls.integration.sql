@@ -67,7 +67,7 @@ SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',t
 INSERT INTO "audit_events" ("id", "actor_user_id", "event_type", "outcome", "metadata", "created_at")
 VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc45', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'auth.test', 'SUCCESS', '{}'::jsonb, now());
 
-DO $
+DO $$
 BEGIN
   BEGIN
     INSERT INTO "audit_events" ("id", "actor_user_id", "event_type", "outcome", "metadata", "created_at")
@@ -80,7 +80,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "audit_events") THEN
     RAISE EXCEPTION 'RLS failure: runtime role can read audit events';
   END IF;
-END $;
+END $$;
 ROLLBACK;
 RESET ROLE;
 
