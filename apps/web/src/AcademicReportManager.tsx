@@ -47,7 +47,12 @@ export default function AcademicReportManager() {
   }
   useEffect(() => {
     setReport(null);
-    if (classId) void loadReport();
+    if (classId) {
+      void loadReport();
+    } else {
+      reportRequestId.current += 1;
+      setLoading(false);
+    }
   }, [classId]);
 
   return <section className="academic-section">
