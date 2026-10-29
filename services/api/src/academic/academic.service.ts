@@ -1064,6 +1064,55 @@ export class AcademicService {
   }
 
 
+  async listReportClasses(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses laporan akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const schoolId = user.activeSchoolId!;
+      const classSelect = {
+        id: true,
+        name: true,
+        gradeLevel: true,
+        academicYear: { select: { name: true } },
+      } as const;
+
+      if (membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER) {
+        return tx.schoolClass.findMany({
+          where: { schoolId, status: 'ACTIVE' },
+          orderBy: [{ gradeLevel: 'asc' }, { name: 'asc' }],
+          take: 200,
+          select: classSelect,
+        });
+      }
+      if (membership.role !== SchoolRole.TEACHER) {
+        throw new ForbiddenException('Peran akun ini tidak memiliki akses ke laporan kelas.');
+      }
+
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId, userId: user.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!staff) throw new ForbiddenException('Profil guru aktif tidak ditemukan di sekolah ini.');
+
+      const [assignments, homeroomClasses] = await Promise.all([
+        tx.teachingAssignment.findMany({
+          where: { schoolId, staffProfileId: staff.id, archivedAt: null, schoolClass: { status: 'ACTIVE' } },
+          select: { schoolClass: { select: classSelect } },
+          take: 500,
+        }),
+        tx.schoolClass.findMany({
+          where: { schoolId, status: 'ACTIVE', homeroomStaffProfileId: staff.id },
+          select: classSelect,
+          take: 200,
+        }),
+      ]);
+      const accessible = new Map<string, (typeof homeroomClasses)[number]>();
+      for (const item of assignments) accessible.set(item.schoolClass.id, item.schoolClass);
+      for (const item of homeroomClasses) accessible.set(item.id, item);
+      return [...accessible.values()].sort((a, b) => a.gradeLevel - b.gradeLevel || a.name.localeCompare(b.name));
+    });
+  }
+
   async getClassAcademicReport(user: AuthenticatedUser, classId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses laporan akademik.');
     return this.prisma.$transaction(async (tx) => {
