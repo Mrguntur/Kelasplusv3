@@ -7,6 +7,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { SchoolsModule } from './schools/schools.module';
 import { AuditModule } from './audit/audit.module';
+import { AcademicModule } from './academic/academic.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AuditModule } from './audit/audit.module';
     AuthModule,
     SchoolsModule,
     AuditModule,
+    AcademicModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
