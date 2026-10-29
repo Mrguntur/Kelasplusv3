@@ -505,7 +505,10 @@ export class AcademicService {
         where: { schoolId: user.activeSchoolId!, classId },
         orderBy: [{ date: 'desc' }, { sessionLabel: 'asc' }],
         take: 100,
-        include: { _count: { select: { records: true } } },
+        include: {
+          _count: { select: { records: true } },
+          records: { select: { studentId: true, status: true, note: true } },
+        },
       });
     });
   }
