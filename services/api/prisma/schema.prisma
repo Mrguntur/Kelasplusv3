@@ -43,6 +43,7 @@ model School {
   createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships SchoolMembership[]
+  activeSessions Session[] @relation("SessionActiveSchool")
 
   @@map("schools")
 }
@@ -89,6 +90,7 @@ model Session {
   deviceLabel   String?   @map("device_label") @db.VarChar(200)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeSchool  School?   @relation("SessionActiveSchool", fields: [activeSchoolId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
