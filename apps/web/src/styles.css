@@ -36,3 +36,32 @@
 .academic-section .academic-table input{box-sizing:border-box;min-width:100px;width:100%;border:1px solid #dfe6ef;border-radius:8px;padding:8px;font:12px 'DM Sans',sans-serif;color:#344a67}
 .academic-section .academic-table input:disabled{background:#f3f6fa;color:#8290a3}
 @media(max-width:760px){.academic-section{padding:14px 10px}.academic-section .form-grid{grid-template-columns:1fr}.academic-section .attendance-heading{align-items:flex-start}.academic-section .form-actions button{flex:1;min-height:40px}}
+
+
+/* Academic class report */
+.academic-report-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; margin: 18px 0 24px; }
+.academic-report-metrics article { display: flex; flex-direction: column; gap: 5px; padding: 14px; border: 1px solid var(--border, #dbe3ef); border-radius: 12px; background: var(--surface, #fff); }
+.academic-report-metrics strong { font-size: 1.35rem; line-height: 1.2; }
+.academic-report-metrics span { color: var(--muted, #64748b); font-size: .82rem; }
+.report-heading { text-align: center; padding: 18px 0 12px; }
+.report-heading > span { letter-spacing: .12em; font-size: .76rem; font-weight: 700; color: var(--muted, #64748b); }
+.report-heading h2 { margin: 8px 0 4px; font-size: 1.8rem; }
+.report-heading p { margin: 0 0 6px; }
+.report-heading small, .report-footnote { color: var(--muted, #64748b); }
+.academic-report-print > h3 { margin: 24px 0 10px; }
+@media print {
+  body * { visibility: hidden !important; }
+  .academic-report-print, .academic-report-print * { visibility: visible !important; }
+  .academic-report-print { position: absolute; inset: 0; width: 100%; padding: 0; color: #111827; background: #fff; }
+  .academic-report-print .table-wrap { overflow: visible !important; border: 0; }
+  .academic-report-print .academic-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  .academic-report-print .academic-table th, .academic-report-print .academic-table td { border: 1px solid #cbd5e1; padding: 5px 6px; }
+  .academic-report-print .academic-table th { background: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .academic-report-metrics { grid-template-columns: repeat(5, 1fr); }
+  .academic-report-metrics article { border: 1px solid #cbd5e1; padding: 8px; }
+  .academic-report-print h3 { break-after: avoid; }
+  .academic-report-print tr { break-inside: avoid; }
+}
+@media (max-width: 640px) {
+  .academic-report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
