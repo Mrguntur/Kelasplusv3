@@ -84,7 +84,7 @@ SET ROLE kelasplus_runtime;
 BEGIN;
 SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
 SELECT set_config('app.current_school_id','',true);
-DO $
+DO $$
 BEGIN
   BEGIN
     INSERT INTO "sessions" ("id", "user_id", "active_school_id", "token_hash", "expires_at", "created_at")
@@ -100,7 +100,7 @@ BEGIN
   EXCEPTION WHEN foreign_key_violation THEN
     NULL; -- expected referential-integrity denial
   END;
-END $;
+END $$;
 ROLLBACK;
 RESET ROLE;
 
