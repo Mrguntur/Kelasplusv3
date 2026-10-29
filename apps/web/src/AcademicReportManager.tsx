@@ -59,7 +59,7 @@ export default function AcademicReportManager() {
     if (!report || loading) return;
     const safeCell = (value: string | number | null) => {
       const raw = String(value ?? '');
-      const escaped = /^[\\s]*[=+@-]/.test(raw) ? "'" + raw : raw;
+      const escaped = /^\s*[=+@-]/.test(raw) ? "'" + raw : raw;
       return '"' + escaped.replace(/"/g, '""') + '"';
     };
     const rows: (string | number | null)[][] = [
@@ -75,7 +75,7 @@ export default function AcademicReportManager() {
         student.assessment.averagePercentage,
       ]),
     ];
-    const csv = '\\uFEFF' + rows.map(row => row.map(safeCell).join(',')).join('\\r\\n');
+    const csv = '\uFEFF' + rows.map(row => row.map(safeCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
