@@ -806,7 +806,7 @@ export class AcademicService {
         orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
         take: 200,
         include: {
-          teachingAssignment: {
+          assignment: {
             select: {
               id: true,
               schoolClass: { select: { id: true, name: true, gradeLevel: true } },
@@ -905,12 +905,12 @@ export class AcademicService {
             studentId: entry.studentId,
             score: entry.score,
             feedback: entry.feedback?.trim() || null,
-            recordedByUserId: user.id,
+            enteredByUserId: user.id,
           },
           update: {
             score: entry.score,
             feedback: entry.feedback?.trim() || null,
-            recordedByUserId: user.id,
+            enteredByUserId: user.id,
           },
         });
       }
@@ -931,11 +931,11 @@ export class AcademicService {
       const membership = await this.establishTenant(tx, user);
       const assessment = await tx.assessment.findFirst({
         where: { id: assessmentId, schoolId: user.activeSchoolId! },
-        select: { id: true, createdByUserId: true, teachingAssignment: { select: { staffProfile: { select: { userId: true } } } } },
+        select: { id: true, createdByUserId: true, assignment: { select: { staffProfile: { select: { userId: true } } } } },
       });
       if (!assessment) throw new BadRequestException('Penilaian tidak ditemukan di sekolah aktif.');
       const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
-      if (!privileged && assessment.teachingAssignment.staffProfile.userId !== user.id) {
+      if (!privileged && assessment.assignment.staffProfile.userId !== user.id) {
         throw new ForbiddenException('Anda tidak memiliki akses ke nilai penilaian ini.');
       }
       return tx.assessmentScore.findMany({
@@ -976,8 +976,8 @@ export class AcademicService {
       if (missingCount > 0) throw new BadRequestException(`Penilaian belum lengkap: masih ada ${missingCount} siswa tanpa nilai.`);
       const published = await tx.assessment.update({
         where: { schoolId_id: { schoolId: user.activeSchoolId!, id: assessmentId } },
-        data: { status: 'PUBLISHED', publishedAt: new Date() },
-        select: { id: true, status: true, publishedAt: true },
+        data: { status: 'PUBLISHED' },
+        select: { id: true, status: true, updatedAt: true },
       });
       await this.audit.record({
         actorUserId: user.id,
