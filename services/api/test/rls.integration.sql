@@ -147,7 +147,7 @@ BEGIN
   IF visible_invitations <> 0 THEN
     RAISE EXCEPTION 'RLS failure: invitation rows visible after clearing token context';
   END IF;
-END $;
+END $$;
 SELECT set_config('app.is_platform_admin','true',true);
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
 VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc71','rls-approved-pending','RLS Approved Pending School','PENDING','Asia/Makassar','id-ID',now(),now());
