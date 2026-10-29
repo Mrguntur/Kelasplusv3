@@ -11,7 +11,7 @@ describe('AuthController cookie policy', () => {
     expect(options.httpOnly).toBe(true);
     expect(options.secure).toBe(false);
     expect(options.sameSite).toBe('lax');
-    expect(options.path).toBe('/api/v1/auth');
+    expect(options.path).toBe('/api/v1');
   });
 
   it('requires Secure cookies in production', () => {
