@@ -75,3 +75,12 @@ No production database, credentials, deployment, or student data is used by this
 - Session transactions initialize `app.current_school_id` from the session's active school or an empty value. Selection replaces it transaction-locally only after membership validation.
 - School selection is audited as `auth.school_selected`. A failed membership or inactive-school check must not update the session.
 - This is groundwork for tenant-aware requests, not a replacement for per-request authorization. Each future academic service must still validate membership and perform tenant queries inside one transaction with user and school context set.
+
+## Platform registration review boundary
+
+- Public registration intake is write-only under RLS: it may insert a request in `PENDING` state but cannot query the global registration queue.
+- `GET /api/v1/schools/admin/registration-requests` and `POST /api/v1/schools/admin/registration-requests/:id/reject` require both a valid session and an exact email match in `PLATFORM_ADMIN_EMAILS` (comma-separated, normalized email addresses).
+- The API sets `app.is_platform_admin` transaction-locally only after the application guard has authorized the request. Registration queue reads and updates are denied without that context.
+- Rejection requires a reason, is allowed only while the request is `PENDING`, and writes an audit event in the same transaction.
+- This first review increment deliberately does not provision or activate a school and does not create an account. Approval/provisioning requires a separate reviewed workflow, verified contact ownership, duplicate-email handling, and narrowly scoped provisioning policies.
+- Before deployment, configure `PLATFORM_ADMIN_EMAILS` with verified administrator identities and provision a least-privilege runtime database role with the required table grants. Do not reuse a migration or database-owner role for runtime traffic.
