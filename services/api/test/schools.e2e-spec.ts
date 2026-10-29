@@ -14,6 +14,7 @@ describe('School registration API security (e2e)', () => {
     listPendingRegistrations: jest.fn(),
     rejectRegistration: jest.fn(),
     approveRegistration: jest.fn(),
+    inviteSchoolAdmin: jest.fn(),
   };
   const sessionGuard = { canActivate: (context: any) => {
     context.switchToHttp().getRequest().user = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', email: 'platform@example.test', displayName: 'Platform Admin' };
@@ -106,6 +107,35 @@ describe('School registration API security (e2e)', () => {
       .expect(200);
     expect(schoolsService.approveRegistration).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01');
     expect(response.body.school.status).toBe('PENDING');
+  });
+
+  it('sends administrator invitations only through the protected route and never returns a token', async () => {
+    schoolsService.inviteSchoolAdmin.mockResolvedValue({
+      invitationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccc81',
+      email: 'admin@smpcontoh.sch.id',
+      schoolName: 'SMP Contoh',
+      expiresAt: '2026-10-30T00:00:00.000Z',
+      status: 'SENT',
+      message: 'Undangan dikirim. Tautan rahasia tidak dikembalikan melalui API.',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/schools/admin/registration-requests/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01/invite-admin')
+      .expect(200);
+
+    expect(schoolsService.inviteSchoolAdmin).toHaveBeenCalledWith(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+    );
+    expect(response.body.status).toBe('SENT');
+    expect(JSON.stringify(response.body)).not.toContain('token');
+  });
+
+  it('validates UUID before creating an administrator invitation', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/schools/admin/registration-requests/not-a-uuid/invite-admin')
+      .expect(400);
+    expect(schoolsService.inviteSchoolAdmin).not.toHaveBeenCalled();
   });
 
   it('validates UUID before approving a registration', async () => {
