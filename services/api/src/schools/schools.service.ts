@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { SchoolRegistrationDto } from './school-registration.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class SchoolsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   async requestRegistration(input: SchoolRegistrationDto) {
-    const request = await this.prisma.schoolRegistrationRequest.create({
+    const request = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.schoolRegistrationRequest.create({
       data: {
         schoolName: input.schoolName.trim(),
         requestedSlug: input.requestedSlug.trim().toLowerCase(),
@@ -21,6 +23,13 @@ export class SchoolsService {
         status: true,
         createdAt: true,
       },
+      });
+      await this.audit.record({
+        eventType: 'school.registration_requested',
+        outcome: 'SUCCESS',
+        metadata: { requestId: created.id, requestedSlug: input.requestedSlug.trim().toLowerCase() },
+      }, tx);
+      return created;
     });
     return {
       requestId: request.id,
