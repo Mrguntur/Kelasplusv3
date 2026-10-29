@@ -7,6 +7,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessio
 GRANT SELECT, INSERT, UPDATE, DELETE ON "audit_events" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE ON "school_registration_requests" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "school_admin_invitations" TO kelasplus_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" TO kelasplus_runtime;
 
 -- Seed fixtures as the migration/database owner, never as the runtime role.
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
@@ -27,18 +28,49 @@ VALUES
  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb22','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02','SCHOOL_ADMIN',now())
 ON CONFLICT ("school_id","user_id") DO NOTHING;
 
+
+INSERT INTO "academic_years" ("id","school_id","name","start_date","end_date","status","created_at","updated_at")
+VALUES
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa71','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','2026/2027','2026-07-01','2027-06-30','ACTIVE',now(),now()),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','2026/2027','2026-07-01','2027-06-30','ACTIVE',now(),now())
+ON CONFLICT ("id") DO NOTHING;
+INSERT INTO "terms" ("id","school_id","academic_year_id","name","sequence","start_date","end_date","created_at","updated_at")
+VALUES
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa73','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa71','Semester 1',1,'2026-07-01','2026-12-31',now(),now()),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb74','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','Semester 1',1,'2026-07-01','2026-12-31',now(),now())
+ON CONFLICT ("id") DO NOTHING;
+
 SET ROLE kelasplus_runtime;
 BEGIN;
 SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
 SELECT set_config('app.current_school_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
 
 DO $$
-DECLARE visible_schools integer;
+DECLARE visible_schools integer; visible_years integer; visible_terms integer;
 BEGIN
   SELECT count(*) INTO visible_schools FROM "schools";
   IF visible_schools <> 1 THEN
     RAISE EXCEPTION 'RLS failure: School A expected 1 visible school, got %', visible_schools;
   END IF;
+
+  SELECT count(*) INTO visible_years FROM "academic_years";
+  SELECT count(*) INTO visible_terms FROM "terms";
+  IF visible_years <> 1 OR visible_terms <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: School A expected one year and one term, got years %, terms %', visible_years, visible_terms;
+  END IF;
+  IF EXISTS (SELECT 1 FROM "academic_years" WHERE "school_id" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') THEN
+    RAISE EXCEPTION 'RLS failure: School A can see School B academic years';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "terms" WHERE "school_id" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') THEN
+    RAISE EXCEPTION 'RLS failure: School A can see School B terms';
+  END IF;
+  BEGIN
+    INSERT INTO "terms" ("id","school_id","academic_year_id","name","sequence","start_date","end_date","created_at","updated_at")
+    VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc91','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb72','Cross-school',2,'2027-01-01','2027-06-30',now(),now());
+    RAISE EXCEPTION 'RLS failure: cross-school term reference unexpectedly succeeded';
+  EXCEPTION WHEN insufficient_privilege OR foreign_key_violation THEN
+    NULL;
+  END;
 
   IF EXISTS (SELECT 1 FROM "schools" WHERE "id" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') THEN
     RAISE EXCEPTION 'RLS failure: School A can see School B';
@@ -231,14 +263,19 @@ RESET ROLE;
 SET ROLE kelasplus_runtime;
 BEGIN;
 DO $$
-DECLARE visible_schools integer;
+DECLARE visible_schools integer; visible_years integer; visible_terms integer;
 BEGIN
   SELECT count(*) INTO visible_schools FROM "schools";
+  SELECT count(*) INTO visible_years FROM "academic_years";
+  SELECT count(*) INTO visible_terms FROM "terms";
   IF visible_schools <> 0 THEN
     RAISE EXCEPTION 'RLS failure: no context should see 0 schools, got %', visible_schools;
   END IF;
-END $$;
+  IF visible_years <> 0 OR visible_terms <> 0 THEN
+    RAISE EXCEPTION 'RLS failure: no context should see no academic data, got years %, terms %', visible_years, visible_terms;
+  END IF;
+END $;
 ROLLBACK;
 RESET ROLE;
 
-REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations" FROM kelasplus_runtime;
+REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations", "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" FROM kelasplus_runtime;
