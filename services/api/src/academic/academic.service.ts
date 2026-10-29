@@ -1,0 +1,139 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { AcademicYearStatus, SchoolRole } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import type { AuthenticatedUser } from '../auth/current-user.decorator';
+import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
+import { CreateTermDto } from './dto/create-term.dto';
+
+@Injectable()
+export class AcademicService {
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+
+  private async establishTenant(tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0], user: AuthenticatedUser, mutate = false) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.current_school_id', ${user.activeSchoolId}, true)`;
+    const membership = await tx.schoolMembership.findFirst({
+      where: { userId: user.id, schoolId: user.activeSchoolId },
+      select: { role: true },
+    });
+    if (!membership) throw new ForbiddenException('Keanggotaan sekolah tidak ditemukan.');
+    if (mutate && !([SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER] as SchoolRole[]).includes(membership.role)) {
+      throw new ForbiddenException('Hanya administrator atau pimpinan sekolah yang dapat mengubah kalender akademik.');
+    }
+    return membership;
+  }
+
+  async listAcademicYears(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      return tx.academicYear.findMany({
+        where: { schoolId: user.activeSchoolId! },
+        orderBy: [{ startDate: 'desc' }, { name: 'asc' }],
+        include: { _count: { select: { terms: true, schoolClasses: true } } },
+      });
+    });
+  }
+
+  async createAcademicYear(user: AuthenticatedUser, input: CreateAcademicYearDto) {
+    if (input.endDate < input.startDate) throw new BadRequestException('Tanggal akhir harus sama dengan atau setelah tanggal mulai.');
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const duplicate = await tx.academicYear.findFirst({
+        where: { schoolId: user.activeSchoolId!, name: input.name.trim() },
+        select: { id: true },
+      });
+      if (duplicate) throw new ConflictException('Nama tahun ajaran sudah digunakan di sekolah ini.');
+      if (input.status === 'ACTIVE') {
+        const active = await tx.academicYear.findFirst({
+          where: { schoolId: user.activeSchoolId!, status: AcademicYearStatus.ACTIVE },
+          select: { id: true },
+        });
+        if (active) throw new ConflictException('Sekolah sudah memiliki tahun ajaran aktif. Selesaikan atau ubah status tahun ajaran sebelumnya terlebih dahulu.');
+      }
+      const year = await tx.academicYear.create({
+        data: {
+          schoolId: user.activeSchoolId!,
+          name: input.name.trim(),
+          startDate: new Date(input.startDate),
+          endDate: new Date(input.endDate),
+          status: input.status,
+        },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.year_created',
+        outcome: 'SUCCESS',
+        metadata: { academicYearId: year.id, name: year.name, status: year.status },
+      }, tx);
+      return year;
+    });
+  }
+
+  async listTerms(user: AuthenticatedUser, yearId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const year = await tx.academicYear.findFirst({
+        where: { id: yearId, schoolId: user.activeSchoolId! },
+        select: { id: true },
+      });
+      if (!year) throw new UnauthorizedException('Tahun ajaran tidak ditemukan.');
+      return tx.term.findMany({
+        where: { schoolId: user.activeSchoolId!, academicYearId: yearId },
+        orderBy: { sequence: 'asc' },
+      });
+    });
+  }
+
+  async createTerm(user: AuthenticatedUser, yearId: string, input: CreateTermDto) {
+    if (input.endDate < input.startDate) throw new BadRequestException('Tanggal akhir semester harus sama dengan atau setelah tanggal mulai.');
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const year = await tx.academicYear.findFirst({
+        where: { id: yearId, schoolId: user.activeSchoolId! },
+        select: { id: true, startDate: true, endDate: true },
+      });
+      if (!year) throw new UnauthorizedException('Tahun ajaran tidak ditemukan.');
+      const start = new Date(input.startDate);
+      const end = new Date(input.endDate);
+      if (start < year.startDate || end > year.endDate) {
+        throw new BadRequestException('Rentang semester harus berada di dalam rentang tahun ajaran.');
+      }
+      const duplicate = await tx.term.findFirst({
+        where: { schoolId: user.activeSchoolId!, academicYearId: yearId, sequence: input.sequence },
+        select: { id: true },
+      });
+      if (duplicate) throw new ConflictException('Urutan semester sudah digunakan pada tahun ajaran ini.');
+      const term = await tx.term.create({
+        data: {
+          schoolId: user.activeSchoolId!,
+          academicYearId: yearId,
+          name: input.name.trim(),
+          sequence: input.sequence,
+          startDate: start,
+          endDate: end,
+        },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.term_created',
+        outcome: 'SUCCESS',
+        metadata: { termId: term.id, academicYearId: yearId, sequence: term.sequence },
+      }, tx);
+      return term;
+    });
+  }
+}
