@@ -5,6 +5,7 @@ CREATE ROLE kelasplus_runtime LOGIN PASSWORD 'runtime_ci_only' NOSUPERUSER NOBYP
 GRANT USAGE ON SCHEMA public TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessions", "users" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "audit_events" TO kelasplus_runtime;
+GRANT SELECT, INSERT, UPDATE ON "school_registration_requests" TO kelasplus_runtime;
 
 -- Seed fixtures as the migration/database owner, never as the runtime role.
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
@@ -79,6 +80,39 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
+-- Public registration intake can insert pending requests but cannot read the queue.
+SET ROLE kelasplus_runtime;
+BEGIN;
+SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
+SELECT set_config('app.current_school_id','',true);
+INSERT INTO "school_registration_requests"
+  ("id", "school_name", "requested_slug", "contact_name", "email", "status", "created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc61', 'RLS Registration Test', 'rls-registration-test', 'Test Contact', 'rls-registration@example.test', 'PENDING', now());
+DO $
+DECLARE visible_requests integer;
+BEGIN
+  SELECT count(*) INTO visible_requests FROM "school_registration_requests";
+  IF visible_requests <> 0 THEN
+    RAISE EXCEPTION 'RLS failure: public intake context can read registration queue';
+  END IF;
+END $;
+SELECT set_config('app.is_platform_admin','true',true);
+DO $
+DECLARE visible_requests integer;
+BEGIN
+  SELECT count(*) INTO visible_requests FROM "school_registration_requests"
+    WHERE "id" = 'cccccccc-cccc-4ccc-8ccc-cccccccccc61';
+  IF visible_requests <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: platform admin cannot read registration request';
+  END IF;
+END $;
+UPDATE "school_registration_requests"
+SET "status" = 'REJECTED', "reviewed_at" = now(), "reviewed_by" = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', "rejection_reason" = 'test rejection'
+WHERE "id" = 'cccccccc-cccc-4ccc-8ccc-cccccccccc61';
+ROLLBACK;
+RESET ROLE;
+
 -- A session cannot point at a school that does not exist.
 SET ROLE kelasplus_runtime;
 BEGIN;
@@ -145,4 +179,4 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
-REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events" FROM kelasplus_runtime;
+REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests" FROM kelasplus_runtime;
