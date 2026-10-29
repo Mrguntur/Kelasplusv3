@@ -6,6 +6,7 @@ GRANT USAGE ON SCHEMA public TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessions", "users" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "audit_events" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE ON "school_registration_requests" TO kelasplus_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "school_admin_invitations" TO kelasplus_runtime;
 
 -- Seed fixtures as the migration/database owner, never as the runtime role.
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
@@ -97,6 +98,37 @@ BEGIN
     RAISE EXCEPTION 'RLS failure: public intake context can read registration queue';
   END IF;
 END $$;
+SELECT set_config('app.is_platform_admin','true',true);
+INSERT INTO "school_admin_invitations"
+  ("id", "school_id", "email", "token_hash", "expires_at", "created_by", "created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc81', 'cccccccc-cccc-4ccc-8ccc-cccccccccc71', 'invite@example.test', repeat('a', 64), now() + interval '1 day', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', now());
+DO $
+DECLARE visible_invitations integer;
+BEGIN
+  SELECT count(*) INTO visible_invitations FROM "school_admin_invitations";
+  IF visible_invitations <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: platform admin could not access invitation storage';
+  END IF;
+END $;
+SELECT set_config('app.is_platform_admin','false',true);
+DO $
+DECLARE visible_invitations integer;
+BEGIN
+  SELECT count(*) INTO visible_invitations FROM "school_admin_invitations";
+  IF visible_invitations <> 0 THEN
+    RAISE EXCEPTION 'RLS failure: invitation storage visible without platform-admin context';
+  END IF;
+  BEGIN
+    INSERT INTO "school_admin_invitations"
+      ("id", "school_id", "email", "token_hash", "expires_at", "created_by", "created_at")
+    VALUES
+      ('cccccccc-cccc-4ccc-8ccc-cccccccccc82', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'unauthorized@example.test', repeat('b', 64), now() + interval '1 day', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', now());
+    RAISE EXCEPTION 'RLS failure: invitation write succeeded without platform-admin context';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END $;
 SELECT set_config('app.is_platform_admin','true',true);
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
 VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc71','rls-approved-pending','RLS Approved Pending School','PENDING','Asia/Makassar','id-ID',now(),now());
@@ -190,4 +222,4 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
-REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests" FROM kelasplus_runtime;
+REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations" FROM kelasplus_runtime;
