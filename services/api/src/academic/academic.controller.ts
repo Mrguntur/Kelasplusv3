@@ -6,6 +6,8 @@ import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { CreateClassDto } from './dto/create-class.dto';
+import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
+import { CreateSubjectDto } from './dto/create-subject.dto';
 
 @Controller('academic')
 @UseGuards(SessionAuthGuard)
@@ -62,5 +64,29 @@ export class AcademicController {
   createClass(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateClassDto) {
     return this.academic.createClass(user, body);
   }
+
+
+  @Get('staff')
+  listStaffProfiles(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listStaffProfiles(user);
+  }
+
+  @Post('staff')
+  @HttpCode(HttpStatus.CREATED)
+  createStaffProfile(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateStaffProfileDto) {
+    return this.academic.createStaffProfile(user, body);
+  }
+
+  @Get('subjects')
+  listSubjects(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listSubjects(user);
+  }
+
+  @Post('subjects')
+  @HttpCode(HttpStatus.CREATED)
+  createSubject(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateSubjectDto) {
+    return this.academic.createSubject(user, body);
+  }
+
 
 }
