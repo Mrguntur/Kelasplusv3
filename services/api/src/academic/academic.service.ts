@@ -1027,6 +1027,43 @@ export class AcademicService {
   }
 
 
+  async listReportClasses(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses laporan akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const where: Prisma.SchoolClassWhereInput = {
+        schoolId: user.activeSchoolId!,
+        status: 'ACTIVE',
+      };
+      if (membership.role !== SchoolRole.SCHOOL_ADMIN && membership.role !== SchoolRole.SCHOOL_LEADER) {
+        if (membership.role !== SchoolRole.TEACHER) {
+          throw new ForbiddenException('Peran akun ini tidak memiliki akses ke laporan kelas.');
+        }
+        const staff = await tx.staffProfile.findFirst({
+          where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+          select: { id: true },
+        });
+        if (!staff) throw new ForbiddenException('Profil guru aktif tidak ditemukan di sekolah ini.');
+        where.OR = [
+          { teachingAssignments: { some: { schoolId: user.activeSchoolId!, staffProfileId: staff.id, archivedAt: null } } },
+          { homeroomStaffProfileId: staff.id },
+        ];
+      }
+      return tx.schoolClass.findMany({
+        where,
+        orderBy: [{ gradeLevel: 'asc' }, { name: 'asc' }],
+        take: 200,
+        select: {
+          id: true,
+          name: true,
+          gradeLevel: true,
+          academicYear: { select: { name: true } },
+        },
+      });
+    });
+  }
+
+
   async getClassAcademicReport(user: AuthenticatedUser, classId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses laporan akademik.');
     return this.prisma.$transaction(async (tx) => {
