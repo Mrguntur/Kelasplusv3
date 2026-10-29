@@ -62,7 +62,7 @@ SET ROLE kelasplus_runtime;
 BEGIN;
 SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
 SELECT set_config('app.current_school_id','',true);
-DO $
+DO $$
 DECLARE own_count integer; other_count integer;
 BEGIN
   SELECT count(*) INTO own_count FROM "school_memberships"
@@ -75,7 +75,7 @@ BEGIN
   IF other_count <> 0 THEN
     RAISE EXCEPTION 'RLS failure: user can discover another user membership';
   END IF;
-END $;
+END $$;
 ROLLBACK;
 RESET ROLE;
 
