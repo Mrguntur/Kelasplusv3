@@ -29,6 +29,14 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
     const now = new Date();
     if (user?.lockedUntil && user.lockedUntil > now) {
+      await this.audit.record({
+        actorUserId: user.id,
+        eventType: 'auth.login_blocked',
+        outcome: 'DENIED',
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+        metadata: { reason: 'account_locked' },
+      }).catch(() => undefined);
       throw new HttpException('Login sementara dibatasi. Coba lagi nanti.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
@@ -53,6 +61,26 @@ export class AuthService {
             "updated_at" = ${now}
           WHERE "id" = ${user.id}::uuid
         `;
+        await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+          await this.audit.record({
+            actorUserId: user.id,
+            eventType: 'auth.login_failed',
+            outcome: 'FAILURE',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+            metadata: { reason: user.status !== UserStatus.ACTIVE ? 'account_inactive' : 'invalid_credentials' },
+          }, tx);
+        }).catch(() => undefined);
+      } else {
+        // Anonymous failures are recorded without persisting the supplied email address.
+        await this.audit.record({
+          eventType: 'auth.login_failed',
+          outcome: 'FAILURE',
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+          metadata: { reason: 'invalid_credentials' },
+        }).catch(() => undefined);
       }
       throw new UnauthorizedException('Email atau kata sandi tidak valid.');
     }
