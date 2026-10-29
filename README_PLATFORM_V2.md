@@ -1,31 +1,95 @@
-# KELAS+ Platform V2 — Foundation
+# KELAS+ Platform V2
 
-This is a clean platform foundation alongside the existing trial app. It does not replace or modify the current website/backend, Firebase, YoHost, or production data.
+Platform V2 is being developed alongside the existing KELAS+ application. It is **not yet a production replacement** and does not modify the current YoHost deployment, Firebase configuration, or production data.
 
-## Stack
-- API: NestJS + TypeScript, REST under `/api/v1`
-- Database: PostgreSQL
-- Schema/migrations: Prisma (migration history is committed; production migrations must be reviewed)
-- Clients later: React + TypeScript and Flutter
+## Technology stack
+
+- API: NestJS + TypeScript, REST API under `/api/v1`
+- Database: PostgreSQL 17
+- ORM and migrations: Prisma
+- Authentication: opaque server-side sessions, HttpOnly cookie, Argon2id password hashing
+- Clients planned: React + TypeScript web client and Flutter mobile app
 - Local infrastructure: Docker Compose for development only
 
-## Local API development
-Requirements: Node.js LTS, npm, Docker Desktop.
+## Local development
 
-1. Copy `.env.example` to `.env` (never commit real secrets).
-2. Start local PostgreSQL: `docker compose -f infra/docker-compose.dev.yml up -d postgres`
-3. In a terminal: `cd services/api`
-4. `npm install`
-5. `npx prisma generate`
-6. `npx prisma migrate dev`
-7. `npm run start:dev`
+Requirements: Node.js LTS, npm, and Docker Desktop.
 
-Health endpoint: `GET http://localhost:3000/api/v1/health`
+1. Copy `.env.example` to `.env`; never commit real secrets.
+2. Start local PostgreSQL: `docker compose -f infra/docker-compose.dev.yml up -d postgres`.
+3. Open a terminal in `services/api`.
+4. Install dependencies: `npm install`.
+5. Generate Prisma client: `npm run prisma:generate`.
+6. Apply migrations to the local development database: `npm run prisma:migrate:dev`.
+7. Start the API: `npm run start:dev`.
 
-The initial endpoint exposes health/status only. No school data, login, or production database is connected yet.
+Health check: `GET /api/v1/health`.
 
-## Safety
-- Use synthetic local data only.
-- Never use production credentials or production student data in development.
-- Do not deploy or run migrations against production without an explicit release approval.
-- Database runtime role and RLS tenant policies must be designed/tested before any tenant data endpoints are implemented.
+## Implemented API areas
+
+All routes below are under `/api/v1`. Protected endpoints require the authenticated session cookie. A user must select an active school before accessing tenant-scoped academic data.
+
+### Authentication and school access
+
+- `POST /auth/login`
+- `GET /auth/me`
+- `GET /auth/schools`
+- `POST /auth/select-school`
+- `POST /auth/logout`
+- `POST /auth/logout-all`
+- `POST /auth/change-password`
+
+### School registration and invitations
+
+- `POST /schools/registration-requests` — public, rate-limited request intake; does not immediately activate a school.
+- `GET /schools/admin/registration-requests` — platform-admin allowlist only.
+- `POST /schools/admin/registration-requests/:id/approve`
+- `POST /schools/admin/registration-requests/:id/reject`
+- `POST /schools/admin/registration-requests/:id/invite-admin`
+- `POST /schools/invitations/accept`
+
+### Academic data
+
+- `GET|POST /academic/years`
+- `GET|POST /academic/years/:yearId/terms`
+- `GET|POST /academic/students`
+- `GET|POST /academic/classes`
+- `GET|POST /academic/staff`
+- `GET|POST /academic/subjects`
+- `GET|POST /academic/teaching-assignments`
+- `GET|POST /academic/classes/:classId/enrollments`
+- `GET /academic/classes/:classId/attendance-sessions`
+- `POST /academic/classes/:classId/attendance-sessions`
+- `POST /academic/attendance-sessions/:sessionId/records`
+- `POST /academic/attendance-sessions/:sessionId/finalize`
+- `GET|POST /academic/journals`
+- `POST /academic/journals/:journalId/update`
+- `POST /academic/journals/:journalId/submit`
+- `GET|POST /academic/assessments`
+- `GET /academic/assessments/:assessmentId/scores`
+- `POST /academic/assessments/:assessmentId/scores`
+- `POST /academic/assessments/:assessmentId/publish`
+- `GET /academic/dashboard/summary` — role-aware dashboard summary.
+- `GET /academic/reports/classes/:classId` — class attendance and published-assessment summary.
+
+This list documents the currently implemented route surface, not a promise that the client UI is already connected. Confirm the current controller and DTOs for exact request/response fields.
+
+## Security and tenant isolation
+
+- Tenant-scoped operations establish the active user and school context inside a database transaction.
+- PostgreSQL Row-Level Security (RLS) policies and composite same-school foreign keys are included and tested in CI.
+- Role and ownership checks are applied in academic service operations.
+- Authentication uses hashed opaque session tokens, HttpOnly cookies, throttling, and password hashing.
+- Use synthetic local data only. Never use production credentials or real student data for development.
+
+## CI verification
+
+The Platform V2 API CI workflow runs Prisma client generation, schema validation, migrations against a disposable PostgreSQL instance, SQL tenant-RLS tests, TypeScript type checking, build, unit tests, and API security e2e tests.
+
+A green CI run verifies the checks in that workflow for the tested commit. It does not mean the platform is deployed or that the new client UI has been implemented.
+
+## Release boundary
+
+- Do not deploy or run migrations against production without explicit release approval.
+- Do not change the current YoHost/Firebase production application as part of Platform V2 development.
+- Review security, backups, migrations, observability, and operational readiness before any production release.
