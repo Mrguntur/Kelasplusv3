@@ -4,6 +4,7 @@ CREATE ROLE kelasplus_runtime LOGIN PASSWORD 'runtime_ci_only' NOSUPERUSER NOBYP
 
 GRANT USAGE ON SCHEMA public TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessions", "users" TO kelasplus_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "audit_events" TO kelasplus_runtime;
 
 -- Seed fixtures as the migration/database owner, never as the runtime role.
 INSERT INTO "schools" ("id","slug","name","status","timezone","locale","created_at","updated_at")
@@ -56,6 +57,33 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
+-- Audit events are append-only and actor-scoped under the runtime role.
+SET ROLE kelasplus_runtime;
+BEGIN;
+INSERT INTO "audit_events" ("id", "actor_user_id", "event_type", "outcome", "metadata", "created_at")
+VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc44', NULL, 'registration.test', 'SUCCESS', '{}'::jsonb, now());
+
+SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
+INSERT INTO "audit_events" ("id", "actor_user_id", "event_type", "outcome", "metadata", "created_at")
+VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc45', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'auth.test', 'SUCCESS', '{}'::jsonb, now());
+
+DO $
+BEGIN
+  BEGIN
+    INSERT INTO "audit_events" ("id", "actor_user_id", "event_type", "outcome", "metadata", "created_at")
+    VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccc46', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02', 'auth.test', 'SUCCESS', '{}'::jsonb, now());
+    RAISE EXCEPTION 'RLS failure: actor A inserted an audit event for actor B';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected row-level security denial
+  END;
+
+  IF EXISTS (SELECT 1 FROM "audit_events") THEN
+    RAISE EXCEPTION 'RLS failure: runtime role can read audit events';
+  END IF;
+END $;
+ROLLBACK;
+RESET ROLE;
+
 -- Missing tenant context must fail closed.
 SET ROLE kelasplus_runtime;
 BEGIN;
@@ -70,4 +98,4 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
-REVOKE ALL ON "schools", "school_memberships", "sessions", "users" FROM kelasplus_runtime;
+REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events" FROM kelasplus_runtime;
