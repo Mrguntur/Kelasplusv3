@@ -46,6 +46,17 @@ model School {
   activeSessions Session[] @relation("SessionActiveSchool")
   adminInvitations SchoolAdminInvitation[]
   academicYears AcademicYear[]
+  staffProfiles StaffProfile[]
+  students Student[]
+  schoolClasses SchoolClass[]
+  enrollments ClassEnrollment[]
+  subjects Subject[]
+  attendanceSessions AttendanceSession[]
+  attendanceRecords AttendanceRecord[]
+  teachingJournals TeachingJournal[]
+  assessments Assessment[]
+  assessmentScores AssessmentScore[]
+  teachingAssignments TeachingAssignment[]
 
   @@map("schools")
 }
@@ -62,6 +73,11 @@ model User {
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships    SchoolMembership[]
   sessions       Session[]
+  staffProfiles StaffProfile[]
+  attendanceRecords AttendanceRecord[]
+  teachingJournals TeachingJournal[]
+  assessments Assessment[]
+  assessmentScores AssessmentScore[]
 
   @@map("users")
 }
@@ -174,6 +190,8 @@ model AcademicYear {
   updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   school    School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   terms     Term[]
+  schoolClasses SchoolClass[]
+  schoolClasses SchoolClass[]
 
   @@unique([schoolId, id])
   @@unique([schoolId, name])
@@ -195,6 +213,8 @@ model Term {
 
   @@unique([schoolId, academicYearId, sequence])
   @@index([schoolId, academicYearId])
+  teachingAssignments TeachingAssignment[]
+
   @@map("terms")
 }
 
