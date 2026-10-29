@@ -131,16 +131,16 @@ BEGIN
 END $$;
 -- Public acceptance context can see only the row matching the submitted token digest.
 SELECT set_config('app.invitation_token_hash', repeat('a', 64), true);
-DO $
+DO $$
 DECLARE visible_invitations integer;
 BEGIN
   SELECT count(*) INTO visible_invitations FROM "school_admin_invitations";
   IF visible_invitations <> 1 THEN
     RAISE EXCEPTION 'RLS failure: matching invitation token should expose exactly one usable invitation, got %', visible_invitations;
   END IF;
-END $;
+END $$;
 SELECT set_config('app.invitation_token_hash','',true);
-DO $
+DO $$
 DECLARE visible_invitations integer;
 BEGIN
   SELECT count(*) INTO visible_invitations FROM "school_admin_invitations";
