@@ -13,6 +13,8 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
+import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
+import { CreateSubjectDto } from './dto/create-subject.dto';
 
 @Injectable()
 export class AcademicService {
@@ -235,6 +237,102 @@ export class AcademicService {
         }
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
           throw new BadRequestException('Wali kelas tidak ditemukan pada sekolah aktif.');
+        }
+        throw error;
+      }
+    });
+  }
+
+
+  async listStaffProfiles(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      return tx.staffProfile.findMany({
+        where: { schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+        orderBy: { displayName: 'asc' },
+        take: 200,
+        select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true },
+      });
+    });
+  }
+
+  async createStaffProfile(user: AuthenticatedUser, input: CreateStaffProfileDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const membership = await tx.schoolMembership.findFirst({
+        where: { schoolId: user.activeSchoolId!, userId: input.userId },
+        select: { id: true },
+      });
+      if (!membership) throw new BadRequestException('Akun harus sudah menjadi anggota sekolah sebelum dibuatkan profil staf.');
+      try {
+        const staff = await tx.staffProfile.create({
+          data: {
+            schoolId: user.activeSchoolId!,
+            userId: input.userId,
+            displayName: input.displayName.trim(),
+            employeeNumber: input.employeeNumber?.trim() || null,
+          },
+          select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true },
+        });
+        await this.audit.record({
+          actorUserId: user.id,
+          schoolId: user.activeSchoolId,
+          eventType: 'academic.staff_profile_created',
+          outcome: 'SUCCESS',
+          metadata: { staffProfileId: staff.id, linkedUserId: staff.userId },
+        }, tx);
+        return staff;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('Akun atau nomor pegawai sudah memiliki profil staf di sekolah ini.');
+        }
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          throw new BadRequestException('Akun pengguna tidak ditemukan.');
+        }
+        throw error;
+      }
+    });
+  }
+
+  async listSubjects(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      return tx.subject.findMany({
+        where: { schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+        orderBy: { name: 'asc' },
+        take: 200,
+        select: { id: true, code: true, name: true, status: true, createdAt: true },
+      });
+    });
+  }
+
+  async createSubject(user: AuthenticatedUser, input: CreateSubjectDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      try {
+        const subject = await tx.subject.create({
+          data: {
+            schoolId: user.activeSchoolId!,
+            code: input.code?.trim().toUpperCase() || null,
+            name: input.name.trim(),
+          },
+          select: { id: true, code: true, name: true, status: true, createdAt: true },
+        });
+        await this.audit.record({
+          actorUserId: user.id,
+          schoolId: user.activeSchoolId,
+          eventType: 'academic.subject_created',
+          outcome: 'SUCCESS',
+          metadata: { subjectId: subject.id, name: subject.name },
+        }, tx);
+        return subject;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('Nama mata pelajaran sudah digunakan di sekolah ini.');
         }
         throw error;
       }
