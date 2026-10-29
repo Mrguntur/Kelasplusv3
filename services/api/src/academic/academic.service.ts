@@ -19,6 +19,8 @@ import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dt
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateAttendanceSessionDto } from './dto/create-attendance-session.dto';
 import { SubmitAttendanceDto } from './dto/submit-attendance.dto';
+import { CreateTeachingJournalDto } from './dto/create-teaching-journal.dto';
+import { UpdateTeachingJournalDto } from './dto/update-teaching-journal.dto';
 
 @Injectable()
 export class AcademicService {
@@ -663,6 +665,129 @@ export class AcademicService {
         metadata: { attendanceSessionId: sessionId, recordedStudents: records.length },
       }, tx);
       return finalized;
+    });
+  }
+
+
+  async listTeachingJournals(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses jurnal.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
+        ? { schoolId: user.activeSchoolId! }
+        : { schoolId: user.activeSchoolId!, createdByUserId: user.id };
+      return tx.teachingJournal.findMany({
+        where,
+        orderBy: [{ journalDate: 'desc' }, { createdAt: 'desc' }],
+        take: 200,
+        include: {
+          assignment: {
+            select: {
+              id: true,
+              schoolClass: { select: { id: true, name: true, gradeLevel: true } },
+              subject: { select: { id: true, name: true, code: true } },
+              staffProfile: { select: { id: true, displayName: true, userId: true } },
+              term: { select: { id: true, name: true, sequence: true } },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  async createTeachingJournal(user: AuthenticatedUser, input: CreateTeachingJournalDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses jurnal.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const assignment = await tx.teachingAssignment.findFirst({
+        where: {
+          id: input.teachingAssignmentId,
+          schoolId: user.activeSchoolId!,
+          archivedAt: null,
+          staffProfile: { userId: user.id, status: 'ACTIVE' },
+        },
+        select: { id: true },
+      });
+      if (!assignment) throw new ForbiddenException('Jurnal hanya dapat dibuat untuk penugasan mengajar milik akun ini.');
+      const journal = await tx.teachingJournal.create({
+        data: {
+          schoolId: user.activeSchoolId!,
+          teachingAssignmentId: assignment.id,
+          journalDate: new Date(input.journalDate),
+          topic: input.topic.trim(),
+          learningActivity: input.learningActivity.trim(),
+          reflection: input.reflection?.trim() || null,
+          status: 'DRAFT',
+          createdByUserId: user.id,
+        },
+        select: { id: true, teachingAssignmentId: true, journalDate: true, topic: true, learningActivity: true, reflection: true, status: true, createdAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.teaching_journal_created',
+        outcome: 'SUCCESS',
+        metadata: { teachingJournalId: journal.id, teachingAssignmentId: journal.teachingAssignmentId },
+      }, tx);
+      return journal;
+    });
+  }
+
+  async updateTeachingJournal(user: AuthenticatedUser, journalId: string, input: UpdateTeachingJournalDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses jurnal.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const journal = await tx.teachingJournal.findFirst({
+        where: { id: journalId, schoolId: user.activeSchoolId! },
+        select: { id: true, createdByUserId: true, status: true },
+      });
+      if (!journal) throw new BadRequestException('Jurnal tidak ditemukan di sekolah aktif.');
+      if (journal.createdByUserId !== user.id) throw new ForbiddenException('Hanya pembuat jurnal yang dapat mengubahnya.');
+      if (journal.status !== 'DRAFT') throw new ConflictException('Jurnal yang sudah dikirim tidak dapat diubah.');
+      const updated = await tx.teachingJournal.update({
+        where: { schoolId_id: { schoolId: user.activeSchoolId!, id: journalId } },
+        data: {
+          ...(input.topic !== undefined ? { topic: input.topic.trim() } : {}),
+          ...(input.learningActivity !== undefined ? { learningActivity: input.learningActivity.trim() } : {}),
+          ...(input.reflection !== undefined ? { reflection: input.reflection.trim() || null } : {}),
+        },
+        select: { id: true, teachingAssignmentId: true, journalDate: true, topic: true, learningActivity: true, reflection: true, status: true, updatedAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.teaching_journal_updated',
+        outcome: 'SUCCESS',
+        metadata: { teachingJournalId: updated.id },
+      }, tx);
+      return updated;
+    });
+  }
+
+  async submitTeachingJournal(user: AuthenticatedUser, journalId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses jurnal.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const journal = await tx.teachingJournal.findFirst({
+        where: { id: journalId, schoolId: user.activeSchoolId! },
+        select: { id: true, createdByUserId: true, status: true },
+      });
+      if (!journal) throw new BadRequestException('Jurnal tidak ditemukan di sekolah aktif.');
+      if (journal.createdByUserId !== user.id) throw new ForbiddenException('Hanya pembuat jurnal yang dapat mengirimnya.');
+      if (journal.status !== 'DRAFT') throw new ConflictException('Jurnal sudah pernah dikirim.');
+      const submitted = await tx.teachingJournal.update({
+        where: { schoolId_id: { schoolId: user.activeSchoolId!, id: journalId } },
+        data: { status: 'SUBMITTED', submittedAt: new Date() },
+        select: { id: true, status: true, submittedAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.teaching_journal_submitted',
+        outcome: 'SUCCESS',
+        metadata: { teachingJournalId: journalId },
+      }, tx);
+      return submitted;
     });
   }
 
