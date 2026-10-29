@@ -89,16 +89,16 @@ INSERT INTO "school_registration_requests"
   ("id", "school_name", "requested_slug", "contact_name", "email", "status", "created_at")
 VALUES
   ('cccccccc-cccc-4ccc-8ccc-cccccccccc61', 'RLS Registration Test', 'rls-registration-test', 'Test Contact', 'rls-registration@example.test', 'PENDING', now());
-DO $
+DO $$
 DECLARE visible_requests integer;
 BEGIN
   SELECT count(*) INTO visible_requests FROM "school_registration_requests";
   IF visible_requests <> 0 THEN
     RAISE EXCEPTION 'RLS failure: public intake context can read registration queue';
   END IF;
-END $;
+END $$;
 SELECT set_config('app.is_platform_admin','true',true);
-DO $
+DO $$
 DECLARE visible_requests integer;
 BEGIN
   SELECT count(*) INTO visible_requests FROM "school_registration_requests"
@@ -106,7 +106,7 @@ BEGIN
   IF visible_requests <> 1 THEN
     RAISE EXCEPTION 'RLS failure: platform admin cannot read registration request';
   END IF;
-END $;
+END $$;
 UPDATE "school_registration_requests"
 SET "status" = 'REJECTED', "reviewed_at" = now(), "reviewed_by" = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', "rejection_reason" = 'test rejection'
 WHERE "id" = 'cccccccc-cccc-4ccc-8ccc-cccccccccc61';
