@@ -1,0 +1,36 @@
+name: KELAS+ Platform V2 Web CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/platform-v2-web.yml"
+  push:
+    branches:
+      - feat/platform-v2-foundation
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/platform-v2-web.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  web-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: npm install
+      - name: Build web application
+        run: npm run build
