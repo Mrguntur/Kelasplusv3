@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import * as argon2 from 'argon2';
 import { ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
@@ -6,6 +7,7 @@ import { SchoolRegistrationDto } from './school-registration.dto';
 import { AuditService } from '../audit/audit.service';
 import { RejectRegistrationDto } from './reject-registration.dto';
 import { InvitationEmailService } from './invitation-email.service';
+import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
 
 @Injectable()
 export class SchoolsService {
@@ -243,6 +245,100 @@ export class SchoolsService {
       status: 'SENT',
       message: 'Undangan dikirim. Tautan rahasia tidak dikembalikan melalui API.',
     };
+  }
+
+  async acceptSchoolAdminInvitation(input: AcceptSchoolAdminInvitationDto) {
+    const rawToken = input.token.trim();
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
+    const invalidMessage = 'Undangan tidak valid, sudah kedaluwarsa, atau telah digunakan.';
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // This transaction-local digest allows RLS to expose only the matching,
+        // still-usable invitation. The raw token is never queried or persisted.
+        await tx.$executeRaw`SELECT set_config('app.invitation_token_hash', ${tokenHash}, true)`;
+        const invitation = await tx.schoolAdminInvitation.findUnique({
+          where: { tokenHash },
+          select: { id: true, schoolId: true, email: true, expiresAt: true, acceptedAt: true, revokedAt: true },
+        });
+        if (!invitation || invitation.acceptedAt || invitation.revokedAt || invitation.expiresAt <= new Date()) {
+          throw new NotFoundException(invalidMessage);
+        }
+
+        const existingUser = await tx.user.findUnique({
+          where: { email: invitation.email },
+          select: { id: true },
+        });
+        if (existingUser) {
+          throw new ConflictException('Email sudah terdaftar. Hubungi administrator platform untuk proses penggabungan akun yang aman.');
+        }
+
+        const claim = await tx.schoolAdminInvitation.updateMany({
+          where: {
+            id: invitation.id,
+            tokenHash,
+            acceptedAt: null,
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          data: { acceptedAt: new Date() },
+        });
+        if (claim.count !== 1) throw new NotFoundException(invalidMessage);
+
+        // Only after validating and atomically claiming the secret may this
+        // transaction enter the platform-admin context for the tightly scoped
+        // account/membership/school activation writes.
+        await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+        const school = await tx.school.findUnique({
+          where: { id: invitation.schoolId },
+          select: { id: true, name: true, status: true },
+        });
+        if (!school || school.status !== 'PENDING') {
+          throw new ConflictException('Sekolah tidak lagi memenuhi syarat aktivasi.');
+        }
+
+        const userId = randomUUID();
+        const displayName = input.displayName.trim();
+        const user = await tx.user.create({
+          data: {
+            id: userId,
+            email: invitation.email,
+            displayName,
+            status: 'ACTIVE',
+            passwordHash,
+          },
+          select: { id: true, email: true, displayName: true, status: true },
+        });
+
+        await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.current_school_id', ${invitation.schoolId}, true)`;
+        await tx.schoolMembership.create({
+          data: { schoolId: invitation.schoolId, userId, role: 'SCHOOL_ADMIN' },
+        });
+        await tx.school.update({
+          where: { id: invitation.schoolId },
+          data: { status: 'ACTIVE' },
+        });
+        await this.audit.record({
+          actorUserId: userId,
+          schoolId: invitation.schoolId,
+          eventType: 'school.admin_invitation_accepted',
+          outcome: 'SUCCESS',
+          metadata: { invitationId: invitation.id, email: invitation.email },
+        }, tx);
+
+        return {
+          user,
+          school: { id: school.id, name: school.name, status: 'ACTIVE' },
+          message: 'Akun administrator berhasil dibuat. Silakan masuk menggunakan email dan kata sandi yang telah dibuat.',
+        };
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ConflictException) throw error;
+      // Avoid leaking token, database, or provider details from a public endpoint.
+      throw error;
+    }
   }
 
   async rejectRegistration(adminUserId: string, requestId: string, input: RejectRegistrationDto) {
