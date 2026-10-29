@@ -46,7 +46,7 @@ export interface School {
   role: 'SCHOOL_ADMIN' | 'SCHOOL_LEADER' | 'TEACHER' | 'SCHOOL_OPERATOR' | string;
   activeSchoolId?: string;
 }
-export interface User { id: string; email: string; displayName: string }
+export interface User { id: string; email: string; displayName: string; activeSchoolId?: string | null }
 export interface DashboardSummary {
   role: string;
   period: { from: string; to: string };
