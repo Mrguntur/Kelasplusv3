@@ -21,6 +21,8 @@ import { CreateAttendanceSessionDto } from './dto/create-attendance-session.dto'
 import { SubmitAttendanceDto } from './dto/submit-attendance.dto';
 import { CreateTeachingJournalDto } from './dto/create-teaching-journal.dto';
 import { UpdateTeachingJournalDto } from './dto/update-teaching-journal.dto';
+import { CreateAssessmentDto } from './dto/create-assessment.dto';
+import { UpsertAssessmentScoresDto } from './dto/upsert-assessment-scores.dto';
 
 @Injectable()
 export class AcademicService {
@@ -788,6 +790,203 @@ export class AcademicService {
         metadata: { teachingJournalId: journalId },
       }, tx);
       return submitted;
+    });
+  }
+
+
+  async listAssessments(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses penilaian.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
+        ? { schoolId: user.activeSchoolId! }
+        : { schoolId: user.activeSchoolId!, teachingAssignment: { staffProfile: { userId: user.id } } };
+      return tx.assessment.findMany({
+        where,
+        orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
+        take: 200,
+        include: {
+          teachingAssignment: {
+            select: {
+              id: true,
+              schoolClass: { select: { id: true, name: true, gradeLevel: true } },
+              subject: { select: { id: true, name: true, code: true } },
+              staffProfile: { select: { id: true, displayName: true, userId: true } },
+              term: { select: { id: true, name: true, sequence: true } },
+            },
+          },
+          _count: { select: { scores: true } },
+        },
+      });
+    });
+  }
+
+  async createAssessment(user: AuthenticatedUser, input: CreateAssessmentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses penilaian.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const assignment = await tx.teachingAssignment.findFirst({
+        where: {
+          id: input.teachingAssignmentId,
+          schoolId: user.activeSchoolId!,
+          archivedAt: null,
+          staffProfile: { userId: user.id, status: 'ACTIVE' },
+        },
+        select: { id: true },
+      });
+      if (!assignment) throw new ForbiddenException('Penilaian hanya dapat dibuat untuk penugasan mengajar milik akun ini.');
+      const assessment = await tx.assessment.create({
+        data: {
+          schoolId: user.activeSchoolId!,
+          teachingAssignmentId: assignment.id,
+          title: input.title.trim(),
+          assessmentType: input.assessmentType ?? 'OTHER',
+          maxScore: input.maxScore,
+          weight: input.weight ?? 0,
+          dueDate: input.dueDate ? new Date(input.dueDate) : null,
+          status: 'DRAFT',
+          createdByUserId: user.id,
+        },
+        select: { id: true, teachingAssignmentId: true, title: true, assessmentType: true, maxScore: true, weight: true, dueDate: true, status: true, createdAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.assessment_created',
+        outcome: 'SUCCESS',
+        metadata: { assessmentId: assessment.id, teachingAssignmentId: assessment.teachingAssignmentId },
+      }, tx);
+      return assessment;
+    });
+  }
+
+  async upsertAssessmentScores(user: AuthenticatedUser, assessmentId: string, input: UpsertAssessmentScoresDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses penilaian.');
+    const studentIds = input.scores.map((entry) => entry.studentId);
+    if (new Set(studentIds).size !== studentIds.length) {
+      throw new BadRequestException('Daftar nilai berisi siswa duplikat.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const assessment = await tx.assessment.findFirst({
+        where: { id: assessmentId, schoolId: user.activeSchoolId! },
+        select: { id: true, teachingAssignmentId: true, maxScore: true, status: true, createdByUserId: true },
+      });
+      if (!assessment) throw new BadRequestException('Penilaian tidak ditemukan di sekolah aktif.');
+      if (assessment.createdByUserId !== user.id) throw new ForbiddenException('Hanya pembuat penilaian yang dapat memasukkan nilai.');
+      if (assessment.status !== 'DRAFT') throw new ConflictException('Nilai tidak dapat diubah setelah penilaian dipublikasikan.');
+      if (input.scores.some((entry) => entry.score > Number(assessment.maxScore))) {
+        throw new BadRequestException('Nilai tidak boleh melebihi nilai maksimum penilaian.');
+      }
+      const assignment = await tx.teachingAssignment.findFirst({
+        where: { id: assessment.teachingAssignmentId, schoolId: user.activeSchoolId! },
+        select: { classId: true },
+      });
+      if (!assignment) throw new BadRequestException('Penugasan kelas untuk penilaian tidak ditemukan.');
+      const enrollments = await tx.classEnrollment.findMany({
+        where: {
+          schoolId: user.activeSchoolId!,
+          classId: assignment.classId,
+          status: 'ACTIVE',
+          student: { status: 'ACTIVE', archivedAt: null },
+        },
+        select: { studentId: true },
+      });
+      const enrolledIds = new Set(enrollments.map((entry) => entry.studentId));
+      if (studentIds.some((id) => !enrolledIds.has(id))) {
+        throw new BadRequestException('Nilai hanya dapat dicatat untuk siswa aktif yang terdaftar di kelas penilaian.');
+      }
+      for (const entry of input.scores) {
+        await tx.assessmentScore.upsert({
+          where: { schoolId_assessmentId_studentId: { schoolId: user.activeSchoolId!, assessmentId, studentId: entry.studentId } },
+          create: {
+            schoolId: user.activeSchoolId!,
+            assessmentId,
+            studentId: entry.studentId,
+            score: entry.score,
+            feedback: entry.feedback?.trim() || null,
+            recordedByUserId: user.id,
+          },
+          update: {
+            score: entry.score,
+            feedback: entry.feedback?.trim() || null,
+            recordedByUserId: user.id,
+          },
+        });
+      }
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.assessment_scores_saved',
+        outcome: 'SUCCESS',
+        metadata: { assessmentId, scoreCount: input.scores.length },
+      }, tx);
+      return { assessmentId, savedScores: input.scores.length, enrolledStudents: enrollments.length };
+    });
+  }
+
+  async listAssessmentScores(user: AuthenticatedUser, assessmentId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses penilaian.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const assessment = await tx.assessment.findFirst({
+        where: { id: assessmentId, schoolId: user.activeSchoolId! },
+        select: { id: true, createdByUserId: true, teachingAssignment: { select: { staffProfile: { select: { userId: true } } } } },
+      });
+      if (!assessment) throw new BadRequestException('Penilaian tidak ditemukan di sekolah aktif.');
+      const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
+      if (!privileged && assessment.teachingAssignment.staffProfile.userId !== user.id) {
+        throw new ForbiddenException('Anda tidak memiliki akses ke nilai penilaian ini.');
+      }
+      return tx.assessmentScore.findMany({
+        where: { schoolId: user.activeSchoolId!, assessmentId },
+        orderBy: { student: { fullName: 'asc' } },
+        take: 500,
+        include: { student: { select: { id: true, studentNumber: true, fullName: true, preferredName: true } } },
+      });
+    });
+  }
+
+  async publishAssessment(user: AuthenticatedUser, assessmentId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses penilaian.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const assessment = await tx.assessment.findFirst({
+        where: { id: assessmentId, schoolId: user.activeSchoolId! },
+        select: { id: true, teachingAssignmentId: true, createdByUserId: true, status: true },
+      });
+      if (!assessment) throw new BadRequestException('Penilaian tidak ditemukan di sekolah aktif.');
+      if (assessment.createdByUserId !== user.id) throw new ForbiddenException('Hanya pembuat penilaian yang dapat mempublikasikan nilai.');
+      if (assessment.status !== 'DRAFT') throw new ConflictException('Penilaian sudah dipublikasikan atau diarsipkan.');
+      const assignment = await tx.teachingAssignment.findFirst({
+        where: { id: assessment.teachingAssignmentId, schoolId: user.activeSchoolId! },
+        select: { classId: true },
+      });
+      if (!assignment) throw new BadRequestException('Penugasan kelas tidak ditemukan.');
+      const enrollments = await tx.classEnrollment.findMany({
+        where: { schoolId: user.activeSchoolId!, classId: assignment.classId, status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } },
+        select: { studentId: true },
+      });
+      const scores = await tx.assessmentScore.findMany({
+        where: { schoolId: user.activeSchoolId!, assessmentId },
+        select: { studentId: true },
+      });
+      const scoredIds = new Set(scores.map((entry) => entry.studentId));
+      const missingCount = enrollments.filter((entry) => !scoredIds.has(entry.studentId)).length;
+      if (missingCount > 0) throw new BadRequestException(`Penilaian belum lengkap: masih ada ${missingCount} siswa tanpa nilai.`);
+      const published = await tx.assessment.update({
+        where: { schoolId_id: { schoolId: user.activeSchoolId!, id: assessmentId } },
+        data: { status: 'PUBLISHED', publishedAt: new Date() },
+        select: { id: true, status: true, publishedAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.assessment_published',
+        outcome: 'SUCCESS',
+        metadata: { assessmentId },
+      }, tx);
+      return published;
     });
   }
 
