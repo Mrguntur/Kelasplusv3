@@ -5,7 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AcademicYearStatus, SchoolRole } from '@prisma/client';
+import { AcademicYearStatus, Prisma, SchoolRole } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
@@ -16,7 +16,7 @@ import { CreateTermDto } from './dto/create-term.dto';
 export class AcademicService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
-  private async establishTenant(tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0], user: AuthenticatedUser, mutate = false) {
+  private async establishTenant(tx: Prisma.TransactionClient, user: AuthenticatedUser, mutate = false) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
     await tx.$executeRaw`SELECT set_config('app.current_school_id', ${user.activeSchoolId}, true)`;
