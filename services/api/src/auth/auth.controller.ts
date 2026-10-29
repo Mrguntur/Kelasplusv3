@@ -52,6 +52,12 @@ export class AuthController {
   }
 
 
+  @Get('schools')
+  @UseGuards(SessionAuthGuard)
+  listSchools(@CurrentUser() user: { id: string }) {
+    return this.authService.listSchoolsForUser(user.id);
+  }
+
   @Post('change-password')
   @UseGuards(SessionAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
