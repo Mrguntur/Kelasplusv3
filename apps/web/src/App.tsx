@@ -36,15 +36,29 @@ export default function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const loadSchools = useCallback(async () => {
+  const loadSchools = useCallback(async (activeSchoolId?: string | null) => {
     const items = await api<School[]>('/auth/schools');
     setSchools(items);
     if (!items.length) {
+      setSchool(null);
       setView('school');
       setError('Akun ini belum memiliki keanggotaan sekolah aktif. Hubungi administrator platform.');
       return;
     }
-    const current = items.find(item => item.activeSchoolId) ?? items[0];
+
+    const activeSchool = activeSchoolId ? items.find(item => item.id === activeSchoolId) : undefined;
+    if (activeSchool) {
+      setSelectedSchoolId(activeSchool.id);
+      setSchool(activeSchool);
+      const data = await api<DashboardSummary>('/academic/dashboard/summary');
+      setSummary(data);
+      setView('dashboard');
+      return;
+    }
+
+    setSchool(null);
+    setSummary(null);
+    const current = items[0];
     setSelectedSchoolId(current.id);
     setView('school');
   }, []);
@@ -53,10 +67,15 @@ export default function App() {
     try {
       const response = await api<{ user: User }>('/auth/me');
       setUser(response.user);
-      await loadSchools();
+      await loadSchools(response.user.activeSchoolId);
     } catch (e) {
-      if (e instanceof ApiError && e.status !== 401) setError(e.message);
-      setView('login');
+      if (e instanceof ApiError && e.status === 401) {
+        setUser(null);
+        setView('login');
+      } else {
+        setError(e instanceof Error ? e.message : 'Sesi belum dapat dipulihkan.');
+        setView('login');
+      }
     }
   }, [loadSchools]);
 
@@ -74,7 +93,7 @@ export default function App() {
     try {
       const result = await api<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
       setUser(result.user);
-      await loadSchools();
+      await loadSchools(result.user.activeSchoolId);
     } catch (e) { setError(e instanceof Error ? e.message : 'Login gagal.'); }
     finally { setBusy(false); }
   }
