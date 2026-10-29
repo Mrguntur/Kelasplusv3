@@ -12,6 +12,8 @@ import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dt
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateAttendanceSessionDto } from './dto/create-attendance-session.dto';
 import { SubmitAttendanceDto } from './dto/submit-attendance.dto';
+import { CreateTeachingJournalDto } from './dto/create-teaching-journal.dto';
+import { UpdateTeachingJournalDto } from './dto/update-teaching-journal.dto';
 
 @Controller('academic')
 @UseGuards(SessionAuthGuard)
@@ -157,6 +159,35 @@ export class AcademicController {
     @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
   ) {
     return this.academic.finalizeAttendance(user, sessionId);
+  }
+
+
+  @Get('journals')
+  listTeachingJournals(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listTeachingJournals(user);
+  }
+
+  @Post('journals')
+  @HttpCode(HttpStatus.CREATED)
+  createTeachingJournal(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTeachingJournalDto) {
+    return this.academic.createTeachingJournal(user, body);
+  }
+
+  @Post('journals/:journalId/submit')
+  submitTeachingJournal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('journalId', new ParseUUIDPipe()) journalId: string,
+  ) {
+    return this.academic.submitTeachingJournal(user, journalId);
+  }
+
+  @Post('journals/:journalId/update')
+  updateTeachingJournal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('journalId', new ParseUUIDPipe()) journalId: string,
+    @Body() body: UpdateTeachingJournalDto,
+  ) {
+    return this.academic.updateTeachingJournal(user, journalId, body);
   }
 
 }
