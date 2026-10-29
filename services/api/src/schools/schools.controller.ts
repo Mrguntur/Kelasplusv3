@@ -6,6 +6,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { RejectRegistrationDto } from './reject-registration.dto';
+import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
 
 @Controller('schools')
 export class SchoolsController {
@@ -33,6 +34,13 @@ export class SchoolsController {
     @Param('id', new ParseUUIDPipe()) requestId: string,
   ) {
     return this.schoolsService.approveRegistration(user.id, requestId);
+  }
+
+  @Post('invitations/accept')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  acceptSchoolAdminInvitation(@Body() body: AcceptSchoolAdminInvitationDto) {
+    return this.schoolsService.acceptSchoolAdminInvitation(body);
   }
 
   @Post('admin/registration-requests/:id/invite-admin')
