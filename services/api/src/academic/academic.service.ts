@@ -17,6 +17,8 @@ import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+import { CreateAttendanceSessionDto } from './dto/create-attendance-session.dto';
+import { SubmitAttendanceDto } from './dto/submit-attendance.dto';
 
 @Injectable()
 export class AcademicService {
@@ -482,6 +484,185 @@ export class AcademicService {
         }
         throw error;
       }
+    });
+  }
+
+
+  async listAttendanceSessions(user: AuthenticatedUser, classId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const schoolClass = await tx.schoolClass.findFirst({
+        where: { id: classId, schoolId: user.activeSchoolId! },
+        select: { id: true },
+      });
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+      return tx.attendanceSession.findMany({
+        where: { schoolId: user.activeSchoolId!, classId },
+        orderBy: [{ date: 'desc' }, { sessionLabel: 'asc' }],
+        take: 100,
+        include: { _count: { select: { records: true } } },
+      });
+    });
+  }
+
+  async createAttendanceSession(user: AuthenticatedUser, classId: string, input: CreateAttendanceSessionDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const [schoolClass, staff] = await Promise.all([
+        tx.schoolClass.findFirst({
+          where: { id: classId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+          select: { id: true },
+        }),
+        tx.staffProfile.findFirst({
+          where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+          select: { id: true },
+        }),
+      ]);
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan atau tidak aktif di sekolah ini.');
+      if (!staff) throw new ForbiddenException('Akun harus memiliki profil staf aktif untuk membuat presensi.');
+      try {
+        const session = await tx.attendanceSession.create({
+          data: {
+            schoolId: user.activeSchoolId!,
+            classId,
+            date: new Date(input.date + 'T00:00:00.000Z'),
+            sessionLabel: input.sessionLabel?.trim() || 'REGULAR',
+            status: 'DRAFT',
+            takenByStaffProfileId: staff.id,
+          },
+          select: { id: true, classId: true, date: true, sessionLabel: true, status: true, takenByStaffProfileId: true, createdAt: true },
+        });
+        await this.audit.record({
+          actorUserId: user.id,
+          schoolId: user.activeSchoolId,
+          eventType: 'academic.attendance_session_created',
+          outcome: 'SUCCESS',
+          metadata: { attendanceSessionId: session.id, classId, date: input.date },
+        }, tx);
+        return session;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('Sesi presensi untuk kelas, tanggal, dan label ini sudah ada.');
+        }
+        throw error;
+      }
+    });
+  }
+
+  async submitAttendance(user: AuthenticatedUser, sessionId: string, input: SubmitAttendanceDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    const studentIds = input.records.map((record) => record.studentId);
+    if (new Set(studentIds).size !== studentIds.length) {
+      throw new BadRequestException('Daftar presensi berisi siswa duplikat.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const session = await tx.attendanceSession.findFirst({
+        where: { id: sessionId, schoolId: user.activeSchoolId! },
+        select: { id: true, classId: true, status: true, takenByStaffProfileId: true },
+      });
+      if (!session) throw new BadRequestException('Sesi presensi tidak ditemukan di sekolah aktif.');
+      if (session.status === 'FINALIZED') throw new ConflictException('Presensi sudah difinalisasi dan tidak dapat diubah.');
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!staff || staff.id !== session.takenByStaffProfileId) {
+        throw new ForbiddenException('Hanya staf pembuat sesi presensi yang dapat mengisi presensi ini.');
+      }
+      const enrollments = await tx.classEnrollment.findMany({
+        where: { schoolId: user.activeSchoolId!, classId: session.classId, status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } },
+        select: { studentId: true },
+      });
+      const enrolledIds = new Set(enrollments.map((enrollment) => enrollment.studentId));
+      if (studentIds.some((id) => !enrolledIds.has(id))) {
+        throw new BadRequestException('Presensi hanya dapat diisi untuk siswa aktif yang terdaftar di kelas tersebut.');
+      }
+      try {
+        for (const record of input.records) {
+          await tx.attendanceRecord.upsert({
+            where: { schoolId_attendanceSessionId_studentId: { schoolId: user.activeSchoolId!, attendanceSessionId: sessionId, studentId: record.studentId } },
+            create: {
+              schoolId: user.activeSchoolId!,
+              attendanceSessionId: sessionId,
+              studentId: record.studentId,
+              status: record.status,
+              note: record.note?.trim() || null,
+              recordedByUserId: user.id,
+            },
+            update: {
+              status: record.status,
+              note: record.note?.trim() || null,
+              recordedByUserId: user.id,
+            },
+          });
+        }
+        await tx.attendanceSession.update({
+          where: { schoolId_id: { schoolId: user.activeSchoolId!, id: sessionId } },
+          data: { status: 'OPEN' },
+        });
+        await this.audit.record({
+          actorUserId: user.id,
+          schoolId: user.activeSchoolId,
+          eventType: 'academic.attendance_submitted',
+          outcome: 'SUCCESS',
+          metadata: { attendanceSessionId: sessionId, submittedRecords: input.records.length },
+        }, tx);
+        return { sessionId, submittedRecords: input.records.length, enrolledStudents: enrollments.length, status: 'OPEN' };
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          throw new BadRequestException('Data siswa atau sesi presensi tidak valid untuk sekolah aktif.');
+        }
+        throw error;
+      }
+    });
+  }
+
+  async finalizeAttendance(user: AuthenticatedUser, sessionId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      const session = await tx.attendanceSession.findFirst({
+        where: { id: sessionId, schoolId: user.activeSchoolId! },
+        select: { id: true, classId: true, status: true, takenByStaffProfileId: true },
+      });
+      if (!session) throw new BadRequestException('Sesi presensi tidak ditemukan di sekolah aktif.');
+      if (session.status === 'FINALIZED') throw new ConflictException('Presensi sudah difinalisasi sebelumnya.');
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!staff || staff.id !== session.takenByStaffProfileId) {
+        throw new ForbiddenException('Hanya staf pembuat sesi presensi yang dapat memfinalisasi presensi ini.');
+      }
+      const enrollments = await tx.classEnrollment.findMany({
+        where: { schoolId: user.activeSchoolId!, classId: session.classId, status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } },
+        select: { studentId: true },
+      });
+      const records = await tx.attendanceRecord.findMany({
+        where: { schoolId: user.activeSchoolId!, attendanceSessionId: sessionId },
+        select: { studentId: true },
+      });
+      const recordedIds = new Set(records.map((record) => record.studentId));
+      const missing = enrollments.filter((enrollment) => !recordedIds.has(enrollment.studentId));
+      if (missing.length) {
+        throw new BadRequestException(`Presensi belum lengkap: masih ada ${missing.length} siswa yang belum memiliki status.`);
+      }
+      const finalized = await tx.attendanceSession.update({
+        where: { schoolId_id: { schoolId: user.activeSchoolId!, id: sessionId } },
+        data: { status: 'FINALIZED', finalizedAt: new Date() },
+        select: { id: true, classId: true, date: true, sessionLabel: true, status: true, finalizedAt: true },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: user.activeSchoolId,
+        eventType: 'academic.attendance_finalized',
+        outcome: 'SUCCESS',
+        metadata: { attendanceSessionId: sessionId, recordedStudents: records.length },
+      }, tx);
+      return finalized;
     });
   }
 
