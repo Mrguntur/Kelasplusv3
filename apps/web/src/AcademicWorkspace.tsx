@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Plus, Search, Users, GraduationCap, RefreshCw } from 'lucide-react';
-import { api, ApiError } from './api';
+import { api } from './api';
 
 type Student = {
   id: string; studentNumber: string | null; fullName: string;
