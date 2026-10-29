@@ -8,6 +8,8 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
+import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
+import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 
 @Controller('academic')
 @UseGuards(SessionAuthGuard)
@@ -88,5 +90,35 @@ export class AcademicController {
     return this.academic.createSubject(user, body);
   }
 
+
+
+  @Get('teaching-assignments')
+  listTeachingAssignments(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listTeachingAssignments(user);
+  }
+
+  @Post('teaching-assignments')
+  @HttpCode(HttpStatus.CREATED)
+  createTeachingAssignment(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTeachingAssignmentDto) {
+    return this.academic.createTeachingAssignment(user, body);
+  }
+
+  @Get('classes/:classId/enrollments')
+  listClassEnrollments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('classId', new ParseUUIDPipe()) classId: string,
+  ) {
+    return this.academic.listClassEnrollments(user, classId);
+  }
+
+  @Post('classes/:classId/enrollments')
+  @HttpCode(HttpStatus.CREATED)
+  enrollStudent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('classId', new ParseUUIDPipe()) classId: string,
+    @Body() body: CreateEnrollmentDto,
+  ) {
+    return this.academic.enrollStudent(user, classId, body);
+  }
 
 }
