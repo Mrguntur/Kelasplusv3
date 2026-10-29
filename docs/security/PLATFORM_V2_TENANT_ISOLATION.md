@@ -1,6 +1,6 @@
 # KELAS+ Platform V2 — Tenant Isolation Contract
 
-Status: design guardrails; implementation and tests are still required before tenant data endpoints.
+Status: foundation implemented for identity/session tables and append-only audit events. Tenant-owned academic endpoints remain blocked until the full tenant test matrix is implemented.
 
 ## Threat model
 
@@ -34,6 +34,7 @@ Never use session-level SET for tenant context with pooled connections. Do not a
 - Do not grant direct database access to web/mobile clients.
 - Any cross-tenant platform support action must use a separate, narrow, audited workflow; it must not silently disable RLS.
 - Tables with references between tenant-owned records must use tenant-aware constraints so a record from school A cannot point to a record from school B.
+- Audit events are append-only for the runtime role: insert is actor-scoped (or anonymous intake only when no actor context exists), while runtime reads, updates, and deletes are denied. A separately reviewed privileged audit-reader workflow is required.
 
 ## Test matrix required before tenant endpoints
 
@@ -55,6 +56,7 @@ For at least two synthetic schools (A and B), test:
 2. Create dedicated local/test runtime and migration roles in an isolated test database.
 3. Add SQL RLS policies and integration tests using the runtime role.
 4. Verify Prisma transactions and transaction-local context with connection pooling.
-5. Only then implement identity/membership endpoints and tenant-owned data modules.
+5. Finish membership resolution and active-school context establishment.
+6. Only then implement tenant-owned academic data modules.
 
 No production database, credentials, deployment, or student data is used by this document.
