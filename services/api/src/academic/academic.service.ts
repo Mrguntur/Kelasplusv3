@@ -990,4 +990,186 @@ export class AcademicService {
     });
   }
 
+
+  async getClassAcademicReport(user: AuthenticatedUser, classId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses laporan akademik.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      const schoolClass = await tx.schoolClass.findFirst({
+        where: { id: classId, schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+        select: {
+          id: true,
+          name: true,
+          gradeLevel: true,
+          academicYear: { select: { id: true, name: true, status: true, startDate: true, endDate: true } },
+          homeroomStaffProfileId: true,
+        },
+      });
+      if (!schoolClass) throw new BadRequestException('Kelas aktif tidak ditemukan di sekolah yang dipilih.');
+
+      const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
+      if (!privileged) {
+        if (membership.role !== SchoolRole.TEACHER) {
+          throw new ForbiddenException('Peran akun ini tidak memiliki akses ke laporan kelas.');
+        }
+        const [assignment, isHomeroom] = await Promise.all([
+          tx.teachingAssignment.findFirst({
+            where: { schoolId: user.activeSchoolId!, classId, archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' } },
+            select: { id: true },
+          }),
+          Promise.resolve(schoolClass.homeroomStaffProfileId),
+        ]);
+        const homeroom = isHomeroom
+          ? await tx.staffProfile.findFirst({
+              where: { id: isHomeroom, schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+              select: { id: true },
+            })
+          : null;
+        if (!assignment && !homeroom) {
+          throw new ForbiddenException('Laporan hanya dapat diakses oleh guru yang ditugaskan pada kelas tersebut, wali kelas, atau pimpinan sekolah.');
+        }
+      }
+
+      const [enrollments, sessions, assessments, journalCount] = await Promise.all([
+        tx.classEnrollment.findMany({
+          where: {
+            schoolId: user.activeSchoolId!,
+            classId,
+            status: 'ACTIVE',
+            student: { status: 'ACTIVE', archivedAt: null },
+          },
+          orderBy: { student: { fullName: 'asc' } },
+          select: {
+            student: { select: { id: true, studentNumber: true, fullName: true, preferredName: true } },
+          },
+          take: 500,
+        }),
+        tx.attendanceSession.findMany({
+          where: { schoolId: user.activeSchoolId!, classId, status: 'FINALIZED' },
+          orderBy: { date: 'asc' },
+          select: {
+            id: true,
+            date: true,
+            sessionLabel: true,
+            records: { select: { studentId: true, status: true } },
+          },
+          take: 366,
+        }),
+        tx.assessment.findMany({
+          where: {
+            schoolId: user.activeSchoolId!,
+            status: 'PUBLISHED',
+            assignment: { classId, archivedAt: null },
+          },
+          orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            id: true,
+            title: true,
+            assessmentType: true,
+            maxScore: true,
+            dueDate: true,
+            assignment: { select: { subject: { select: { id: true, name: true, code: true } } } },
+            scores: { select: { studentId: true, score: true } },
+          },
+          take: 200,
+        }),
+        tx.teachingJournal.count({
+          where: {
+            schoolId: user.activeSchoolId!,
+            status: 'SUBMITTED',
+            assignment: { classId, archivedAt: null },
+          },
+        }),
+      ]);
+
+      const attendanceByStudent = new Map<string, { PRESENT: number; LATE: number; SICK: number; EXCUSED: number; ABSENT: number }>();
+      for (const enrollment of enrollments) {
+        attendanceByStudent.set(enrollment.student.id, { PRESENT: 0, LATE: 0, SICK: 0, EXCUSED: 0, ABSENT: 0 });
+      }
+      const attendanceTotals = { PRESENT: 0, LATE: 0, SICK: 0, EXCUSED: 0, ABSENT: 0 };
+      for (const session of sessions) {
+        for (const record of session.records) {
+          const counts = attendanceByStudent.get(record.studentId);
+          if (!counts) continue;
+          counts[record.status] += 1;
+          attendanceTotals[record.status] += 1;
+        }
+      }
+
+      const scoresByStudent = new Map<string, { normalizedTotal: number; count: number }>();
+      const assessmentSummaries = assessments.map((assessment) => {
+        const maxScore = Number(assessment.maxScore);
+        const scored = assessment.scores.filter((entry) => entry.score !== null);
+        const total = scored.reduce((sum, entry) => sum + Number(entry.score), 0);
+        for (const entry of scored) {
+          const current = scoresByStudent.get(entry.studentId) ?? { normalizedTotal: 0, count: 0 };
+          current.normalizedTotal += maxScore > 0 ? (Number(entry.score) / maxScore) * 100 : 0;
+          current.count += 1;
+          scoresByStudent.set(entry.studentId, current);
+        }
+        return {
+          id: assessment.id,
+          title: assessment.title,
+          assessmentType: assessment.assessmentType,
+          subject: assessment.assignment.subject,
+          maxScore,
+          dueDate: assessment.dueDate,
+          scoreCount: scored.length,
+          averageScore: scored.length ? Math.round((total / scored.length) * 100) / 100 : null,
+          averagePercentage: scored.length && maxScore > 0
+            ? Math.round((total / scored.length / maxScore) * 10000) / 100
+            : null,
+        };
+      });
+
+      const students = enrollments.map(({ student }) => {
+        const counts = attendanceByStudent.get(student.id)!;
+        const recorded = Object.values(counts).reduce((sum, count) => sum + count, 0);
+        const presentOrLate = counts.PRESENT + counts.LATE;
+        const scoreSummary = scoresByStudent.get(student.id);
+        return {
+          ...student,
+          attendance: {
+            ...counts,
+            recordedSessions: recorded,
+            attendanceRate: sessions.length ? Math.round((presentOrLate / sessions.length) * 10000) / 100 : null,
+          },
+          assessment: {
+            publishedAssessmentsWithScore: scoreSummary?.count ?? 0,
+            averagePercentage: scoreSummary && scoreSummary.count
+              ? Math.round((scoreSummary.normalizedTotal / scoreSummary.count) * 100) / 100
+              : null,
+          },
+        };
+      });
+
+      const totalAttendanceRecords = Object.values(attendanceTotals).reduce((sum, count) => sum + count, 0);
+      const attendedRecords = attendanceTotals.PRESENT + attendanceTotals.LATE;
+      return {
+        generatedAt: new Date().toISOString(),
+        class: {
+          id: schoolClass.id,
+          name: schoolClass.name,
+          gradeLevel: schoolClass.gradeLevel,
+          academicYear: schoolClass.academicYear,
+        },
+        summary: {
+          activeStudents: students.length,
+          finalizedAttendanceSessions: sessions.length,
+          attendanceRate: totalAttendanceRecords
+            ? Math.round((attendedRecords / totalAttendanceRecords) * 10000) / 100
+            : null,
+          publishedAssessments: assessments.length,
+          submittedTeachingJournals: journalCount,
+        },
+        attendance: {
+          totals: attendanceTotals,
+          sessions: sessions.map(({ records: _records, ...session }) => session),
+        },
+        assessments: assessmentSummaries,
+        students,
+      };
+    });
+  }
+
 }
