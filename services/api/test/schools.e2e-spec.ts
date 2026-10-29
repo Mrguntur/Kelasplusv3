@@ -26,10 +26,11 @@ describe('School registration API security (e2e)', () => {
       controllers: [SchoolsController],
       providers: [
         { provide: SchoolsService, useValue: schoolsService },
-        { provide: SessionAuthGuard, useValue: sessionGuard },
-        { provide: PlatformAdminGuard, useValue: platformGuard },
       ],
-    }).compile();
+    })
+      .overrideGuard(SessionAuthGuard).useValue(sessionGuard)
+      .overrideGuard(PlatformAdminGuard).useValue(platformGuard)
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -44,7 +45,7 @@ describe('School registration API security (e2e)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
   });
 
   const validRequest = {
