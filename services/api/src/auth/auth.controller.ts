@@ -18,6 +18,7 @@ import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from './current-user.decorator';
 import { SessionAuthGuard } from './session-auth.guard';
 import { ChangePasswordDto } from './change-password.dto';
+import { SelectSchoolDto } from './select-school.dto';
 
 const SESSION_COOKIE = 'kelasplus_session';
 
@@ -56,6 +57,18 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   listSchools(@CurrentUser() user: { id: string }) {
     return this.authService.listSchoolsForUser(user.id);
+  }
+
+  @Post('select-school')
+  @UseGuards(SessionAuthGuard)
+  async selectSchool(
+    @Body() body: SelectSchoolDto,
+    @Req() request: Request,
+  ) {
+    this.assertTrustedOrigin(request);
+    const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
+    if (!token) throw new ForbiddenException('Sesi autentikasi diperlukan.');
+    return this.authService.selectSchool(token, body.schoolId);
   }
 
   @Post('change-password')
