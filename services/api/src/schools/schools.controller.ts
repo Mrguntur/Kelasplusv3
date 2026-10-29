@@ -24,6 +24,17 @@ export class SchoolsController {
     return this.schoolsService.listPendingRegistrations(user.id);
   }
 
+
+  @Post('admin/registration-requests/:id/approve')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  approveRegistration(
+    @CurrentUser() user: { id: string },
+    @Param('id', new ParseUUIDPipe()) requestId: string,
+  ) {
+    return this.schoolsService.approveRegistration(user.id, requestId);
+  }
+
   @Post('admin/registration-requests/:id/reject')
   @UseGuards(SessionAuthGuard, PlatformAdminGuard)
   @HttpCode(HttpStatus.OK)
