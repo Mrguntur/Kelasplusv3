@@ -17,7 +17,7 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  const globalPrefix = config.get<string>('API_GLOBAL_PREFIX', 'api/v1').trim().replace(/^\\/+|\\/+$/g, '');
+  const globalPrefix = (config.get<string>('API_GLOBAL_PREFIX', 'api/v1') ?? '').split('/').filter(Boolean).join('/');
   if (globalPrefix) app.setGlobalPrefix(globalPrefix);
   app.use(helmet());
   app.use(cookieParser());
