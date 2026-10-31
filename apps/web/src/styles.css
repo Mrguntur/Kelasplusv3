@@ -201,3 +201,11 @@
 .quick-access-copy small{font-size:10px;line-height:1.45;color:#8795a8}
 @media(max-width:760px){.quick-access-grid{grid-template-columns:1fr;gap:8px}.quick-access-card{padding:13px 14px}}
 @media(prefers-reduced-motion:reduce){.quick-access-card{transition:none}}
+
+
+/* Stage 5: dashboard data validation and resilient empty states */
+.metric-value{font-variant-numeric:tabular-nums}
+.journal-date{font-variant-numeric:tabular-nums}
+.empty-state{min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
+.empty-state p{max-width:38ch}
+.attendance-line strong{font-variant-numeric:tabular-nums}
