@@ -1,0 +1,24 @@
+# KELAS+ Platform V2 — cPanel Apache/LiteSpeed routing template
+# Deploy ONLY to a dedicated staging document root first.
+# Do not overwrite the current production public_html/.htaccess.
+
+Options -MultiViews
+RewriteEngine On
+
+# API traffic is handled by the cPanel Node.js Application Manager (Passenger).
+# Keep it away from the static SPA rewrite rules.
+RewriteRule ^api/v1(?:/|$) - [END]
+
+# Normalize the app entry URL.
+RewriteRule ^app$ /app/ [R=301,L]
+
+# Serve real files (including Vite assets) as-is.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [END]
+
+# Application SPA fallback. All non-file routes under /app resolve to its index.
+RewriteRule ^app(?:/.*)?$ /app/index.html [END]
+
+# Public landing page fallback.
+RewriteRule ^ index.html [END]
