@@ -21,10 +21,10 @@ type AcademicClass = {
 type AcademicYear = { id: string; name: string; status: string; startDate?: string; endDate?: string };
 type Tab = 'students' | 'classes' | 'years' | 'journals' | 'assessments' | 'reports';
 
-export default function AcademicWorkspace({ role }: { role: string }) {
+export default function AcademicWorkspace({ role, initialTab = 'students' }: { role: string; initialTab?: Tab }) {
   const canManage = role === 'SCHOOL_ADMIN' || role === 'SCHOOL_LEADER';
   const canViewReports = canManage || role === 'TEACHER';
-  const [tab, setTab] = useState<Tab>('students');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<AcademicClass[]>([]);
   const [years, setYears] = useState<AcademicYear[]>([]);
