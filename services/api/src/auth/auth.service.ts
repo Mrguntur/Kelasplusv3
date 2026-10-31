@@ -270,6 +270,83 @@ export class AuthService {
     return argon2.hash(password, { type: argon2.argon2id });
   }
 
+
+  async previewSchoolAdminInvitation(rawToken: string) {
+    const tokenHash = this.hashToken(rawToken);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.invitation_token_hash', ${tokenHash}, true)`;
+      const invitation = await tx.schoolAdminInvitation.findFirst({
+        where: { tokenHash, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { schoolId: true, email: true, expiresAt: true },
+      });
+      if (!invitation) throw new UnauthorizedException('Undangan tidak ditemukan atau sudah tidak berlaku.');
+      // The invitation token has been verified and scoped by the dedicated RLS
+      // policy. Use a transaction-local platform context only for this one school
+      // name lookup; no platform context escapes this transaction.
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      const school = await tx.school.findUnique({
+        where: { id: invitation.schoolId },
+        select: { name: true, status: true },
+      });
+      if (!school || school.status !== SchoolStatus.ACTIVE) {
+        throw new UnauthorizedException('Sekolah pada undangan tidak tersedia.');
+      }
+      return { email: invitation.email, schoolName: school.name, expiresAt: invitation.expiresAt };
+    });
+  }
+
+  async acceptSchoolAdminInvitation(input: { token: string; displayName: string; password: string }) {
+    const tokenHash = this.hashToken(input.token);
+    const emailSafeName = input.displayName.trim();
+    if (emailSafeName.length < 2) throw new UnauthorizedException('Nama lengkap wajib diisi.');
+    const passwordHash = await this.hashPassword(input.password);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.invitation_token_hash', ${tokenHash}, true)`;
+      const invitation = await tx.schoolAdminInvitation.findFirst({
+        where: { tokenHash, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { id: true, schoolId: true, email: true },
+      });
+      if (!invitation) throw new UnauthorizedException('Undangan tidak ditemukan, sudah digunakan, atau kedaluwarsa.');
+
+      const existingUser = await tx.user.findUnique({ where: { email: invitation.email } });
+      if (existingUser) {
+        throw new ForbiddenException('Email ini sudah terdaftar. Hubungi administrator platform untuk penautan akun.');
+      }
+
+      // Claim the invitation inside the same transaction. The conditional update
+      // plus row lock prevents two simultaneous acceptance requests from both winning.
+      const claimed = await tx.schoolAdminInvitation.updateMany({
+        where: { id: invitation.id, tokenHash, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        data: { acceptedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new UnauthorizedException('Undangan sudah digunakan atau tidak lagi berlaku.');
+
+      const user = await tx.user.create({
+        data: {
+          email: invitation.email,
+          displayName: emailSafeName,
+          passwordHash,
+          status: UserStatus.ACTIVE,
+        },
+        select: { id: true, email: true, displayName: true },
+      });
+
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${invitation.schoolId}, true)`;
+      await tx.schoolMembership.create({
+        data: { userId: user.id, schoolId: invitation.schoolId, role: 'SCHOOL_ADMIN' },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: invitation.schoolId,
+        eventType: 'auth.school_admin_invitation_accepted',
+        outcome: 'SUCCESS',
+      }, tx);
+      return { success: true, user: { id: user.id, email: user.email, displayName: user.displayName } };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
   private hashToken(rawToken: string): string {
     return createHash('sha256').update(rawToken).digest('hex');
   }
