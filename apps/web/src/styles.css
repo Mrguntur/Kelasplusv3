@@ -102,3 +102,51 @@
   .academic-report-print .table-subtitle{display:none}
   .report-footnote{margin-top:12px}
 }
+
+
+/* Platform V2 UI refinement: responsive navigation, accessibility and visual polish */
+:root{--navy:#102b4e;--blue:#2764d8;--surface:#fff;--surface-soft:#f7f9fc;--text-strong:#172b45;--text-muted:#75849a}
+:focus-visible{outline:3px solid #75a9f4;outline-offset:3px}
+.brand-mark{flex-shrink:0}
+.login-card{padding:clamp(0px,2vw,18px) 0}
+.login-card h2{line-height:1.2}
+.input-wrap{background:#fff}
+.input-wrap:focus-within{border-color:#4f87dc;box-shadow:0 0 0 4px #2764d814}
+.primary-button{min-height:50px}
+.primary-button:focus-visible,.icon-button:focus-visible,.nav-item:focus-visible{outline-offset:3px}
+.sidebar{box-shadow:8px 0 30px #10274412}
+.sidebar .nav-item{border-radius:10px;transition:background .18s ease,color .18s ease}
+.sidebar .nav-item:not(.active):not(.disabled-nav):hover{background:#ffffff12;color:#fff}
+.main-content{max-width:1600px}
+.topbar{backdrop-filter:saturate(140%) blur(12px)}
+.panel,.metric-card,.academic-banner{transition:box-shadow .2s ease,border-color .2s ease}
+.metric-card:hover,.panel:hover{box-shadow:0 12px 30px #1c3a600d}
+.mobile-nav-toggle{display:none;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid #e2e9f2;border-radius:10px;background:#fff;color:#345579}
+.sidebar-backdrop{display:none}
+@media(max-width:760px){
+  .sidebar{position:fixed;inset:0 auto 0 0;width:min(290px,86vw);height:100dvh;min-height:100vh;padding:22px 18px 18px;display:flex;flex-direction:column;align-items:stretch;transform:translateX(-105%);transition:transform .24s ease;z-index:40;box-shadow:18px 0 50px #0b1e3533}
+  .sidebar.mobile-open{transform:translateX(0)}
+  .sidebar .brand-lockup{padding:0 6px 32px}
+  .sidebar .brand-lockup span{display:block}
+  .sidebar .workspace-label{display:block;margin:0 8px 12px}
+  .sidebar .nav-item{display:flex;align-items:center;gap:12px;min-height:46px;padding:0 12px;margin:3px 0;color:#d6e2f0}
+  .sidebar .nav-item.active{background:#ffffff18;color:#fff}
+  .sidebar .nav-item.disabled-nav{display:flex}
+  .sidebar .sidebar-bottom{display:flex;margin-top:auto;padding-top:18px;border-top:1px solid #ffffff20}
+  .sidebar-backdrop.visible{display:block;position:fixed;inset:0;z-index:35;border:0;background:#08182b80;backdrop-filter:blur(2px)}
+  .mobile-nav-toggle{display:inline-flex}
+  .topbar-actions{gap:8px}
+  .topbar{position:sticky;top:0;z-index:12;background:#f4f7fbf2}
+}
+@media(max-width:480px){
+  .login-panel{padding:24px 20px}
+  .login-card{width:100%}
+  .security-note{font-size:10px}
+  .topbar-actions .icon-button{width:35px;height:35px}
+  .user-chip{max-width:36px;overflow:hidden}
+  .page-heading p{max-width:34ch;line-height:1.65}
+  .metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .metric-card{min-width:0}
+  .metric-value{overflow-wrap:anywhere}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
