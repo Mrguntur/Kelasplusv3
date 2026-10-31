@@ -19,6 +19,7 @@ import { CurrentUser } from './current-user.decorator';
 import { SessionAuthGuard } from './session-auth.guard';
 import { ChangePasswordDto } from './change-password.dto';
 import { SelectSchoolDto } from './select-school.dto';
+import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
 
 const SESSION_COOKIE = 'kelasplus_session';
 
@@ -69,6 +70,28 @@ export class AuthController {
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (!token) throw new ForbiddenException('Sesi autentikasi diperlukan.');
     return this.authService.selectSchool(token, body.schoolId);
+  }
+
+
+  @Get('invitations/preview')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  previewInvitation(@Req() request: Request) {
+    const token = typeof request.query.token === 'string' ? request.query.token : '';
+    if (token.length < 32 || token.length > 256) {
+      throw new ForbiddenException('Tautan undangan tidak valid.');
+    }
+    return this.authService.previewSchoolAdminInvitation(token);
+  }
+
+  @Post('invitations/accept')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  async acceptInvitation(
+    @Body() body: AcceptSchoolAdminInvitationDto,
+    @Req() request: Request,
+  ) {
+    this.assertTrustedOrigin(request);
+    return this.authService.acceptSchoolAdminInvitation(body);
   }
 
   @Post('change-password')
