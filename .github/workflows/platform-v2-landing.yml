@@ -1,0 +1,41 @@
+name: KELAS+ Platform V2 Landing CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/landing/**"
+      - ".github/workflows/platform-v2-landing.yml"
+  push:
+    branches:
+      - feat/platform-v2-foundation
+    paths:
+      - "apps/landing/**"
+      - ".github/workflows/platform-v2-landing.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  landing-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/landing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Build public landing page
+        run: npm run build
+      - name: Upload landing build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kelasplus-platform-v2-landing-dist
+          path: apps/landing/dist/
+          if-no-files-found: error
+          retention-days: 14
