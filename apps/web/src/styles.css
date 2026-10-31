@@ -150,3 +150,42 @@
   .metric-value{overflow-wrap:anywhere}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+
+/* Stage 3: login, school selection and role-aware dashboard */
+.password-wrap input{flex:1}
+.password-toggle{border:0;background:transparent;color:#8292a7;display:grid;place-items:center;padding:6px;border-radius:7px;flex-shrink:0}
+.password-toggle:hover{background:#f0f4f9;color:#315c91}
+.school-card{max-width:540px}
+.school-choice-list{display:grid;gap:10px;margin-top:25px}
+.school-choice{width:100%;display:flex;align-items:center;gap:13px;text-align:left;padding:14px;border:1px solid #e3eaf3;border-radius:13px;background:#fff;color:#31445f;transition:border-color .18s ease,background .18s ease,box-shadow .18s ease}
+.school-choice:hover{border-color:#9ab7df;background:#fbfdff}
+.school-choice.selected{border-color:#4d82d0;background:#f4f8ff;box-shadow:0 0 0 3px #2764d80d}
+.school-choice-avatar{height:42px;width:42px;display:grid;place-items:center;border-radius:11px;background:#edf4ff;color:#3269bd;flex-shrink:0}
+.school-choice-copy{display:grid;gap:5px;min-width:0;flex:1}
+.school-choice-copy strong{font:700 13px Manrope,sans-serif;color:#233c5c;overflow-wrap:anywhere}
+.school-choice-copy small{font-size:10px;color:#8292a7}
+.school-choice-radio{height:18px;width:18px;border:1.5px solid #c2cede;border-radius:50%;position:relative;flex-shrink:0}
+.school-choice.selected .school-choice-radio{border-color:#2865c4}
+.school-choice.selected .school-choice-radio:after{content:'';position:absolute;inset:4px;border-radius:50%;background:#2865c4}
+.school-card .form-stack{margin-top:18px}
+.role-overview{display:flex;align-items:center;gap:15px;padding:17px 19px;margin:0 0 18px;border:1px solid #e3eaf4;border-radius:14px;background:linear-gradient(105deg,#fff,#f8faff)}
+.role-overview-icon{height:43px;width:43px;display:grid;place-items:center;flex-shrink:0;border-radius:12px;background:#eaf2ff;color:#3269bd}
+.role-overview>div:nth-child(2){min-width:0;flex:1}
+.role-overview-label{display:block;font-size:8px;letter-spacing:1.15px;font-weight:800;color:#7290b7;margin-bottom:5px}
+.role-overview strong{display:block;font:700 13px Manrope,sans-serif;color:#263f60}
+.role-overview p{margin:5px 0 0;color:#8190a4;font-size:10px;line-height:1.6}
+.role-overview-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex-shrink:0;border:1px solid #dce6f2;border-radius:9px;padding:10px 12px;background:#fff;color:#315b91;font-size:10px;font-weight:700}
+.role-overview-action:hover{background:#f1f6fd;border-color:#c8d9ec}
+@media(max-width:760px){
+ .school-card{width:min(100%,520px);padding:25px 20px}
+ .role-overview{align-items:flex-start;flex-wrap:wrap;padding:14px}
+ .role-overview>div:nth-child(2){flex:1 1 calc(100% - 60px)}
+ .role-overview-action{margin-left:57px}
+}
+@media(max-width:420px){
+ .school-choice{padding:12px;gap:10px}
+ .school-choice-avatar{width:37px;height:37px}
+ .school-choice-copy strong{font-size:12px}
+ .role-overview-action{margin-left:0;width:100%}
+}
