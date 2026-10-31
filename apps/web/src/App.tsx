@@ -185,7 +185,8 @@ export default function App() {
   const attendanceEntries = Object.entries(summary?.attendance ?? {}).filter((entry): entry is [string, number] =>
     typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0
   );
-  const attendanceTotal = attendanceEntries.reduce((total, [, value]) => total + value, 0);
+  const attendanceValue = (key: string) => Math.max(0, Number.isFinite(summary?.attendance?.[key]) ? summary?.attendance?.[key] ?? 0 : 0);
+  const attendanceTotal = ['PRESENT', 'LATE', 'SICK', 'EXCUSED', 'ABSENT'].reduce((total, key) => total + attendanceValue(key), 0);
   const formatDate = (value: string, options: Intl.DateTimeFormatOptions) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? 'Tanggal tidak tersedia' : date.toLocaleDateString('id-ID', options);
