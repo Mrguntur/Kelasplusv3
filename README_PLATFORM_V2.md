@@ -11,6 +11,16 @@ Platform V2 is being developed alongside the existing KELAS+ application. It is 
 - Clients planned: React + TypeScript web client and Flutter mobile app
 - Local infrastructure: Docker Compose for development only
 
+## Monorepo frontend architecture
+
+Platform V2 uses two independent web frontends in this repository:
+
+- Public landing page: `apps/landing`, served at `https://kelasplus.my.id/`.
+- Authenticated school workspace: `apps/web`, served at `https://kelasplus.my.id/app/`.
+- REST API: `services/api`, routed under `/api/v1`.
+
+Each frontend has its own package manifest, source code, build output, and CI workflow. The root-level application remains the legacy KELAS+ Firebase app and is intentionally left unchanged. See [the monorepo architecture decision](docs/PLATFORM_V2_MONOREPO_ARCHITECTURE.md) for local development, production routing, and release boundaries.
+
 ## Local development
 
 Requirements: Node.js LTS, npm, and Docker Desktop.
