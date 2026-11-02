@@ -123,6 +123,11 @@ export class AcademicController {
     return this.academic.listTeachingAssignments(user);
   }
 
+  @Get('my-classes')
+  listMyClasses(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listMyClasses(user);
+  }
+
   @Post('teaching-assignments')
   @HttpCode(HttpStatus.CREATED)
   createTeachingAssignment(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTeachingAssignmentDto) {
