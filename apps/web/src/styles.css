@@ -251,3 +251,37 @@
 
 
 .my-classes-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px;margin-top:18px}.my-class-card{padding:20px;min-width:0}.my-class-card-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.my-class-card-head h3{font-size:1.35rem;margin:6px 0 3px}.my-class-card-head p{margin:0;color:var(--muted,#64748b);font-size:.88rem}.my-class-count{display:flex;align-items:center;gap:5px;padding:9px 11px;border-radius:12px;background:var(--surface-subtle,#f1f5f9);white-space:nowrap}.my-class-count strong{font-size:1.05rem}.my-class-count span{font-size:.75rem;color:var(--muted,#64748b)}.my-class-subjects{margin-top:18px;padding-top:14px;border-top:1px solid var(--border,#e2e8f0)}.my-class-subjects>strong{font-size:.8rem;color:var(--muted,#64748b)}.my-class-subject{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border,#e2e8f0)}.my-class-subject:last-child{border-bottom:0}.my-class-subject span{font-weight:600;font-size:.9rem}.my-class-subject small{color:var(--muted,#64748b);font-size:.78rem}.my-class-homeroom{margin-top:12px;font-size:.82rem;color:var(--muted,#64748b)}@media(max-width:640px){.my-class-card{padding:16px}.my-class-subject{align-items:flex-start;flex-direction:column;gap:3px}}
+
+
+/* Platform Super Admin control center */
+.platform-admin-page{min-height:100vh;padding:28px clamp(18px,4vw,56px);background:#f5f7fb;color:#172033}
+.platform-admin-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:24px;border-bottom:1px solid #e2e8f0}
+.platform-admin-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.platform-admin-identity{display:inline-flex;align-items:center;gap:7px;color:#334155;font-size:13px;font-weight:700}
+.platform-admin-intro{padding:36px 0 26px}
+.platform-admin-intro h1{margin:8px 0;font-size:clamp(28px,4vw,40px);letter-spacing:-.04em;color:#14213d}
+.platform-admin-intro p{margin:0;color:#64748b;max-width:680px}
+.platform-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:20px}
+.platform-admin-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:18px;margin-bottom:20px}
+.platform-registration-list{display:grid}
+.platform-registration{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;border-top:1px solid #edf1f6}
+.platform-registration>div:first-child{display:grid;gap:4px;min-width:0}
+.platform-registration strong{color:#172033}
+.platform-registration span,.platform-registration small{color:#64748b;font-size:13px;overflow-wrap:anywhere}
+.platform-registration-actions{display:flex;gap:8px;flex-shrink:0}
+.compact-button{padding:8px 12px!important;font-size:12px!important}
+.platform-review-stat{display:flex;justify-content:space-between;padding:15px 0;border-bottom:1px solid #edf1f6;color:#64748b}
+.platform-review-stat strong{color:#172033;font-size:20px}
+.platform-school-panel{margin-bottom:24px}
+.platform-school-table-wrap{overflow-x:auto}
+.platform-school-table{width:100%;border-collapse:collapse;text-align:left}
+.platform-school-table th{padding:12px 14px;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.06em;background:#f8fafc}
+.platform-school-table td{padding:14px;border-top:1px solid #edf1f6;color:#334155;font-size:13px;white-space:nowrap}
+.platform-school-table td:first-child{white-space:normal;min-width:220px}
+.platform-school-table td strong,.platform-school-table td small{display:block}
+.platform-school-table td small{margin-top:4px;color:#94a3b8}
+.status-pending{background:#fff7ed!important;color:#c2410c!important}
+.status-active{background:#ecfdf5!important;color:#047857!important}
+.status-suspended,.status-closed{background:#fef2f2!important;color:#b91c1c!important}
+@media(max-width:900px){.platform-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.platform-admin-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.platform-admin-page{padding:18px 14px}.platform-admin-header{align-items:flex-start;flex-direction:column}.platform-admin-actions{width:100%;justify-content:space-between}.platform-registration{align-items:flex-start;flex-direction:column}.platform-registration-actions{width:100%}}
