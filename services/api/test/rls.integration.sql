@@ -220,6 +220,13 @@ ROLLBACK;
 RESET ROLE;
 
 
+-- Seed the bearer-token fixture as the database owner after the tenant-management
+-- transaction rolled back; the token test below must exercise the persisted row.
+INSERT INTO "teacher_invitations"
+  ("id","school_id","email","display_name","token_hash","expires_at","created_by","created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc91','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','new-teacher@example.test','New Teacher',repeat('c',64),now() + interval '3 days','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',now());
+
 -- Teacher invitation acceptance context can access only the row matching its token digest.
 SET ROLE kelasplus_runtime;
 BEGIN;
