@@ -4,8 +4,9 @@ import { api, ApiError, type DashboardSummary, type School, type User } from './
 import AcademicWorkspace from './AcademicWorkspace';
 import InvitationAcceptance from './InvitationAcceptance';
 import TeacherInvitationAcceptance from './TeacherInvitationAcceptance';
+import PlatformAdminDashboard from './PlatformAdminDashboard';
 
-type ViewState = 'loading' | 'login' | 'school' | 'dashboard';
+type ViewState = 'loading' | 'login' | 'school' | 'dashboard' | 'platform';
 type AcademicTab = 'students' | 'classes' | 'years' | 'myClasses' | 'journals' | 'assessments' | 'reports';
 const roleNames: Record<string, string> = {
   SCHOOL_ADMIN: 'Administrator Sekolah',
@@ -48,6 +49,17 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const loadSchools = useCallback(async (activeSchoolId?: string | null) => {
+    // A platform administrator is not required to hold a school membership.
+    // Resolve this server-side capability before entering the tenant workspace.
+    try {
+      await api('/schools/admin/overview');
+      setSchool(null);
+      setSummary(null);
+      setView('platform');
+      return;
+    } catch {
+      // A 403 is expected for ordinary school users; continue with tenant discovery.
+    }
     const items = await api<School[]>('/auth/schools');
     setSchools(items);
     if (!items.length) {
@@ -145,6 +157,7 @@ export default function App() {
   }
 
   if (isTeacherInvitationRoute) return <TeacherInvitationAcceptance />;
+  if (view === 'platform') return <PlatformAdminDashboard onLogout={() => void logout()} />;
   if (isInvitationRoute) return <InvitationAcceptance />;
   if (view === 'loading') return <main className="loading-screen"><div className="brand-mark">K+</div><p>Menyiapkan ruang kerja KELAS+…</p></main>;
   if (view === 'login') return <main className="login-layout">
