@@ -39,9 +39,10 @@ export class EntitlementService {
     tx: Prisma.TransactionClient,
     schoolId: string,
     resource: QuotaResource,
+    options: { allowPendingSchool?: boolean } = {},
   ): Promise<void> {
     await this.lockSchool(tx, schoolId);
-    const snapshot = await this.getSnapshot(tx, schoolId);
+    const snapshot = await this.getSnapshot(tx, schoolId, options);
     if (!snapshot.access.allowed) {
       throw new ForbiddenException(snapshot.access.reason ?? 'Langganan sekolah tidak aktif.');
     }
@@ -55,6 +56,13 @@ export class EntitlementService {
       throw new ForbiddenException(
         `Batas paket tercapai: ${labels[resource]} ${quota.used}/${quota.limit}. Tingkatkan paket untuk menambah kapasitas.`,
       );
+    }
+  }
+
+  async assertSchoolAccess(tx: Prisma.TransactionClient, schoolId: string): Promise<void> {
+    const snapshot = await this.getSnapshot(tx, schoolId);
+    if (!snapshot.access.allowed) {
+      throw new ForbiddenException(snapshot.access.reason ?? 'Langganan sekolah tidak aktif.');
     }
   }
 
@@ -83,6 +91,7 @@ export class EntitlementService {
   async getSnapshot(
     tx: Prisma.TransactionClient,
     schoolId: string,
+    options: { allowPendingSchool?: boolean } = {},
   ): Promise<EntitlementSnapshot> {
     const [school, subscription, users, students, classes] = await Promise.all([
       tx.school.findUnique({ where: { id: schoolId }, select: { id: true, status: true } }),
@@ -107,7 +116,7 @@ export class EntitlementService {
     if (!school) {
       effectiveStatus = 'NONE';
       reason = 'Sekolah tidak ditemukan.';
-    } else if (school.status !== 'ACTIVE') {
+    } else if (school.status !== 'ACTIVE' && !(options.allowPendingSchool && school.status === 'PENDING')) {
       reason = 'Sekolah belum aktif atau sedang ditangguhkan.';
     } else if (subscription?.status === 'ACTIVE' && subscription.currentPeriodEnd > now) {
       allowed = true;
@@ -115,9 +124,12 @@ export class EntitlementService {
       allowed = true;
     } else {
       if (
-        subscription &&
-        (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') &&
+        subscription?.status === 'ACTIVE' &&
         subscription.currentPeriodEnd <= now
+      ) effectiveStatus = 'EXPIRED';
+      if (
+        subscription?.status === 'TRIALING' &&
+        (!subscription.trialEndsAt || subscription.trialEndsAt <= now)
       ) effectiveStatus = 'EXPIRED';
       reason = subscription?.status === 'PAST_DUE'
         ? 'Langganan menunggak. Selesaikan pembayaran untuk memulihkan akses.'

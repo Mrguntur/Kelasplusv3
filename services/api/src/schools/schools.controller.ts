@@ -19,6 +19,16 @@ export class SchoolsController {
     return this.schoolsService.requestRegistration(body);
   }
 
+  @Post('admin/schools')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  @HttpCode(HttpStatus.CREATED)
+  createSchoolManually(
+    @CurrentUser() user: { id: string },
+    @Body() body: SchoolRegistrationDto,
+  ) {
+    return this.schoolsService.createSchoolManually(user.id, body);
+  }
+
   @Get('admin/overview')
   @UseGuards(SessionAuthGuard, PlatformAdminGuard)
   getPlatformOverview(@CurrentUser() user: { id: string }) {

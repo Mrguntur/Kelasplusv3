@@ -97,6 +97,10 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [checkoutUrl, setCheckoutUrl] = useState('');
+  const [manualSchool, setManualSchool] = useState({ schoolName: '', requestedSlug: '', contactName: '', email: '', phone: '' });
+  const [manualRequestId, setManualRequestId] = useState('');
+  const [manualSchoolId, setManualSchoolId] = useState('');
+  const [manualTrialReady, setManualTrialReady] = useState(false);
 
   async function refresh() {
     setBusy(true);
@@ -156,6 +160,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
         body: JSON.stringify({ schoolId: trialSchoolId, planId: trialPlanId, trialDays }),
       });
       setNotice('Masa uji coba berhasil diberikan dan tercatat pada audit log.');
+      if (trialSchoolId === manualSchoolId && manualRequestId) setManualTrialReady(true);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Masa uji coba belum dapat diberikan.');
@@ -164,6 +169,28 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   }
 
 
+  async function createManualSchool(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await api<{ school: { id: string; name: string }; requestId: string }>('/schools/admin/schools', { method: 'POST', body: JSON.stringify(manualSchool) });
+      setManualRequestId(result.requestId); setManualSchoolId(result.school.id); setTrialSchoolId(result.school.id); setManualTrialReady(false);
+      setNotice('Sekolah ' + result.school.name + ' berhasil dibuat. Pilih paket dan berikan trial sebelum mengirim undangan administrator.');
+      setManualSchool({ schoolName: '', requestedSlug: '', contactName: '', email: '', phone: '' });
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Sekolah belum dapat dibuat.'); setBusy(false); }
+  }
+
+  async function inviteManualSchoolAdmin() {
+    if (!manualRequestId || !manualTrialReady) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await api('/schools/admin/registration-requests/' + manualRequestId + '/invite-admin', { method: 'POST' });
+      setNotice('Undangan administrator berhasil dikirim. Sekolah akan aktif setelah administrator menyelesaikan penerimaan undangan.');
+      setManualRequestId(''); setManualSchoolId(''); setManualTrialReady(false);
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Undangan administrator belum dapat dikirim.'); setBusy(false); }
+  }
   async function createInvoice(subscriptionId: string) {
     setBusy(true);
     setError('');
@@ -226,6 +253,19 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
         { label: 'Menunggu aktivasi', value: overview?.metrics.pendingSchools, icon: Clock3 },
         { label: 'Sekolah ditangguhkan', value: overview?.metrics.suspendedSchools, icon: XCircle },
       ].map(item => <article className="metric-card" key={item.label}><div className="metric-top"><span>{item.label}</span><div className="metric-icon"><item.icon size={19}/></div></div><div className="metric-value">{item.value ?? '—'}</div><div className="metric-foot">Data seluruh tenant</div></article>)}
+    </section>
+    <section className="panel platform-school-panel">
+      <div className="panel-heading"><div><span className="eyebrow">ONBOARDING MANUAL</span><h2>Buat sekolah baru</h2></div><span className="count-pill">Super Admin</span></div>
+      <form className="platform-manual-school-form" onSubmit={event => void createManualSchool(event)}>
+        <label>Nama sekolah<input value={manualSchool.schoolName} onChange={event => setManualSchool(current => ({ ...current, schoolName: event.target.value }))} minLength={3} maxLength={200} required /></label>
+        <label>Slug sekolah<input value={manualSchool.requestedSlug} onChange={event => setManualSchool(current => ({ ...current, requestedSlug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={80} required /><small>Huruf kecil, angka, dan tanda hubung.</small></label>
+        <label>Nama kontak administrator<input value={manualSchool.contactName} onChange={event => setManualSchool(current => ({ ...current, contactName: event.target.value }))} minLength={2} maxLength={200} required /></label>
+        <label>Email administrator<input type="email" value={manualSchool.email} onChange={event => setManualSchool(current => ({ ...current, email: event.target.value }))} maxLength={320} required /></label>
+        <label>Nomor telepon (opsional)<input value={manualSchool.phone} onChange={event => setManualSchool(current => ({ ...current, phone: event.target.value }))} maxLength={40} /></label>
+        <button className="primary-button" type="submit" disabled={busy}>Buat sekolah</button>
+      </form>
+      <p className="panel-footnote">Sekolah dibuat dalam status menunggu. Setelah dibuat, tetapkan paket dan masa trial pada panel Subscription, kemudian kirim undangan administrator. Sekolah baru aktif setelah undangan diterima.</p>
+      {manualRequestId && <div className="platform-manual-next-step"><strong>{manualTrialReady ? 'Paket trial telah diberikan.' : 'Langkah berikutnya: tetapkan paket trial.'}</strong><button className="primary-button compact-button" disabled={busy || !manualTrialReady} onClick={() => void inviteManualSchoolAdmin()}>Kirim undangan administrator</button></div>}
     </section>
     <section className="platform-admin-grid">
       <article className="panel">

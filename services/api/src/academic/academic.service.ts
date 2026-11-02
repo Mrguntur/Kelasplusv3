@@ -37,7 +37,7 @@ export class AcademicService {
     private readonly entitlements: EntitlementService,
   ) {}
 
-  private async establishTenant(tx: Prisma.TransactionClient, user: AuthenticatedUser, mutate = false) {
+  private async establishTenant(tx: Prisma.TransactionClient, user: AuthenticatedUser, mutate = false, allowInactiveSubscription = false) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
     await tx.$executeRaw`SELECT set_config('app.current_school_id', ${user.activeSchoolId}, true)`;
@@ -46,6 +46,9 @@ export class AcademicService {
       select: { role: true },
     });
     if (!membership) throw new ForbiddenException('Keanggotaan sekolah tidak ditemukan.');
+    if (!allowInactiveSubscription) {
+      await this.entitlements.assertSchoolAccess(tx, user.activeSchoolId);
+    }
     if (mutate && !([SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER] as SchoolRole[]).includes(membership.role)) {
       throw new ForbiddenException('Hanya administrator atau pimpinan sekolah yang dapat mengubah data akademik.');
     }
@@ -1464,7 +1467,7 @@ export class AcademicService {
   async getCurrentEntitlements(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum melihat paket sekolah.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      await this.establishTenant(tx, user, false, true);
       return this.entitlements.getSnapshot(tx, user.activeSchoolId!);
     });
   }
