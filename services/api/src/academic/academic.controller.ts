@@ -10,6 +10,8 @@ import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
 import { TransferEnrollmentDto } from './dto/transfer-enrollment.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
+import { UpdateStaffProfileDto } from './dto/update-staff-profile.dto';
+import { SetClassHomeroomDto } from './dto/set-class-homeroom.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -92,6 +94,11 @@ export class AcademicController {
     return this.academic.listStaffProfiles(user);
   }
 
+  @Patch('staff/:staffProfileId')
+  updateStaffProfile(@CurrentUser() user: AuthenticatedUser, @Param('staffProfileId', new ParseUUIDPipe()) staffProfileId: string, @Body() body: UpdateStaffProfileDto) {
+    return this.academic.updateStaffProfile(user, staffProfileId, body);
+  }
+
   @Post('staff')
   @HttpCode(HttpStatus.CREATED)
   createStaffProfile(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateStaffProfileDto) {
@@ -120,6 +127,11 @@ export class AcademicController {
   @HttpCode(HttpStatus.CREATED)
   createTeachingAssignment(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTeachingAssignmentDto) {
     return this.academic.createTeachingAssignment(user, body);
+  }
+
+  @Patch('classes/:classId/homeroom')
+  setClassHomeroom(@CurrentUser() user: AuthenticatedUser, @Param('classId', new ParseUUIDPipe()) classId: string, @Body() body: SetClassHomeroomDto) {
+    return this.academic.setClassHomeroom(user, classId, body.staffProfileId ?? null);
   }
 
   @Get('classes/:classId/enrollments')
