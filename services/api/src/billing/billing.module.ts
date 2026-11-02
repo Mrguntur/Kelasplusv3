@@ -4,10 +4,11 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PlatformAdminGuard } from '../schools/platform-admin.guard';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
+import { MidtransService } from './midtrans.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [BillingController],
-  providers: [BillingService, SessionAuthGuard, PlatformAdminGuard],
+  providers: [BillingService, MidtransService, SessionAuthGuard, PlatformAdminGuard],
 })
 export class BillingModule {}
