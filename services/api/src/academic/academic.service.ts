@@ -509,7 +509,7 @@ export class AcademicService {
               id: true, name: true, gradeLevel: true,
               academicYear: { select: { id: true, name: true, status: true } },
               homeroomStaff: { select: { displayName: true } },
-              _count: { select: { enrollments: true } },
+              _count: { select: { enrollments: { where: { status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } } } } },
             },
           },
         },
