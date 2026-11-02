@@ -19,6 +19,9 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -48,6 +51,27 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
       setEditing(null); setNotice('Profil guru/staf berhasil diperbarui.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Profil gagal diperbarui.'); }
     finally { setSaving(false); }
+  }
+
+  async function inviteTeacher(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true); setError(''); setNotice(''); setInviteLink('');
+    try {
+      const result = await api<{ token: string }>('/auth/invitations/teachers', {
+        method: 'POST',
+        body: JSON.stringify({ email: inviteEmail.trim(), displayName: inviteName.trim() }),
+      });
+      const link = `${window.location.origin}/app/teacher-invite/accept?token=${encodeURIComponent(result.token)}`;
+      setInviteLink(link); setInviteName(''); setInviteEmail('');
+      setNotice('Undangan guru berhasil dibuat. Salin tautan dan kirimkan melalui kanal resmi sekolah.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Undangan guru gagal dibuat.'); }
+    finally { setSaving(false); }
+  }
+
+  async function copyInvitationLink() {
+    if (!inviteLink) return;
+    try { await navigator.clipboard.writeText(inviteLink); setNotice('Tautan undangan berhasil disalin.'); }
+    catch { setError('Tautan tidak dapat disalin otomatis. Silakan salin tautan secara manual.'); }
   }
 
   async function createAssignment(event: FormEvent<HTMLFormElement>) {
@@ -89,6 +113,13 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
       {staff.map(person => <tr key={person.id}><td><strong>{person.displayName}</strong><span className="table-subtitle">Akun sekolah terhubung</span></td><td>{person.employeeNumber || '—'}</td><td><span className="status-tag">{person.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}</span></td><td>{canManage && <button className="table-action" onClick={() => setEditing(person)}>Edit</button>}</td></tr>)}
     </tbody></table>{loading ? <div className="academic-empty">Memuat data guru dan staf…</div> : !staff.length ? <div className="academic-empty">Belum ada profil guru/staf yang terhubung ke akun sekolah.</div> : null}</div>
     {canManage && <>
+      <div className="panel-heading" style={{marginTop:24}}><div><span className="eyebrow">ONBOARDING GURU</span><h2>Undang guru baru</h2></div></div>
+      <form className="enrollment-form" onSubmit={inviteTeacher}>
+        <label>Nama lengkap guru<input required minLength={2} maxLength={200} value={inviteName} onChange={e=>setInviteName(e.target.value)} placeholder="Nama sesuai identitas"/></label>
+        <label>Email guru<input required type="email" maxLength={320} value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="guru@sekolah.sch.id"/></label>
+        <button className="primary-button" disabled={saving || !inviteName.trim() || !inviteEmail.trim()}>{saving ? 'Membuat undangan…' : 'Buat undangan'}</button>
+      </form>
+      {inviteLink && <div className="invite-school-card"><div><span>TAUTAN UNDANGAN · BERLAKU 72 JAM</span><small style={{overflowWrap:'anywhere'}}>{inviteLink}</small></div><button type="button" className="secondary-button" onClick={()=>void copyInvitationLink()}>Salin tautan</button></div>}
       <div className="panel-heading" style={{marginTop:24}}><div><span className="eyebrow">PENGELOLAAN KELAS</span><h2>Penetapan wali kelas</h2></div></div>
       <div className="table-wrap"><table className="academic-table"><thead><tr><th>Kelas</th><th>Wali kelas</th><th>Perbarui penugasan</th></tr></thead><tbody>
         {classes.map(item => <tr key={item.id}><td><strong>{item.name}</strong><span className="table-subtitle">Tingkat {item.gradeLevel}</span></td><td>{item.homeroomStaff?.displayName ?? 'Belum ditetapkan'}</td><td><select aria-label={'Wali kelas ' + item.name} disabled={saving} value={item.homeroomStaff?.id ?? ''} onChange={e => void setHomeroom(item.id, e.target.value)}><option value="">Belum ditetapkan</option>{staff.filter(person => person.status === 'ACTIVE').map(person => <option key={person.id} value={person.id}>{person.displayName}</option>)}</select></td></tr>)}
@@ -102,6 +133,6 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
       </form>
       <div className="table-wrap"><table className="academic-table"><thead><tr><th>Guru</th><th>Mata pelajaran</th><th>Kelas</th></tr></thead><tbody>{assignments.map(item=><tr key={item.id}><td><strong>{item.staffProfile.displayName}</strong></td><td>{item.subject.name}</td><td>{item.schoolClass.name}</td></tr>)}</tbody></table>{!assignments.length&&<div className="academic-empty">Belum ada penugasan mengajar.</div>}</div>
     </>}
-    <p className="form-hint">Akun guru baru dan proses undangan akan ditambahkan setelah alur onboarding identitas diselesaikan. Modul ini saat ini mengelola profil akun yang sudah menjadi anggota sekolah.</p>
+    <p className="form-hint">Tautan undangan hanya ditampilkan sekali setelah dibuat. Kirimkan melalui kanal resmi sekolah; guru membuat kata sandi sendiri saat menerima undangan.</p>
   </div>;
 }
