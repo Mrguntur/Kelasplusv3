@@ -54,6 +54,69 @@ export class SchoolsService {
     };
   }
 
+  async createSchoolManually(adminUserId: string, input: SchoolRegistrationDto) {
+    const schoolName = input.schoolName.trim();
+    const requestedSlug = input.requestedSlug.trim().toLowerCase();
+    const contactName = input.contactName.trim();
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone?.trim() || null;
+    const requestId = randomUUID();
+    const schoolId = randomUUID();
+    const now = new Date();
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+        const existingSchool = await tx.school.findUnique({
+          where: { slug: requestedSlug },
+          select: { id: true },
+        });
+        if (existingSchool) throw new ConflictException('Slug sekolah sudah digunakan.');
+
+        const school = await tx.school.create({
+          data: { id: schoolId, slug: requestedSlug, name: schoolName, status: 'PENDING' },
+          select: { id: true, slug: true, name: true, status: true, createdAt: true },
+        });
+        await tx.schoolRegistrationRequest.create({
+          data: {
+            id: requestId,
+            schoolName,
+            requestedSlug,
+            contactName,
+            email,
+            phone,
+            status: 'APPROVED',
+            reviewedAt: now,
+            reviewedBy: adminUserId,
+          },
+        });
+        await this.audit.record({
+          actorUserId: adminUserId,
+          schoolId,
+          eventType: 'school.created_manually',
+          outcome: 'SUCCESS',
+          metadata: { requestId, requestedSlug, contactEmail: email },
+        }, tx);
+
+        return {
+          school,
+          requestId,
+          registrationStatus: 'APPROVED',
+          onboardingStatus: 'PENDING_ADMIN_INVITATION',
+          message: 'Sekolah berhasil dibuat. Tetapkan paket atau masa uji coba sebelum administrator menerima undangan dan sekolah diaktifkan.',
+        };
+      });
+    } catch (error) {
+      if (error instanceof ConflictException) throw error;
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+        throw new ConflictException('Slug sekolah sudah digunakan.');
+      }
+      throw error;
+    }
+  }
+
   async listPendingRegistrations(adminUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
