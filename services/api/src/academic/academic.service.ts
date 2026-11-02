@@ -308,12 +308,15 @@ export class AcademicService {
   async listStaffProfiles(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
+        ? { schoolId: user.activeSchoolId! }
+        : { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' as const };
       return tx.staffProfile.findMany({
-        where: { schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+        where,
         orderBy: { displayName: 'asc' },
         take: 200,
-        select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true },
+        select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true, updatedAt: true },
       });
     });
   }
