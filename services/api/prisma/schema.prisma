@@ -33,6 +33,36 @@ enum RegistrationStatus {
   REJECTED
 }
 
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
 model School {
   id          String            @id @default(uuid()) @db.Uuid
   slug        String            @unique @db.VarChar(80)
@@ -52,6 +82,7 @@ model School {
   schoolClasses SchoolClass[]
   enrollments ClassEnrollment[]
   subjects Subject[]
+  subscriptions Subscription[]
   @@map("schools")
 }
 
@@ -505,4 +536,105 @@ model AssessmentScore {
   @@unique([schoolId, assessmentId, studentId])
   @@index([schoolId, studentId])
   @@map("assessment_scores")
+}
+
+
+/// A commercial offer that can be assigned to one or more schools.
+model Plan {
+  id              String          @id @default(uuid()) @db.Uuid
+  code            String          @unique @db.VarChar(60)
+  name            String          @db.VarChar(120)
+  description     String?         @db.VarChar(500)
+  billingInterval BillingInterval @map("billing_interval")
+  priceAmount     Decimal         @map("price_amount") @db.Decimal(14, 2)
+  currency        String          @default("IDR") @db.Char(3)
+  maxUsers        Int?             @map("max_users")
+  maxStudents     Int?             @map("max_students")
+  maxClasses      Int?             @map("max_classes")
+  features        Json             @default("{}") @db.JsonB
+  isPublished     Boolean          @default(false) @map("is_published")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subscriptions   Subscription[]
+
+  @@index([isPublished, billingInterval])
+  @@map("plans")
+}
+
+/// One subscription lifecycle per school; historical subscriptions are retained.
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  schoolId           String             @map("school_id") @db.Uuid
+  planId             String             @map("plan_id") @db.Uuid
+  status             SubscriptionStatus @default(TRIALING)
+  billingInterval    BillingInterval    @map("billing_interval")
+  priceAmount        Decimal            @map("price_amount") @db.Decimal(14, 2)
+  currency           String             @default("IDR") @db.Char(3)
+  startsAt           DateTime           @map("starts_at") @db.Timestamptz(6)
+  currentPeriodStart DateTime           @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd   DateTime           @map("current_period_end") @db.Timestamptz(6)
+  trialEndsAt        DateTime?          @map("trial_ends_at") @db.Timestamptz(6)
+  cancelAtPeriodEnd  Boolean            @default(false) @map("cancel_at_period_end")
+  canceledAt         DateTime?          @map("canceled_at") @db.Timestamptz(6)
+  endedAt            DateTime?          @map("ended_at") @db.Timestamptz(6)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  plan               Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices           Invoice[]
+
+  @@index([schoolId, status, currentPeriodEnd])
+  @@index([planId, status])
+  @@map("subscriptions")
+}
+
+/// Immutable billing document generated for a subscription period.
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  subscriptionId String        @map("subscription_id") @db.Uuid
+  invoiceNumber  String        @unique @map("invoice_number") @db.VarChar(80)
+  status         InvoiceStatus @default(OPEN)
+  subtotalAmount Decimal       @map("subtotal_amount") @db.Decimal(14, 2)
+  taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(14, 2)
+  currency       String        @default("IDR") @db.Char(3)
+  issuedAt       DateTime      @default(now()) @map("issued_at") @db.Timestamptz(6)
+  dueAt          DateTime?     @map("due_at") @db.Timestamptz(6)
+  paidAt         DateTime?     @map("paid_at") @db.Timestamptz(6)
+  voidedAt       DateTime?     @map("voided_at") @db.Timestamptz(6)
+  metadata       Json          @default("{}") @db.JsonB
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  payments       Payment[]
+
+  @@index([subscriptionId, status, issuedAt])
+  @@index([status, dueAt])
+  @@map("invoices")
+}
+
+/// Gateway-neutral payment attempt. Provider-specific payloads are retained as JSON.
+model Payment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  invoiceId             String        @map("invoice_id") @db.Uuid
+  provider              String        @db.VarChar(40)
+  providerReference     String?       @map("provider_reference") @db.VarChar(160)
+  providerTransactionId String?       @map("provider_transaction_id") @db.VarChar(160)
+  idempotencyKey        String        @unique @map("idempotency_key") @db.VarChar(120)
+  status                PaymentStatus @default(PENDING)
+  amount                Decimal       @db.Decimal(14, 2)
+  currency              String        @default("IDR") @db.Char(3)
+  paymentUrl            String?       @map("payment_url") @db.VarChar(1000)
+  expiresAt             DateTime?     @map("expires_at") @db.Timestamptz(6)
+  paidAt                DateTime?     @map("paid_at") @db.Timestamptz(6)
+  rawPayload            Json?         @map("raw_payload") @db.JsonB
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  invoice               Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerReference])
+  @@unique([provider, providerTransactionId])
+  @@index([invoiceId, status, createdAt])
+  @@index([provider, status, createdAt])
+  @@map("payments")
 }
