@@ -56,9 +56,7 @@ export class MidtransService {
       if (!record) throw new NotFoundException('Invoice tidak ditemukan.');
       if (record.status !== 'OPEN') throw new ConflictException('Checkout hanya tersedia untuk invoice berstatus OPEN.');
       if (record.currency !== 'IDR') throw new ConflictException('Midtrans Snap saat ini hanya dikonfigurasi untuk invoice IDR.');
-      if (record.totalAmount.lte(0) || !record.totalAmount.is整数?.()) {
-        // The explicit integer check below is authoritative for Prisma Decimal.
-      }
+      if (record.totalAmount.lte(0)) throw new ConflictException('Nominal invoice harus lebih besar dari nol.');
       if (record.totalAmount.decimalPlaces() > 0) throw new ConflictException('Nominal invoice harus berupa bilangan bulat rupiah.');
       return record;
     });
@@ -100,10 +98,7 @@ export class MidtransService {
             quantity: 1,
             name: `KELAS+ ${invoice.subscription.plan.name}`.slice(0, 50),
           }],
-          customer_details: {
-            first_name: invoice.subscription.school.name.slice(0, 50),
-            email: invoice.subscription.school.name.includes('@') ? invoice.subscription.school.name : undefined,
-          },
+          customer_details: { first_name: invoice.subscription.school.name.slice(0, 50) },
           custom_field1: invoice.invoiceNumber,
           custom_field2: invoice.subscription.school.slug,
         }),
@@ -187,11 +182,12 @@ export class MidtransService {
         notification.status_code === '200' &&
         (notification.fraud_status === undefined || notification.fraud_status === 'accept');
 
-      let nextStatus: 'SUCCEEDED' | 'PENDING' | 'FAILED' | 'CANCELED' | 'REFUNDED' = 'PENDING';
+      let nextStatus: 'SUCCEEDED' | 'PENDING' | 'FAILED' | 'CANCELED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' = 'PENDING';
       if (success) nextStatus = 'SUCCEEDED';
       else if (['deny', 'expire'].includes(transactionStatus)) nextStatus = 'FAILED';
       else if (transactionStatus === 'cancel') nextStatus = 'CANCELED';
-      else if (transactionStatus === 'refund' || transactionStatus === 'partial_refund') nextStatus = 'REFUNDED';
+      else if (transactionStatus === 'refund') nextStatus = 'REFUNDED';
+      else if (transactionStatus === 'partial_refund') nextStatus = 'PARTIALLY_REFUNDED';
 
       // Never let a delayed non-success notification downgrade a settled payment.
       if (payment.status === 'SUCCEEDED' && nextStatus !== 'REFUNDED') nextStatus = 'SUCCEEDED';
@@ -207,9 +203,6 @@ export class MidtransService {
       });
       if (nextStatus === 'SUCCEEDED' && payment.invoice.status !== 'PAID') {
         await tx.invoice.update({ where: { id: payment.invoiceId }, data: { status: 'PAID', paidAt } });
-      }
-      if (nextStatus === 'REFUNDED' && payment.invoice.status === 'PAID') {
-        await tx.invoice.update({ where: { id: payment.invoiceId }, data: { status: 'OPEN', paidAt: null } });
       }
       await this.audit.record({
         actorUserId: null,
