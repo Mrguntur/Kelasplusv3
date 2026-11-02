@@ -2,7 +2,7 @@ import { ForbiddenException, HttpException, HttpStatus, Injectable, Unauthorized
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
-import { Prisma, SchoolStatus, UserStatus } from '@prisma/client';
+import { Prisma, SchoolRole, SchoolStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './auth.dto';
 import { ChangePasswordDto } from './change-password.dto';
@@ -341,6 +341,122 @@ export class AuthService {
         actorUserId: user.id,
         schoolId: invitation.schoolId,
         eventType: 'auth.school_admin_invitation_accepted',
+        outcome: 'SUCCESS',
+      }, tx);
+      return { success: true, user: { id: user.id, email: user.email, displayName: user.displayName } };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+
+  async createTeacherInvitation(
+    actor: { id: string; activeSchoolId?: string | null },
+    input: { email: string; displayName: string },
+  ) {
+    if (!actor.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengundang guru.');
+    const email = input.email.trim().toLowerCase();
+    const displayName = input.displayName.trim();
+    if (displayName.length < 2) throw new ForbiddenException('Nama guru tidak valid.');
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = this.hashToken(rawToken);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+
+    const invitation = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${actor.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${actor.activeSchoolId}, true)`;
+      const membership = await tx.schoolMembership.findFirst({
+        where: { userId: actor.id, schoolId: actor.activeSchoolId },
+        select: { role: true },
+      });
+      if (!membership || ![SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER].includes(membership.role)) {
+        throw new ForbiddenException('Hanya Admin Sekolah atau Pimpinan Sekolah yang dapat mengundang guru.');
+      }
+      const school = await tx.school.findFirst({
+        where: { id: actor.activeSchoolId, status: SchoolStatus.ACTIVE },
+        select: { id: true },
+      });
+      if (!school) throw new ForbiddenException('Sekolah tidak aktif.');
+      const existingUser = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      if (existingUser) throw new ConflictException('Email sudah terdaftar. Gunakan proses penautan akun yang terverifikasi.');
+      const pending = await tx.teacherInvitation.findFirst({
+        where: { schoolId: actor.activeSchoolId, email, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
+        select: { id: true },
+      });
+      if (pending) throw new ConflictException('Undangan aktif untuk email ini sudah tersedia.');
+      const created = await tx.teacherInvitation.create({
+        data: { schoolId: actor.activeSchoolId, email, displayName, tokenHash, expiresAt, createdBy: actor.id },
+        select: { id: true, email: true, displayName: true, expiresAt: true },
+      });
+      await this.audit.record({
+        actorUserId: actor.id,
+        schoolId: actor.activeSchoolId,
+        eventType: 'auth.teacher_invitation_created',
+        outcome: 'SUCCESS',
+        metadata: { invitationId: created.id },
+      }, tx);
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    return { ...invitation, token: rawToken };
+  }
+
+  async previewTeacherInvitation(rawToken: string) {
+    const tokenHash = this.hashToken(rawToken);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.invitation_token_hash', ${tokenHash}, true)`;
+      const invitation = await tx.teacherInvitation.findFirst({
+        where: { tokenHash, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { schoolId: true, email: true, displayName: true, expiresAt: true },
+      });
+      if (!invitation) throw new UnauthorizedException('Undangan guru tidak ditemukan atau sudah tidak berlaku.');
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      const school = await tx.school.findUnique({
+        where: { id: invitation.schoolId },
+        select: { name: true, status: true },
+      });
+      if (!school || school.status !== SchoolStatus.ACTIVE) {
+        throw new UnauthorizedException('Sekolah pada undangan tidak tersedia.');
+      }
+      return { email: invitation.email, displayName: invitation.displayName, schoolName: school.name, expiresAt: invitation.expiresAt };
+    });
+  }
+
+  async acceptTeacherInvitation(input: { token: string; password: string }) {
+    const tokenHash = this.hashToken(input.token);
+    const passwordHash = await this.hashPassword(input.password);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.invitation_token_hash', ${tokenHash}, true)`;
+      const invitation = await tx.teacherInvitation.findFirst({
+        where: { tokenHash, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { id: true, schoolId: true, email: true, displayName: true },
+      });
+      if (!invitation) throw new UnauthorizedException('Undangan guru tidak ditemukan, sudah digunakan, atau kedaluwarsa.');
+      const existingUser = await tx.user.findUnique({ where: { email: invitation.email }, select: { id: true } });
+      if (existingUser) throw new ConflictException('Email sudah terdaftar. Hubungi administrator sekolah untuk verifikasi akun.');
+
+      const claimed = await tx.teacherInvitation.updateMany({
+        where: { id: invitation.id, tokenHash, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        data: { acceptedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new UnauthorizedException('Undangan sudah digunakan atau tidak lagi berlaku.');
+
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      const user = await tx.user.create({
+        data: { email: invitation.email, displayName: invitation.displayName, passwordHash, status: UserStatus.ACTIVE },
+        select: { id: true, email: true, displayName: true },
+      });
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${invitation.schoolId}, true)`;
+      await tx.schoolMembership.create({
+        data: { userId: user.id, schoolId: invitation.schoolId, role: SchoolRole.TEACHER },
+      });
+      await tx.staffProfile.create({
+        data: { schoolId: invitation.schoolId, userId: user.id, displayName: invitation.displayName, status: 'ACTIVE' },
+      });
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId: invitation.schoolId,
+        eventType: 'auth.teacher_invitation_accepted',
         outcome: 'SUCCESS',
       }, tx);
       return { success: true, user: { id: user.id, email: user.email, displayName: user.displayName } };
