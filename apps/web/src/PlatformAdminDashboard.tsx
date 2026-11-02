@@ -34,6 +34,15 @@ type Registration = {
   createdAt: string;
 };
 
+type Plan = {
+  id: string;
+  code: string;
+  name: string;
+  billingInterval: 'MONTHLY' | 'YEARLY';
+  priceAmount: string | number;
+  currency: string;
+};
+
 const statusLabels: Record<string, string> = {
   ACTIVE: 'Aktif', PENDING: 'Menunggu', SUSPENDED: 'Ditangguhkan', CLOSED: 'Ditutup',
 };
@@ -41,19 +50,28 @@ const statusLabels: Record<string, string> = {
 export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [overview, setOverview] = useState<PlatformOverview | null>(null);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [trialSchoolId, setTrialSchoolId] = useState('');
+  const [trialPlanId, setTrialPlanId] = useState('');
+  const [trialDays, setTrialDays] = useState(14);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   async function refresh() {
     setBusy(true);
     setError('');
     try {
-      const [summary, requests] = await Promise.all([
+      const [summary, requests, publishedPlans] = await Promise.all([
         api<PlatformOverview>('/schools/admin/overview'),
         api<Registration[]>('/schools/admin/registration-requests'),
+        api<Plan[]>('/billing/plans'),
       ]);
       setOverview(summary);
       setRegistrations(requests);
+      setPlans(publishedPlans);
+      setTrialSchoolId(current => current || summary.schools[0]?.id || '');
+      setTrialPlanId(current => current || publishedPlans[0]?.id || '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Dashboard platform belum dapat dimuat.');
     } finally {
@@ -66,6 +84,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   async function review(id: string, action: 'approve' | 'reject') {
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       if (action === 'approve') {
         await api(`/schools/admin/registration-requests/${id}/approve`, { method: 'POST' });
@@ -78,6 +97,24 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Permohonan belum dapat diproses.');
+      setBusy(false);
+    }
+  }
+
+  async function assignTrial(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await api('/billing/admin/subscriptions/trial', {
+        method: 'POST',
+        body: JSON.stringify({ schoolId: trialSchoolId, planId: trialPlanId, trialDays }),
+      });
+      setNotice('Masa uji coba berhasil diberikan dan tercatat pada audit log.');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Masa uji coba belum dapat diberikan.');
       setBusy(false);
     }
   }
@@ -97,6 +134,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
       <p>Monitor sekolah, tinjau pendaftaran, dan kelola pertumbuhan platform dari satu tempat.</p>
     </section>
     {error && <div className="alert error" role="alert">{error}</div>}
+    {notice && <div className="alert success" role="status">{notice}</div>}
     <section className="platform-metrics">
       {[
         { label: 'Total sekolah', value: overview?.metrics.totalSchools, icon: Building2 },
@@ -119,6 +157,29 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
         <div className="platform-review-stat"><span>Ditolak</span><strong>{overview?.metrics.rejectedRegistrations ?? 0}</strong></div>
         <p className="panel-footnote">Persetujuan membuat sekolah berstatus menunggu. Administrator sekolah tetap harus menerima undangan sebelum sekolah diaktifkan.</p>
       </article>
+    </section>
+    <section className="panel platform-school-panel">
+      <div className="panel-heading"><div><span className="eyebrow">SUBSCRIPTION</span><h2>Berikan masa uji coba</h2></div></div>
+      <form className="platform-trial-form" onSubmit={event => void assignTrial(event)}>
+        <label>Sekolah
+          <select value={trialSchoolId} onChange={event => setTrialSchoolId(event.target.value)} required>
+            <option value="">Pilih sekolah</option>
+            {overview?.schools.map(school => <option key={school.id} value={school.id}>{school.name} ({statusLabels[school.status]})</option>)}
+          </select>
+        </label>
+        <label>Paket
+          <select value={trialPlanId} onChange={event => setTrialPlanId(event.target.value)} required>
+            <option value="">Pilih paket</option>
+            {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.name} · {plan.billingInterval === 'MONTHLY' ? 'Bulanan' : 'Tahunan'}</option>)}
+          </select>
+        </label>
+        <label>Durasi trial (hari)
+          <input type="number" min={1} max={90} value={trialDays} onChange={event => setTrialDays(Number(event.target.value))} required />
+        </label>
+        <button className="primary-button" type="submit" disabled={busy || !trialSchoolId || !trialPlanId || plans.length === 0}>Berikan trial</button>
+      </form>
+      {plans.length === 0 && <p className="panel-footnote">Belum ada paket yang dipublikasikan. Publikasikan paket terlebih dahulu sebelum memberikan trial.</p>}
+      <p className="panel-footnote">Trial hanya diberikan kepada sekolah yang belum memiliki langganan berjalan. Tindakan ini tidak memproses pembayaran.</p>
     </section>
     <section className="panel platform-school-panel">
       <div className="panel-heading"><div><span className="eyebrow">MULTI-TENANT</span><h2>Daftar sekolah</h2></div><span className="count-pill">{overview?.schools.length ?? 0} ditampilkan</span></div>
