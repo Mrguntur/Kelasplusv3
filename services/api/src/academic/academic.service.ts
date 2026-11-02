@@ -7,6 +7,9 @@ import {
 } from '@nestjs/common';
 import { AcademicYearStatus, Prisma, SchoolRole } from '@prisma/client';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
+import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { TransferEnrollmentDto } from './dto/transfer-enrollment.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -89,6 +92,29 @@ export class AcademicService {
         metadata: { academicYearId: year.id, name: year.name, status: year.status },
       }, tx);
       return year;
+    });
+  }
+
+  async updateAcademicYear(user: AuthenticatedUser, yearId: string, input: UpdateAcademicYearDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah tahun ajaran.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.academicYear.findFirst({ where: { id: yearId, schoolId: user.activeSchoolId! } });
+      if (!current) throw new BadRequestException('Tahun ajaran tidak ditemukan di sekolah aktif.');
+      const name = input.name?.trim() ?? current.name;
+      const startDate = input.startDate ? new Date(input.startDate) : current.startDate;
+      const endDate = input.endDate ? new Date(input.endDate) : current.endDate;
+      const status = input.status ?? current.status;
+      if (endDate < startDate) throw new BadRequestException('Tanggal akhir harus sama dengan atau setelah tanggal mulai.');
+      if (status === 'ACTIVE' && current.status !== 'ACTIVE') {
+        const active = await tx.academicYear.findFirst({ where: { schoolId: user.activeSchoolId!, status: AcademicYearStatus.ACTIVE, id: { not: yearId } }, select: { id: true } });
+        if (active) throw new ConflictException('Sekolah sudah memiliki tahun ajaran aktif.');
+      }
+      const duplicate = await tx.academicYear.findFirst({ where: { schoolId: user.activeSchoolId!, name, id: { not: yearId } }, select: { id: true } });
+      if (duplicate) throw new ConflictException('Nama tahun ajaran sudah digunakan di sekolah ini.');
+      const updated = await tx.academicYear.update({ where: { schoolId_id: { schoolId: user.activeSchoolId!, id: yearId } }, data: { name, startDate, endDate, status } });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.year_updated', outcome: 'SUCCESS', metadata: { academicYearId: yearId, changes: Object.keys(input) } }, tx);
+      return updated;
     });
   }
 
@@ -189,6 +215,32 @@ export class AcademicService {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           throw new ConflictException('Nomor induk siswa sudah digunakan di sekolah ini.');
         }
+        throw error;
+      }
+    });
+  }
+
+  async updateStudent(user: AuthenticatedUser, studentId: string, input: UpdateStudentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah data siswa.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.student.findFirst({ where: { id: studentId, schoolId: user.activeSchoolId!, archivedAt: null }, select: { id: true } });
+      if (!current) throw new BadRequestException('Siswa tidak ditemukan di sekolah aktif.');
+      try {
+        const updated = await tx.student.update({
+          where: { schoolId_id: { schoolId: user.activeSchoolId!, id: studentId } },
+          data: {
+            ...(input.fullName !== undefined ? { fullName: input.fullName.trim() } : {}),
+            ...(input.studentNumber !== undefined ? { studentNumber: input.studentNumber?.trim() || null } : {}),
+            ...(input.preferredName !== undefined ? { preferredName: input.preferredName?.trim() || null } : {}),
+            ...(input.birthDate !== undefined ? { birthDate: input.birthDate ? new Date(input.birthDate) : null } : {}),
+          },
+          select: { id: true, studentNumber: true, fullName: true, preferredName: true, status: true, createdAt: true },
+        });
+        await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_updated', outcome: 'SUCCESS', metadata: { studentId, changes: Object.keys(input) } }, tx);
+        return updated;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Nomor induk siswa sudah digunakan di sekolah ini.');
         throw error;
       }
     });
@@ -517,6 +569,36 @@ export class AcademicService {
     });
   }
 
+
+  async endStudentEnrollment(user: AuthenticatedUser, enrollmentId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah penempatan siswa.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const enrollment = await tx.classEnrollment.findFirst({ where: { id: enrollmentId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true, classId: true, studentId: true } });
+      if (!enrollment) throw new BadRequestException('Penempatan siswa aktif tidak ditemukan.');
+      const ended = await tx.classEnrollment.update({ where: { id: enrollment.id }, data: { status: 'ENDED', leftAt: new Date() }, select: { id: true, classId: true, studentId: true, status: true, leftAt: true } });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_removed_from_class', outcome: 'SUCCESS', metadata: { enrollmentId, classId: enrollment.classId, studentId: enrollment.studentId } }, tx);
+      return ended;
+    });
+  }
+
+  async transferStudentEnrollment(user: AuthenticatedUser, enrollmentId: string, input: TransferEnrollmentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum memindahkan siswa.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.classEnrollment.findFirst({ where: { id: enrollmentId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true, classId: true, studentId: true } });
+      if (!current) throw new BadRequestException('Penempatan siswa aktif tidak ditemukan.');
+      if (current.classId === input.targetClassId) throw new BadRequestException('Siswa sudah berada di kelas tujuan.');
+      const target = await tx.schoolClass.findFirst({ where: { id: input.targetClassId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true } });
+      if (!target) throw new BadRequestException('Kelas tujuan tidak ditemukan atau tidak aktif di sekolah ini.');
+      const existing = await tx.classEnrollment.findFirst({ where: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId, status: 'ACTIVE' }, select: { id: true } });
+      if (existing) throw new ConflictException('Siswa sudah terdaftar aktif di kelas tujuan.');
+      await tx.classEnrollment.update({ where: { id: current.id }, data: { status: 'ENDED', leftAt: new Date() } });
+      const next = await tx.classEnrollment.create({ data: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId }, select: { id: true, classId: true, studentId: true, enrolledAt: true, status: true } });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_transferred_class', outcome: 'SUCCESS', metadata: { studentId: current.studentId, fromClassId: current.classId, toClassId: input.targetClassId, previousEnrollmentId: current.id, newEnrollmentId: next.id } }, tx);
+      return next;
+    });
+  }
 
   async listAttendanceSessions(user: AuthenticatedUser, classId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
