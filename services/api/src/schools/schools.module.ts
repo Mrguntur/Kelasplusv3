@@ -5,10 +5,11 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AuthModule } from '../auth/auth.module';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { InvitationEmailService } from './invitation-email.service';
+import { EntitlementService } from '../entitlements/entitlement.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [SchoolsController],
-  providers: [SchoolsService, SessionAuthGuard, PlatformAdminGuard, InvitationEmailService],
+  providers: [SchoolsService, SessionAuthGuard, PlatformAdminGuard, InvitationEmailService, EntitlementService],
 })
 export class SchoolsModule {}
