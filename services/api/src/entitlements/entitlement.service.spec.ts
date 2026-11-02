@@ -43,6 +43,17 @@ describe('EntitlementService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('allows the first administrator membership check for a pending school with an active subscription', async () => {
+    const tx = transaction({
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'PENDING' }) },
+      schoolMembership: { count: jest.fn().mockResolvedValue(0) },
+    });
+    await expect(service.assertCanCreate(tx, schoolId, 'users', { allowPendingSchool: true }))
+      .resolves.toBeUndefined();
+    await expect(service.assertCanCreate(tx, schoolId, 'users'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('blocks adding a school member when the configured user quota is reached', async () => {
     const tx = transaction({
       schoolMembership: { count: jest.fn().mockResolvedValue(5) },
