@@ -13,6 +13,7 @@ import { TransferEnrollmentDto } from './dto/transfer-enrollment.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EntitlementService } from '../entitlements/entitlement.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
@@ -30,7 +31,11 @@ import { UpsertAssessmentScoresDto } from './dto/upsert-assessment-scores.dto';
 
 @Injectable()
 export class AcademicService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly entitlements: EntitlementService,
+  ) {}
 
   private async establishTenant(tx: Prisma.TransactionClient, user: AuthenticatedUser, mutate = false) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
@@ -202,6 +207,7 @@ export class AcademicService {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
       await this.establishTenant(tx, user, true);
+      await this.entitlements.assertCanCreate(tx, user.activeSchoolId!, 'students');
       try {
         const student = await tx.student.create({
           data: {
@@ -280,6 +286,7 @@ export class AcademicService {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
       await this.establishTenant(tx, user, true);
+      await this.entitlements.assertCanCreate(tx, user.activeSchoolId!, 'classes');
       const year = await tx.academicYear.findFirst({
         where: { id: input.academicYearId, schoolId: user.activeSchoolId! },
         select: { id: true },
@@ -384,6 +391,7 @@ export class AcademicService {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
       await this.establishTenant(tx, user, true);
+      await this.entitlements.assertCanCreate(tx, user.activeSchoolId!, 'users');
       const membership = await tx.schoolMembership.findFirst({
         where: { schoolId: user.activeSchoolId!, userId: input.userId },
         select: { id: true },
@@ -1453,6 +1461,14 @@ export class AcademicService {
     });
   }
 
+
+  async getCurrentEntitlements(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum melihat paket sekolah.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user);
+      return this.entitlements.getSnapshot(tx, user.activeSchoolId!);
+    });
+  }
 
   async getDashboardSummary(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum membuka dashboard.');
