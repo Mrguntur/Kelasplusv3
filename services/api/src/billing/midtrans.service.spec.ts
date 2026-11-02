@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { MidtransService } from './midtrans.service';
 
 describe('MidtransService notification verification', () => {
@@ -35,6 +36,59 @@ describe('MidtransService notification verification', () => {
   it('rejects incomplete notification payloads', async () => {
     await expect(service.handleNotification({ order_id: 'x' }))
       .rejects.toThrow('Signature not valid.');
+  });
+
+  it('marks the payment and invoice paid only after a valid settlement notification', async () => {
+    const payment = {
+      id: 'payment-1',
+      invoiceId: 'invoice-1',
+      status: 'PENDING',
+      amount: new Prisma.Decimal('125000'),
+      currency: 'IDR',
+      paidAt: null,
+      invoice: {
+        id: 'invoice-1',
+        status: 'OPEN',
+        subscription: { schoolId: 'school-1' },
+      },
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn().mockResolvedValue({}) },
+      invoice: { update: jest.fn().mockResolvedValue({}) },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    (audit.record as jest.Mock).mockResolvedValue(undefined);
+
+    const result = await service.handleNotification(signed({ transaction_id: 'midtrans-tx-1' }));
+
+    expect(result).toEqual({ received: true, paymentStatus: 'SUCCEEDED' });
+    expect(tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'payment-1' },
+      data: expect.objectContaining({ status: 'SUCCEEDED', providerTransactionId: 'midtrans-tx-1' }),
+    }));
+    expect(tx.invoice.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'invoice-1' },
+      data: expect.objectContaining({ status: 'PAID' }),
+    }));
+  });
+
+  it('rejects a validly signed notification whose amount differs from the stored payment', async () => {
+    const payment = {
+      id: 'payment-1', invoiceId: 'invoice-1', status: 'PENDING',
+      amount: new Prisma.Decimal('125000'), currency: 'IDR', paidAt: null,
+      invoice: { id: 'invoice-1', status: 'OPEN', subscription: { schoolId: 'school-1' } },
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn() },
+      invoice: { update: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+
+    await expect(service.handleNotification(signed({ gross_amount: '1.00' })))
+      .rejects.toThrow('Nominal atau mata uang notifikasi tidak cocok');
+    expect(tx.payment.update).not.toHaveBeenCalled();
   });
 
   it('uses the Sandbox configuration by default', () => {
