@@ -169,8 +169,16 @@ export class MidtransService {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', '00000000-0000-0000-0000-000000000000', true)`;
       await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
-      const payment = await tx.payment.findFirst({
+      const candidate = await tx.payment.findFirst({
         where: { provider: 'MIDTRANS', providerReference: orderId },
+        select: { id: true },
+      });
+      if (!candidate) throw new NotFoundException('Payment reference tidak ditemukan.');
+
+      // Serialize concurrent/retried notifications for this payment before reading its current state.
+      await tx.$queryRaw`SELECT id FROM payments WHERE id = ${candidate.id}::uuid FOR UPDATE`;
+      const payment = await tx.payment.findUnique({
+        where: { id: candidate.id },
         include: { invoice: { include: { subscription: true } } },
       });
       if (!payment) throw new NotFoundException('Payment reference tidak ditemukan.');
@@ -191,6 +199,11 @@ export class MidtransService {
 
       // Never let a delayed non-success notification downgrade a settled payment.
       if (payment.status === 'SUCCEEDED' && nextStatus !== 'REFUNDED') nextStatus = 'SUCCEEDED';
+
+      // Midtrans may retry the same event. After the row lock, identical states are acknowledged without a second write/audit event.
+      if (payment.status === nextStatus) {
+        return { received: true, duplicate: true, paymentStatus: payment.status };
+      }
       const paidAt = success ? new Date() : payment.paidAt;
       await tx.payment.update({
         where: { id: payment.id },
