@@ -145,7 +145,6 @@ export default function App() {
   }
 
   if (isTeacherInvitationRoute) return <TeacherInvitationAcceptance />;
-  if (isTeacherInvitationRoute) return <TeacherInvitationAcceptance />;
   if (isInvitationRoute) return <InvitationAcceptance />;
   if (view === 'loading') return <main className="loading-screen"><div className="brand-mark">K+</div><p>Menyiapkan ruang kerja KELAS+…</p></main>;
   if (view === 'login') return <main className="login-layout">
