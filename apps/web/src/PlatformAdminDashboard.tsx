@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Activity, Building2, CheckCircle2, Clock3, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import { api } from './api';
 
@@ -101,7 +101,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     }
   }
 
-  async function assignTrial(event: React.FormEvent<HTMLFormElement>) {
+  async function assignTrial(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError('');
