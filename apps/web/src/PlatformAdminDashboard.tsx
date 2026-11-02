@@ -96,6 +96,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [checkoutUrl, setCheckoutUrl] = useState('');
 
   async function refresh() {
     setBusy(true);
@@ -177,6 +178,16 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     }
   }
 
+  async function createCheckout(invoiceId: string) {
+    setBusy(true); setError(''); setNotice(''); setCheckoutUrl('');
+    try {
+      const result = await api<{ redirectUrl: string; environment: string }>('/billing/admin/invoices/' + invoiceId + '/checkout', { method: 'POST' });
+      setCheckoutUrl(result.redirectUrl);
+      setNotice('Halaman pembayaran Midtrans ' + (result.environment === 'sandbox' ? 'Sandbox' : 'Production') + ' berhasil dibuat. Buka tautan untuk melanjutkan pembayaran.');
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Checkout Midtrans belum dapat dibuat.'); setBusy(false); }
+  }
+
   async function expireTrials() {
     setBusy(true);
     setError('');
@@ -207,6 +218,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     </section>
     {error && <div className="alert error" role="alert">{error}</div>}
     {notice && <div className="alert success" role="status">{notice}</div>}
+    {checkoutUrl && <div className="alert success" role="status"><a href={checkoutUrl} target="_blank" rel="noopener noreferrer">Buka halaman pembayaran Midtrans ↗</a></div>}
     <section className="platform-metrics">
       {[
         { label: 'Total sekolah', value: overview?.metrics.totalSchools, icon: Building2 },
@@ -274,13 +286,14 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     <section className="panel platform-school-panel">
       <div className="panel-heading"><div><span className="eyebrow">BILLING</span><h2>Invoice & tagihan</h2></div><span className="count-pill">{invoices.length} invoice</span></div>
       <div className="platform-school-table-wrap"><table className="platform-school-table">
-        <thead><tr><th>Nomor invoice</th><th>Sekolah / paket</th><th>Periode</th><th>Total</th><th>Status</th></tr></thead>
+        <thead><tr><th>Nomor invoice</th><th>Sekolah / paket</th><th>Periode</th><th>Total</th><th>Status</th><th>Pembayaran</th></tr></thead>
         <tbody>{invoices.map(invoice => <tr key={invoice.id}>
           <td><strong>{invoice.invoiceNumber}</strong><small>Dibuat {new Date(invoice.issuedAt).toLocaleDateString('id-ID')}</small></td>
           <td><strong>{invoice.subscription.school.name}</strong><small>{invoice.subscription.plan.name}</small></td>
           <td>{new Date(invoice.periodStart).toLocaleDateString('id-ID')} – {new Date(invoice.periodEnd).toLocaleDateString('id-ID')}</td>
           <td>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: invoice.currency, maximumFractionDigits: 0 }).format(Number(invoice.totalAmount))}</td>
           <td><span className={`status-badge status-${invoice.status.toLowerCase()}`}>{invoiceStatusLabels[invoice.status]}</span></td>
+          <td>{invoice.status === 'OPEN' ? <button className="primary-button compact-button" disabled={busy} onClick={() => void createCheckout(invoice.id)}>Bayar via Midtrans</button> : invoice.status === 'PAID' ? 'Selesai' : '—'}</td>
         </tr>)}</tbody>
       </table></div>
       {!invoices.length && <div className="empty-state compact"><strong>Belum ada invoice</strong><p>Invoice dari langganan aktif akan tampil di sini.</p></div>}
@@ -290,7 +303,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
         <button className="primary-button compact-button" disabled={busy} onClick={() => void createInvoice(item.id)}>Buat / lihat invoice</button>
       </div>)}</div>
       {!subscriptions.some(item => item.status === 'ACTIVE') && <p className="panel-footnote">Belum ada langganan aktif yang dapat ditagih. Masa trial tidak menghasilkan invoice.</p>}
-      <p className="panel-footnote">Pembuatan invoice bersifat idempoten per periode. Pembayaran dan aktivasi otomatis belum tersedia pada tahap ini.</p>
+      <p className="panel-footnote">Pembuatan invoice bersifat idempoten per periode. Checkout Midtrans Sandbox tersedia untuk invoice OPEN; status lunas hanya ditetapkan dari notifikasi backend yang tervalidasi.</p>
     </section>
 
     <section className="panel platform-school-panel">
