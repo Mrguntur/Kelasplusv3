@@ -6,6 +6,7 @@ on:
       - main
       - feat/platform-v2-foundation
       - feat/platform-v2-super-admin
+      - feat/platform-v2-subscription-foundation
     paths:
       - "services/api/**"
       - "infra/**"
