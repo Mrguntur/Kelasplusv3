@@ -22,7 +22,7 @@ export class BillingService {
   }
 
   async createPlan(adminUserId: string, input: CreatePlanDto) {
-    const code = input.code.trim().toUpperCase().replace(/\\s+/g, '_');
+    const code = input.code.trim().toUpperCase().replace(/\s+/g, '_');
     try {
       return await this.prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
@@ -152,4 +152,55 @@ export class BillingService {
       throw error;
     }
   }
+
+  async listSubscriptions(adminUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      return tx.subscription.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: {
+          id: true, status: true, billingInterval: true, priceAmount: true, currency: true,
+          startsAt: true, currentPeriodStart: true, currentPeriodEnd: true, trialEndsAt: true,
+          cancelAtPeriodEnd: true, canceledAt: true, endedAt: true, createdAt: true,
+          school: { select: { id: true, name: true, slug: true } },
+          plan: { select: { id: true, code: true, name: true } },
+        },
+      });
+    });
+  }
+
+  async expireDueTrials(adminUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      const now = new Date();
+      const dueTrials = await tx.subscription.findMany({
+        where: { status: 'TRIALING', trialEndsAt: { lte: now } },
+        orderBy: { trialEndsAt: 'asc' },
+        take: 100,
+        select: { id: true, schoolId: true, trialEndsAt: true },
+      });
+
+      const expiredIds: string[] = [];
+      for (const trial of dueTrials) {
+        const result = await tx.subscription.updateMany({
+          where: { id: trial.id, status: 'TRIALING', trialEndsAt: { lte: now } },
+          data: { status: 'EXPIRED', endedAt: now },
+        });
+        if (result.count !== 1) continue;
+        expiredIds.push(trial.id);
+        await this.audit.record({
+          actorUserId: adminUserId,
+          schoolId: trial.schoolId,
+          eventType: 'billing.trial_expired',
+          outcome: 'SUCCESS',
+          metadata: { subscriptionId: trial.id, trialEndsAt: trial.trialEndsAt?.toISOString() ?? null },
+        }, tx);
+      }
+      return { processed: dueTrials.length, expired: expiredIds.length, subscriptionIds: expiredIds };
+    });
+  }
+
 }
