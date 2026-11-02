@@ -43,6 +43,30 @@ type Plan = {
   currency: string;
 };
 
+type Invoice = {
+  id: string;
+  invoiceNumber: string;
+  status: 'DRAFT' | 'OPEN' | 'PAID' | 'VOID' | 'UNCOLLECTIBLE';
+  subtotalAmount: string | number;
+  taxAmount: string | number;
+  totalAmount: string | number;
+  currency: string;
+  issuedAt: string;
+  dueAt: string | null;
+  paidAt: string | null;
+  periodStart: string;
+  periodEnd: string;
+  subscription: {
+    school: { id: string; name: string; slug: string };
+    plan: { code: string; name: string };
+  };
+};
+
+const invoiceStatusLabels: Record<string, string> = {
+  DRAFT: 'Draft', OPEN: 'Menunggu pembayaran', PAID: 'Lunas',
+  VOID: 'Dibatalkan', UNCOLLECTIBLE: 'Tidak tertagih',
+};
+
 type Subscription = {
   id: string;
   status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
@@ -65,6 +89,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [trialSchoolId, setTrialSchoolId] = useState('');
   const [trialPlanId, setTrialPlanId] = useState('');
   const [trialDays, setTrialDays] = useState(14);
@@ -76,16 +101,18 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     setBusy(true);
     setError('');
     try {
-      const [summary, requests, publishedPlans, currentSubscriptions] = await Promise.all([
+      const [summary, requests, publishedPlans, currentSubscriptions, currentInvoices] = await Promise.all([
         api<PlatformOverview>('/schools/admin/overview'),
         api<Registration[]>('/schools/admin/registration-requests'),
         api<Plan[]>('/billing/plans'),
         api<Subscription[]>('/billing/admin/subscriptions'),
+        api<Invoice[]>('/billing/admin/invoices'),
       ]);
       setOverview(summary);
       setRegistrations(requests);
       setPlans(publishedPlans);
       setSubscriptions(currentSubscriptions);
+      setInvoices(currentInvoices);
       setTrialSchoolId(current => current || summary.schools[0]?.id || '');
       setTrialPlanId(current => current || publishedPlans[0]?.id || '');
     } catch (e) {
@@ -135,6 +162,20 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     }
   }
 
+
+  async function createInvoice(subscriptionId: string) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const invoice = await api<Invoice>(`/billing/admin/subscriptions/${subscriptionId}/invoice`, { method: 'POST' });
+      setNotice(`Invoice ${invoice.invoiceNumber} siap ditinjau. Status: ${invoiceStatusLabels[invoice.status]}.`);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invoice belum dapat diterbitkan.');
+      setBusy(false);
+    }
+  }
 
   async function expireTrials() {
     setBusy(true);
@@ -230,6 +271,28 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
       {!subscriptions.length && <div className="empty-state compact"><strong>Belum ada langganan</strong><p>Trial atau langganan sekolah akan muncul di sini.</p></div>}
       <p className="panel-footnote">Pemeriksaan trial saat ini dijalankan secara manual oleh Super Admin. Belum ada scheduler otomatis.</p>
     </section>
+    <section className="panel platform-school-panel">
+      <div className="panel-heading"><div><span className="eyebrow">BILLING</span><h2>Invoice & tagihan</h2></div><span className="count-pill">{invoices.length} invoice</span></div>
+      <div className="platform-school-table-wrap"><table className="platform-school-table">
+        <thead><tr><th>Nomor invoice</th><th>Sekolah / paket</th><th>Periode</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody>{invoices.map(invoice => <tr key={invoice.id}>
+          <td><strong>{invoice.invoiceNumber}</strong><small>Dibuat {new Date(invoice.issuedAt).toLocaleDateString('id-ID')}</small></td>
+          <td><strong>{invoice.subscription.school.name}</strong><small>{invoice.subscription.plan.name}</small></td>
+          <td>{new Date(invoice.periodStart).toLocaleDateString('id-ID')} – {new Date(invoice.periodEnd).toLocaleDateString('id-ID')}</td>
+          <td>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: invoice.currency, maximumFractionDigits: 0 }).format(Number(invoice.totalAmount))}</td>
+          <td><span className={`status-badge status-${invoice.status.toLowerCase()}`}>{invoiceStatusLabels[invoice.status]}</span></td>
+        </tr>)}</tbody>
+      </table></div>
+      {!invoices.length && <div className="empty-state compact"><strong>Belum ada invoice</strong><p>Invoice dari langganan aktif akan tampil di sini.</p></div>}
+      <div className="panel-heading"><div><span className="eyebrow">INVOICE GENERATION</span><h2>Terbitkan tagihan periode aktif</h2></div></div>
+      <div className="platform-registration-list">{subscriptions.filter(item => item.status === 'ACTIVE').map(item => <div className="platform-registration" key={item.id}>
+        <div><strong>{item.school.name}</strong><span>{item.plan.name} · {item.billingInterval === 'MONTHLY' ? 'Bulanan' : 'Tahunan'}</span></div>
+        <button className="primary-button compact-button" disabled={busy} onClick={() => void createInvoice(item.id)}>Buat / lihat invoice</button>
+      </div>)}</div>
+      {!subscriptions.some(item => item.status === 'ACTIVE') && <p className="panel-footnote">Belum ada langganan aktif yang dapat ditagih. Masa trial tidak menghasilkan invoice.</p>}
+      <p className="panel-footnote">Pembuatan invoice bersifat idempoten per periode. Pembayaran dan aktivasi otomatis belum tersedia pada tahap ini.</p>
+    </section>
+
     <section className="panel platform-school-panel">
       <div className="panel-heading"><div><span className="eyebrow">MULTI-TENANT</span><h2>Daftar sekolah</h2></div><span className="count-pill">{overview?.schools.length ?? 0} ditampilkan</span></div>
       <div className="platform-school-table-wrap"><table className="platform-school-table"><thead><tr><th>Sekolah</th><th>Status</th><th>Pengguna</th><th>Siswa</th><th>Kelas</th></tr></thead><tbody>
