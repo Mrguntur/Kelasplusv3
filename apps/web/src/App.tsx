@@ -28,7 +28,7 @@ const metricLabels: Record<string, string> = {
 const metricIcons = [Users, GraduationCap, UserRound, ClipboardCheck, BookOpenCheck, CheckCircle2];
 
 export default function App() {
-  const invitationPath = window.location.pathname.replace(/\\/+$/, '');
+  const invitationPath = window.location.pathname.replace(/\/+$/, '');
   const isTeacherInvitationRoute = invitationPath.endsWith('/teacher-invite/accept');
   const isInvitationRoute = invitationPath.endsWith('/invite/accept');
   const [view, setView] = useState<ViewState>('loading');
@@ -88,7 +88,7 @@ export default function App() {
     }
   }, [loadSchools]);
 
-  useEffect(() => { if (!isInvitationRoute) void bootstrap(); }, [bootstrap, isInvitationRoute]);
+  useEffect(() => { if (!isInvitationRoute && !isTeacherInvitationRoute) void bootstrap(); }, [bootstrap, isInvitationRoute, isTeacherInvitationRoute]);
 
   const activeRole = school?.role ?? '';
   const quickAccess: Array<{ tab: AcademicTab; label: string; description: string }> =
