@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreatePlanDto {
   @IsString()
@@ -72,6 +72,7 @@ export class UpdatePlanDto {
   @IsOptional()
   @IsString()
   @MaxLength(3)
+  @Matches(/^[A-Za-z]{3}$/)
   currency?: string;
 
   @IsOptional()
@@ -96,4 +97,17 @@ export class UpdatePlanDto {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+}
+
+export class AssignTrialSubscriptionDto {
+  @IsUUID()
+  schoolId!: string;
+
+  @IsUUID()
+  planId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  trialDays!: number;
 }
