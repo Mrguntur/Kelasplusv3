@@ -226,7 +226,7 @@ BEGIN;
 SELECT set_config('app.current_user_id','',true);
 SELECT set_config('app.current_school_id','',true);
 SELECT set_config('app.invitation_token_hash',repeat('c',64),true);
-DO $
+DO $$
 DECLARE visible_teacher_invitations integer;
 BEGIN
   SELECT count(*) INTO visible_teacher_invitations FROM "teacher_invitations";
@@ -235,16 +235,16 @@ BEGIN
   END IF;
   UPDATE "teacher_invitations" SET "accepted_at" = now()
     WHERE "token_hash" = repeat('c',64);
-END $;
+END $$;
 SELECT set_config('app.invitation_token_hash','',true);
-DO $
+DO $$
 DECLARE visible_teacher_invitations integer;
 BEGIN
   SELECT count(*) INTO visible_teacher_invitations FROM "teacher_invitations";
   IF visible_teacher_invitations <> 0 THEN
     RAISE EXCEPTION 'RLS failure: teacher invitation visible after clearing token context';
   END IF;
-END $;
+END $$;
 ROLLBACK;
 RESET ROLE;
 
