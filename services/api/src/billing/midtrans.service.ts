@@ -248,8 +248,11 @@ export class MidtransService {
       else if (transactionStatus === 'refund') nextStatus = 'REFUNDED';
       else if (transactionStatus === 'partial_refund') nextStatus = 'PARTIALLY_REFUNDED';
 
-      // Never let a delayed non-success notification downgrade a settled payment.
-      if (payment.status === 'SUCCEEDED' && nextStatus !== 'REFUNDED') nextStatus = 'SUCCEEDED';
+      // Preserve terminal refund states against delayed/out-of-order settlement notifications.
+      if (payment.status === 'REFUNDED' && nextStatus !== 'REFUNDED') nextStatus = 'REFUNDED';
+      else if (payment.status === 'PARTIALLY_REFUNDED' && !['REFUNDED', 'PARTIALLY_REFUNDED'].includes(nextStatus)) nextStatus = 'PARTIALLY_REFUNDED';
+      // Delayed pending/deny/expire events must not downgrade a successful payment.
+      else if (payment.status === 'SUCCEEDED' && !['REFUNDED', 'PARTIALLY_REFUNDED'].includes(nextStatus)) nextStatus = 'SUCCEEDED';
 
       // Midtrans may retry the same event. After the row lock, identical states are acknowledged without a second write/audit event.
       if (payment.status === nextStatus) {
