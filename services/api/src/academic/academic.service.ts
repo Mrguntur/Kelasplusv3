@@ -270,7 +270,7 @@ export class AcademicService {
         include: {
           academicYear: { select: { id: true, name: true, status: true } },
           homeroomStaff: { select: { id: true, displayName: true } },
-          _count: { select: { enrollments: true } },
+          _count: { select: { enrollments: { where: { status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } } } } },
         },
       });
     });
