@@ -8,6 +8,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { SchoolsModule } from './schools/schools.module';
 import { AuditModule } from './audit/audit.module';
 import { AcademicModule } from './academic/academic.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AcademicModule } from './academic/academic.module';
     SchoolsModule,
     AuditModule,
     AcademicModule,
+    BillingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
