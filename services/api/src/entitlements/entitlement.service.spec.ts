@@ -38,6 +38,34 @@ describe('EntitlementService', () => {
     expect(snapshot.quotas.classes).toEqual({ used: 1, limit: 1 });
   });
 
+  it('allows tenant access only while the school subscription or trial is valid', async () => {
+    await expect(service.assertSchoolAccess(transaction(), schoolId)).resolves.toBeUndefined();
+
+    const pastDue = transaction({
+      subscription: { findFirst: jest.fn().mockResolvedValue({
+        status: 'PAST_DUE',
+        currentPeriodEnd: new Date(Date.now() + 86_400_000),
+        trialEndsAt: null,
+        plan: { id: 'plan-1', code: 'BASIC', name: 'Basic', maxUsers: 5, maxStudents: 2, maxClasses: 1, features: {} },
+      }) },
+    });
+    await expect(service.assertSchoolAccess(pastDue, schoolId)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('marks an expired trial as EXPIRED using trialEndsAt', async () => {
+    const tx = transaction({
+      subscription: { findFirst: jest.fn().mockResolvedValue({
+        status: 'TRIALING',
+        currentPeriodEnd: new Date(Date.now() + 86_400_000),
+        trialEndsAt: new Date(Date.now() - 1),
+        plan: { id: 'plan-1', code: 'BASIC', name: 'Basic', maxUsers: 5, maxStudents: 2, maxClasses: 1, features: {} },
+      }) },
+    });
+    const snapshot = await service.getSnapshot(tx, schoolId);
+    expect(snapshot.access.allowed).toBe(false);
+    expect(snapshot.subscriptionStatus).toBe('EXPIRED');
+  });
+
   it('blocks creating resources when the configured quota is reached', async () => {
     await expect(service.assertCanCreate(transaction(), schoolId, 'students'))
       .rejects.toBeInstanceOf(ForbiddenException);
