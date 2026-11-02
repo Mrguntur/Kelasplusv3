@@ -352,7 +352,8 @@ export class AuthService {
     actor: { id: string; activeSchoolId?: string | null },
     input: { email: string; displayName: string },
   ) {
-    if (!actor.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengundang guru.');
+    const activeSchoolId = activeSchoolId;
+    if (!activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengundang guru.');
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
     if (displayName.length < 2) throw new ForbiddenException('Nama guru tidak valid.');
@@ -368,7 +369,7 @@ export class AuthService {
         where: { userId: actor.id, schoolId: actor.activeSchoolId },
         select: { role: true },
       });
-      if (!membership || ![SchoolRole.SCHOOL_ADMIN, SchoolRole.SCHOOL_LEADER].includes(membership.role)) {
+      if (!membership || (membership.role !== SchoolRole.SCHOOL_ADMIN && membership.role !== SchoolRole.SCHOOL_LEADER)) {
         throw new ForbiddenException('Hanya Admin Sekolah atau Pimpinan Sekolah yang dapat mengundang guru.');
       }
       const school = await tx.school.findFirst({
