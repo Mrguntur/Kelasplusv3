@@ -10,6 +10,8 @@ describe('MidtransService notification verification', () => {
   const audit = { record: jest.fn() };
   const service = new MidtransService(config as unknown as ConfigService, prisma as never, audit as never);
 
+  beforeEach(() => jest.clearAllMocks());
+
   function signed(overrides: Record<string, unknown> = {}) {
     const body = {
       order_id: 'KLS-INV-123',
