@@ -19,6 +19,9 @@ import { CurrentUser } from './current-user.decorator';
 import { SessionAuthGuard } from './session-auth.guard';
 import { ChangePasswordDto } from './change-password.dto';
 import { SelectSchoolDto } from './select-school.dto';
+import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
+import { CreateTeacherInvitationDto } from './dto/create-teacher-invitation.dto';
+import { AcceptTeacherInvitationDto } from './dto/accept-teacher-invitation.dto';
 
 const SESSION_COOKIE = 'kelasplus_session';
 
@@ -69,6 +72,63 @@ export class AuthController {
     const token = request.cookies?.[SESSION_COOKIE] as string | undefined;
     if (!token) throw new ForbiddenException('Sesi autentikasi diperlukan.');
     return this.authService.selectSchool(token, body.schoolId);
+  }
+
+
+  @Get('invitations/preview')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  previewInvitation(@Req() request: Request) {
+    const token = typeof request.query.token === 'string' ? request.query.token : '';
+    if (token.length < 32 || token.length > 256) {
+      throw new ForbiddenException('Tautan undangan tidak valid.');
+    }
+    return this.authService.previewSchoolAdminInvitation(token);
+  }
+
+  @Post('invitations/accept')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  async acceptInvitation(
+    @Body() body: AcceptSchoolAdminInvitationDto,
+    @Req() request: Request,
+  ) {
+    this.assertTrustedOrigin(request);
+    return this.authService.acceptSchoolAdminInvitation(body);
+  }
+
+
+  @Post('invitations/teachers')
+  @UseGuards(SessionAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.CREATED)
+  async createTeacherInvitation(
+    @CurrentUser() user: { id: string; activeSchoolId?: string | null },
+    @Body() body: CreateTeacherInvitationDto,
+    @Req() request: Request,
+  ) {
+    this.assertTrustedOrigin(request);
+    return this.authService.createTeacherInvitation(user, body);
+  }
+
+  @Get('teacher-invitations/preview')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  previewTeacherInvitation(@Req() request: Request) {
+    const token = typeof request.query.token === 'string' ? request.query.token : '';
+    if (token.length < 32 || token.length > 256) {
+      throw new ForbiddenException('Tautan undangan guru tidak valid.');
+    }
+    return this.authService.previewTeacherInvitation(token);
+  }
+
+  @Post('teacher-invitations/accept')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  async acceptTeacherInvitation(
+    @Body() body: AcceptTeacherInvitationDto,
+    @Req() request: Request,
+  ) {
+    this.assertTrustedOrigin(request);
+    return this.authService.acceptTeacherInvitation(body);
   }
 
   @Post('change-password')

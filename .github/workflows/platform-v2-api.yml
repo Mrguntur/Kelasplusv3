@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - feat/platform-v2-foundation
     paths:
       - "services/api/**"
       - "infra/**"

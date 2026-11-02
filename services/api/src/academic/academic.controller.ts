@@ -1,12 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AcademicService } from './academic.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
+import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { TransferEnrollmentDto } from './dto/transfer-enrollment.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
+import { UpdateStaffProfileDto } from './dto/update-staff-profile.dto';
+import { SetClassHomeroomDto } from './dto/set-class-homeroom.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -33,6 +38,11 @@ export class AcademicController {
     return this.academic.createAcademicYear(user, body);
   }
 
+  @Patch('years/:yearId')
+  updateAcademicYear(@CurrentUser() user: AuthenticatedUser, @Param('yearId', new ParseUUIDPipe()) yearId: string, @Body() body: UpdateAcademicYearDto) {
+    return this.academic.updateAcademicYear(user, yearId, body);
+  }
+
   @Get('years/:yearId/terms')
   listTerms(
     @CurrentUser() user: AuthenticatedUser,
@@ -49,6 +59,11 @@ export class AcademicController {
     @Body() body: CreateTermDto,
   ) {
     return this.academic.createTerm(user, yearId, body);
+  }
+
+  @Patch('students/:studentId')
+  updateStudent(@CurrentUser() user: AuthenticatedUser, @Param('studentId', new ParseUUIDPipe()) studentId: string, @Body() body: UpdateStudentDto) {
+    return this.academic.updateStudent(user, studentId, body);
   }
 
   @Get('students')
@@ -79,6 +94,11 @@ export class AcademicController {
     return this.academic.listStaffProfiles(user);
   }
 
+  @Patch('staff/:staffProfileId')
+  updateStaffProfile(@CurrentUser() user: AuthenticatedUser, @Param('staffProfileId', new ParseUUIDPipe()) staffProfileId: string, @Body() body: UpdateStaffProfileDto) {
+    return this.academic.updateStaffProfile(user, staffProfileId, body);
+  }
+
   @Post('staff')
   @HttpCode(HttpStatus.CREATED)
   createStaffProfile(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateStaffProfileDto) {
@@ -103,10 +123,20 @@ export class AcademicController {
     return this.academic.listTeachingAssignments(user);
   }
 
+  @Get('my-classes')
+  listMyClasses(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.listMyClasses(user);
+  }
+
   @Post('teaching-assignments')
   @HttpCode(HttpStatus.CREATED)
   createTeachingAssignment(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateTeachingAssignmentDto) {
     return this.academic.createTeachingAssignment(user, body);
+  }
+
+  @Patch('classes/:classId/homeroom')
+  setClassHomeroom(@CurrentUser() user: AuthenticatedUser, @Param('classId', new ParseUUIDPipe()) classId: string, @Body() body: SetClassHomeroomDto) {
+    return this.academic.setClassHomeroom(user, classId, body.staffProfileId ?? null);
   }
 
   @Get('classes/:classId/enrollments')
@@ -127,6 +157,16 @@ export class AcademicController {
     return this.academic.enrollStudent(user, classId, body);
   }
 
+
+  @Patch('enrollments/:enrollmentId/end')
+  endStudentEnrollment(@CurrentUser() user: AuthenticatedUser, @Param('enrollmentId', new ParseUUIDPipe()) enrollmentId: string) {
+    return this.academic.endStudentEnrollment(user, enrollmentId);
+  }
+
+  @Patch('enrollments/:enrollmentId/transfer')
+  transferStudentEnrollment(@CurrentUser() user: AuthenticatedUser, @Param('enrollmentId', new ParseUUIDPipe()) enrollmentId: string, @Body() body: TransferEnrollmentDto) {
+    return this.academic.transferStudentEnrollment(user, enrollmentId, body);
+  }
 
   @Get('classes/:classId/attendance-sessions')
   listAttendanceSessions(

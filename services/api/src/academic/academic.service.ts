@@ -7,6 +7,9 @@ import {
 } from '@nestjs/common';
 import { AcademicYearStatus, Prisma, SchoolRole } from '@prisma/client';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
+import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { TransferEnrollmentDto } from './dto/transfer-enrollment.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -14,6 +17,7 @@ import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
+import { UpdateStaffProfileDto } from './dto/update-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -46,7 +50,10 @@ export class AcademicService {
   async listAcademicYears(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Guru tidak memiliki akses ke pengelolaan tahun ajaran.');
+      }
       return tx.academicYear.findMany({
         where: { schoolId: user.activeSchoolId! },
         orderBy: [{ startDate: 'desc' }, { name: 'asc' }],
@@ -92,10 +99,36 @@ export class AcademicService {
     });
   }
 
+  async updateAcademicYear(user: AuthenticatedUser, yearId: string, input: UpdateAcademicYearDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah tahun ajaran.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.academicYear.findFirst({ where: { id: yearId, schoolId: user.activeSchoolId! } });
+      if (!current) throw new BadRequestException('Tahun ajaran tidak ditemukan di sekolah aktif.');
+      const name = input.name?.trim() ?? current.name;
+      const startDate = input.startDate ? new Date(input.startDate) : current.startDate;
+      const endDate = input.endDate ? new Date(input.endDate) : current.endDate;
+      const status = input.status ?? current.status;
+      if (endDate < startDate) throw new BadRequestException('Tanggal akhir harus sama dengan atau setelah tanggal mulai.');
+      if (status === 'ACTIVE' && current.status !== 'ACTIVE') {
+        const active = await tx.academicYear.findFirst({ where: { schoolId: user.activeSchoolId!, status: AcademicYearStatus.ACTIVE, id: { not: yearId } }, select: { id: true } });
+        if (active) throw new ConflictException('Sekolah sudah memiliki tahun ajaran aktif.');
+      }
+      const duplicate = await tx.academicYear.findFirst({ where: { schoolId: user.activeSchoolId!, name, id: { not: yearId } }, select: { id: true } });
+      if (duplicate) throw new ConflictException('Nama tahun ajaran sudah digunakan di sekolah ini.');
+      const updated = await tx.academicYear.update({ where: { schoolId_id: { schoolId: user.activeSchoolId!, id: yearId } }, data: { name, startDate, endDate, status } });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.year_updated', outcome: 'SUCCESS', metadata: { academicYearId: yearId, changes: Object.keys(input) } }, tx);
+      return updated;
+    });
+  }
+
   async listTerms(user: AuthenticatedUser, yearId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Guru tidak memiliki akses ke data semester sekolah.');
+      }
       const year = await tx.academicYear.findFirst({
         where: { id: yearId, schoolId: user.activeSchoolId! },
         select: { id: true },
@@ -152,7 +185,10 @@ export class AcademicService {
   async listStudents(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Akses daftar siswa guru harus melalui kelas dan penugasan mengajar.');
+      }
       return tx.student.findMany({
         where: { schoolId: user.activeSchoolId!, archivedAt: null },
         orderBy: [{ fullName: 'asc' }, { studentNumber: 'asc' }],
@@ -194,10 +230,39 @@ export class AcademicService {
     });
   }
 
+  async updateStudent(user: AuthenticatedUser, studentId: string, input: UpdateStudentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah data siswa.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.student.findFirst({ where: { id: studentId, schoolId: user.activeSchoolId!, archivedAt: null }, select: { id: true } });
+      if (!current) throw new BadRequestException('Siswa tidak ditemukan di sekolah aktif.');
+      try {
+        const updated = await tx.student.update({
+          where: { schoolId_id: { schoolId: user.activeSchoolId!, id: studentId } },
+          data: {
+            ...(input.fullName !== undefined ? { fullName: input.fullName.trim() } : {}),
+            ...(input.studentNumber !== undefined ? { studentNumber: input.studentNumber?.trim() || null } : {}),
+            ...(input.preferredName !== undefined ? { preferredName: input.preferredName?.trim() || null } : {}),
+            ...(input.birthDate !== undefined ? { birthDate: input.birthDate ? new Date(input.birthDate) : null } : {}),
+          },
+          select: { id: true, studentNumber: true, fullName: true, preferredName: true, status: true, createdAt: true },
+        });
+        await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_updated', outcome: 'SUCCESS', metadata: { studentId, changes: Object.keys(input) } }, tx);
+        return updated;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Nomor induk siswa sudah digunakan di sekolah ini.');
+        throw error;
+      }
+    });
+  }
+
   async listClasses(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Akses daftar kelas guru harus melalui penugasan mengajar.');
+      }
       return tx.schoolClass.findMany({
         where: { schoolId: user.activeSchoolId! },
         orderBy: [{ academicYear: { startDate: 'desc' } }, { gradeLevel: 'asc' }, { name: 'asc' }],
@@ -205,7 +270,7 @@ export class AcademicService {
         include: {
           academicYear: { select: { id: true, name: true, status: true } },
           homeroomStaff: { select: { id: true, displayName: true } },
-          _count: { select: { enrollments: true } },
+          _count: { select: { enrollments: { where: { status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } } } } },
         },
       });
     });
@@ -255,13 +320,63 @@ export class AcademicService {
   async listStaffProfiles(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
+        ? { schoolId: user.activeSchoolId! }
+        : { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' as const };
       return tx.staffProfile.findMany({
-        where: { schoolId: user.activeSchoolId!, status: 'ACTIVE' },
+        where,
         orderBy: { displayName: 'asc' },
         take: 200,
-        select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true },
+        select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true, updatedAt: true },
       });
+    });
+  }
+
+  async updateStaffProfile(user: AuthenticatedUser, staffProfileId: string, input: UpdateStaffProfileDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah profil staf.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.staffProfile.findFirst({ where: { id: staffProfileId, schoolId: user.activeSchoolId! }, select: { id: true, userId: true, status: true } });
+      if (!current) throw new BadRequestException('Profil staf tidak ditemukan di sekolah aktif.');
+      try {
+        const updated = await tx.staffProfile.update({
+          where: { id: current.id },
+          data: {
+            displayName: input.displayName.trim(),
+            employeeNumber: input.employeeNumber?.trim() || null,
+            status: input.status,
+          },
+          select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, updatedAt: true },
+        });
+        await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.staff_profile_updated', outcome: 'SUCCESS', metadata: { staffProfileId, status: updated.status } }, tx);
+        return updated;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('Nomor pegawai sudah digunakan oleh staf lain di sekolah ini.');
+        }
+        throw error;
+      }
+    });
+  }
+
+  async setClassHomeroom(user: AuthenticatedUser, classId: string, staffProfileId: string | null) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menetapkan wali kelas.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const schoolClass = await tx.schoolClass.findFirst({ where: { id: classId, schoolId: user.activeSchoolId! }, select: { id: true, name: true, homeroomStaffProfileId: true } });
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+      if (staffProfileId) {
+        const staff = await tx.staffProfile.findFirst({ where: { id: staffProfileId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true } });
+        if (!staff) throw new BadRequestException('Wali kelas harus merupakan profil staf aktif di sekolah ini.');
+      }
+      const updated = await tx.schoolClass.update({
+        where: { id: schoolClass.id },
+        data: { homeroomStaffProfileId: staffProfileId },
+        include: { homeroomStaff: { select: { id: true, displayName: true, employeeNumber: true } } },
+      });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.class_homeroom_updated', outcome: 'SUCCESS', metadata: { classId, previousStaffProfileId: schoolClass.homeroomStaffProfileId, staffProfileId } }, tx);
+      return updated;
     });
   }
 
@@ -364,6 +479,39 @@ export class AcademicService {
           subject: { select: { id: true, code: true, name: true } },
           staffProfile: { select: { id: true, displayName: true, employeeNumber: true } },
           term: { select: { id: true, name: true, sequence: true } },
+        },
+      });
+    });
+  }
+
+  async listMyClasses(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses kelas saya.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role !== SchoolRole.TEACHER) {
+        throw new ForbiddenException('Fitur Kelas Saya ditujukan untuk akun guru.');
+      }
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!staff) return [];
+      return tx.teachingAssignment.findMany({
+        where: { schoolId: user.activeSchoolId!, staffProfileId: staff.id, archivedAt: null, schoolClass: { status: 'ACTIVE' } },
+        orderBy: [{ schoolClass: { gradeLevel: 'asc' } }, { schoolClass: { name: 'asc' } }, { subject: { name: 'asc' } }],
+        take: 300,
+        select: {
+          id: true,
+          term: { select: { id: true, name: true, sequence: true } },
+          subject: { select: { id: true, name: true, code: true } },
+          schoolClass: {
+            select: {
+              id: true, name: true, gradeLevel: true,
+              academicYear: { select: { id: true, name: true, status: true } },
+              homeroomStaff: { select: { displayName: true } },
+              _count: { select: { enrollments: { where: { status: 'ACTIVE', student: { status: 'ACTIVE', archivedAt: null } } } } },
+            },
+          },
         },
       });
     });
@@ -518,15 +666,73 @@ export class AcademicService {
   }
 
 
+  async endStudentEnrollment(user: AuthenticatedUser, enrollmentId: string) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah penempatan siswa.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const enrollment = await tx.classEnrollment.findFirst({ where: { id: enrollmentId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true, classId: true, studentId: true } });
+      if (!enrollment) throw new BadRequestException('Penempatan siswa aktif tidak ditemukan.');
+      const ended = await tx.classEnrollment.update({ where: { id: enrollment.id }, data: { status: 'ENDED', leftAt: new Date() }, select: { id: true, classId: true, studentId: true, status: true, leftAt: true } });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_removed_from_class', outcome: 'SUCCESS', metadata: { enrollmentId, classId: enrollment.classId, studentId: enrollment.studentId } }, tx);
+      return ended;
+    });
+  }
+
+  async transferStudentEnrollment(user: AuthenticatedUser, enrollmentId: string, input: TransferEnrollmentDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum memindahkan siswa.');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.establishTenant(tx, user, true);
+        const current = await tx.classEnrollment.findFirst({ where: { id: enrollmentId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true, classId: true, studentId: true } });
+        if (!current) throw new BadRequestException('Penempatan siswa aktif tidak ditemukan.');
+        if (current.classId === input.targetClassId) throw new BadRequestException('Siswa sudah berada di kelas tujuan.');
+        const target = await tx.schoolClass.findFirst({ where: { id: input.targetClassId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true } });
+        if (!target) throw new BadRequestException('Kelas tujuan tidak ditemukan atau tidak aktif di sekolah ini.');
+        const existing = await tx.classEnrollment.findFirst({ where: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId, status: 'ACTIVE' }, select: { id: true } });
+        if (existing) throw new ConflictException('Siswa sudah terdaftar aktif di kelas tujuan.');
+        await tx.classEnrollment.update({ where: { id: current.id }, data: { status: 'ENDED', leftAt: new Date() } });
+        const next = await tx.classEnrollment.create({ data: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId }, select: { id: true, classId: true, studentId: true, enrolledAt: true, status: true } });
+        await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_transferred_class', outcome: 'SUCCESS', metadata: { studentId: current.studentId, fromClassId: current.classId, toClassId: input.targetClassId, previousEnrollmentId: current.id, newEnrollmentId: next.id } }, tx);
+        return next;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) {
+        throw new ConflictException('Penempatan siswa berubah bersamaan. Muat ulang data kelas, lalu coba pindahkan siswa kembali.');
+      }
+      throw error;
+    }
+  }
+
   async listAttendanceSessions(user: AuthenticatedUser, classId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
       const schoolClass = await tx.schoolClass.findFirst({
         where: { id: classId, schoolId: user.activeSchoolId! },
-        select: { id: true },
+        select: { id: true, homeroomStaffProfileId: true },
       });
       if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+      const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
+      if (!privileged) {
+        if (membership.role !== SchoolRole.TEACHER) {
+          throw new ForbiddenException('Peran akun ini tidak memiliki akses ke riwayat presensi kelas.');
+        }
+        const [assignment, homeroom] = await Promise.all([
+          tx.teachingAssignment.findFirst({
+            where: { schoolId: user.activeSchoolId!, classId, archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' } },
+            select: { id: true },
+          }),
+          schoolClass.homeroomStaffProfileId
+            ? tx.staffProfile.findFirst({
+                where: { id: schoolClass.homeroomStaffProfileId, schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        if (!assignment && !homeroom) {
+          throw new ForbiddenException('Riwayat presensi hanya dapat diakses oleh guru yang ditugaskan pada kelas tersebut, wali kelas, atau pimpinan sekolah.');
+        }
+      }
       return tx.attendanceSession.findMany({
         where: { schoolId: user.activeSchoolId!, classId },
         orderBy: [{ date: 'desc' }, { sessionLabel: 'asc' }],
@@ -836,7 +1042,9 @@ export class AcademicService {
       const membership = await this.establishTenant(tx, user);
       const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
         ? { schoolId: user.activeSchoolId! }
-        : { schoolId: user.activeSchoolId!, assignment: { staffProfile: { userId: user.id } } };
+        : membership.role === SchoolRole.TEACHER
+          ? { schoolId: user.activeSchoolId!, assignment: { archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' as const } } }
+          : (() => { throw new ForbiddenException('Peran akun ini tidak memiliki akses ke penilaian.'); })();
       return tx.assessment.findMany({
         where,
         orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],

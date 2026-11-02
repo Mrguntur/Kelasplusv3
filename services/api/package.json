@@ -14,7 +14,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
-    "prisma:migrate:dev": "prisma migrate dev"
+    "prisma:migrate:dev": "prisma migrate dev",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -52,5 +53,8 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "@types/cookie-parser": "^1.4.8"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

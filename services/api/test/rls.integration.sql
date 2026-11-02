@@ -6,7 +6,7 @@ GRANT USAGE ON SCHEMA public TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessions", "users" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "audit_events" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE ON "school_registration_requests" TO kelasplus_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON "school_admin_invitations" TO kelasplus_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "school_admin_invitations", "teacher_invitations" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" TO kelasplus_runtime;
 
 -- Seed fixtures as the migration/database owner, never as the runtime role.
@@ -71,6 +71,18 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege OR foreign_key_violation THEN
     NULL;
   END;
+
+
+  INSERT INTO "teacher_invitations"
+    ("id","school_id","email","display_name","token_hash","expires_at","created_by","created_at")
+  VALUES
+    ('cccccccc-cccc-4ccc-8ccc-cccccccccc91','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','new-teacher@example.test','New Teacher',repeat('c',64),now() + interval '3 days','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',now());
+  IF (SELECT count(*) FROM "teacher_invitations") <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: School A should see only its teacher invitation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "teacher_invitations" WHERE "school_id" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') THEN
+    RAISE EXCEPTION 'RLS failure: School A can see School B teacher invitations';
+  END IF;
 
   IF EXISTS (SELECT 1 FROM "schools" WHERE "id" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') THEN
     RAISE EXCEPTION 'RLS failure: School A can see School B';
@@ -207,6 +219,42 @@ WHERE "id" = 'cccccccc-cccc-4ccc-8ccc-cccccccccc61';
 ROLLBACK;
 RESET ROLE;
 
+
+-- Seed the bearer-token fixture as the database owner after the tenant-management
+-- transaction rolled back; the token test below must exercise the persisted row.
+INSERT INTO "teacher_invitations"
+  ("id","school_id","email","display_name","token_hash","expires_at","created_by","created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc91','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','new-teacher@example.test','New Teacher',repeat('c',64),now() + interval '3 days','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',now());
+
+-- Teacher invitation acceptance context can access only the row matching its token digest.
+SET ROLE kelasplus_runtime;
+BEGIN;
+SELECT set_config('app.current_user_id','',true);
+SELECT set_config('app.current_school_id','',true);
+SELECT set_config('app.invitation_token_hash',repeat('c',64),true);
+DO $$
+DECLARE visible_teacher_invitations integer;
+BEGIN
+  SELECT count(*) INTO visible_teacher_invitations FROM "teacher_invitations";
+  IF visible_teacher_invitations <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: matching teacher token should expose exactly one invitation, got %', visible_teacher_invitations;
+  END IF;
+  UPDATE "teacher_invitations" SET "accepted_at" = now()
+    WHERE "token_hash" = repeat('c',64);
+END $$;
+SELECT set_config('app.invitation_token_hash','',true);
+DO $$
+DECLARE visible_teacher_invitations integer;
+BEGIN
+  SELECT count(*) INTO visible_teacher_invitations FROM "teacher_invitations";
+  IF visible_teacher_invitations <> 0 THEN
+    RAISE EXCEPTION 'RLS failure: teacher invitation visible after clearing token context';
+  END IF;
+END $$;
+ROLLBACK;
+RESET ROLE;
+
 -- A session cannot point at a school that does not exist.
 SET ROLE kelasplus_runtime;
 BEGIN;
@@ -278,4 +326,4 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
-REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations", "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" FROM kelasplus_runtime;
+REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations", "teacher_invitations", "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" FROM kelasplus_runtime;
