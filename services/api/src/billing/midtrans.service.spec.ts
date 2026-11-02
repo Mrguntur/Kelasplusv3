@@ -54,6 +54,7 @@ describe('MidtransService notification verification', () => {
     };
     const tx = {
       $executeRaw: jest.fn(),
+      $queryRaw: jest.fn(),
       payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn().mockResolvedValue({}) },
       invoice: { update: jest.fn().mockResolvedValue({}) },
     };
@@ -89,6 +90,32 @@ describe('MidtransService notification verification', () => {
     await expect(service.handleNotification(signed({ gross_amount: '1.00' })))
       .rejects.toThrow('Nominal atau mata uang notifikasi tidak cocok');
     expect(tx.payment.update).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges a repeated settlement without writing payment or audit twice', async () => {
+    const payment = {
+      id: 'payment-1', invoiceId: 'invoice-1', status: 'SUCCEEDED',
+      amount: new Prisma.Decimal('125000'), currency: 'IDR', paidAt: new Date(),
+      invoice: { id: 'invoice-1', status: 'PAID', subscription: { schoolId: 'school-1' } },
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      $queryRaw: jest.fn(),
+      payment: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'payment-1' }),
+        findUnique: jest.fn().mockResolvedValue(payment),
+        update: jest.fn(),
+      },
+      invoice: { update: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+
+    const result = await service.handleNotification(signed({ transaction_id: 'midtrans-tx-1' }));
+
+    expect(result).toEqual({ received: true, duplicate: true, paymentStatus: 'SUCCEEDED' });
+    expect(tx.payment.update).not.toHaveBeenCalled();
+    expect(tx.invoice.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('uses the Sandbox configuration by default', () => {
