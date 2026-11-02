@@ -48,6 +48,21 @@ export class BillingController {
     return this.billing.listSubscriptions(user.id);
   }
 
+  @Get('admin/invoices')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  listInvoices(@CurrentUser() user: { id: string }) {
+    return this.billing.listInvoices(user.id);
+  }
+
+  @Post('admin/subscriptions/:id/invoice')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  generateInvoice(
+    @CurrentUser() user: { id: string },
+    @Param('id', new ParseUUIDPipe()) subscriptionId: string,
+  ) {
+    return this.billing.generateInvoice(user.id, subscriptionId);
+  }
+
   @Post('admin/subscriptions/expire-trials')
   @UseGuards(SessionAuthGuard, PlatformAdminGuard)
   expireDueTrials(@CurrentUser() user: { id: string }) {
