@@ -270,6 +270,11 @@ export class AcademicController {
   }
 
 
+  @Get('entitlements/current')
+  getCurrentEntitlements(@CurrentUser() user: AuthenticatedUser) {
+    return this.academic.getCurrentEntitlements(user);
+  }
+
   @Get('dashboard/summary')
   getDashboardSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.academic.getDashboardSummary(user);
