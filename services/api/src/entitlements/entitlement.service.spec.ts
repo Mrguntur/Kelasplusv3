@@ -43,6 +43,14 @@ describe('EntitlementService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('blocks adding a school member when the configured user quota is reached', async () => {
+    const tx = transaction({
+      schoolMembership: { count: jest.fn().mockResolvedValue(5) },
+    });
+    await expect(service.assertCanCreate(tx, schoolId, 'users'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('blocks access when the subscription is past due', async () => {
     const tx = transaction({
       subscription: {
