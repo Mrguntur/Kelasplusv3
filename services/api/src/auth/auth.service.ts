@@ -352,7 +352,7 @@ export class AuthService {
     actor: { id: string; activeSchoolId?: string | null },
     input: { email: string; displayName: string },
   ) {
-    const activeSchoolId = activeSchoolId;
+    const activeSchoolId = actor.activeSchoolId;
     if (!activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengundang guru.');
     const email = input.email.trim().toLowerCase();
     const displayName = input.displayName.trim();
@@ -364,33 +364,33 @@ export class AuthService {
 
     const invitation = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${actor.id}, true)`;
-      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${actor.activeSchoolId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${activeSchoolId}, true)`;
       const membership = await tx.schoolMembership.findFirst({
-        where: { userId: actor.id, schoolId: actor.activeSchoolId },
+        where: { userId: actor.id, schoolId: activeSchoolId },
         select: { role: true },
       });
       if (!membership || (membership.role !== SchoolRole.SCHOOL_ADMIN && membership.role !== SchoolRole.SCHOOL_LEADER)) {
         throw new ForbiddenException('Hanya Admin Sekolah atau Pimpinan Sekolah yang dapat mengundang guru.');
       }
       const school = await tx.school.findFirst({
-        where: { id: actor.activeSchoolId, status: SchoolStatus.ACTIVE },
+        where: { id: activeSchoolId, status: SchoolStatus.ACTIVE },
         select: { id: true },
       });
       if (!school) throw new ForbiddenException('Sekolah tidak aktif.');
       const existingUser = await tx.user.findUnique({ where: { email }, select: { id: true } });
       if (existingUser) throw new ConflictException('Email sudah terdaftar. Gunakan proses penautan akun yang terverifikasi.');
       const pending = await tx.teacherInvitation.findFirst({
-        where: { schoolId: actor.activeSchoolId, email, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
+        where: { schoolId: activeSchoolId, email, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
         select: { id: true },
       });
       if (pending) throw new ConflictException('Undangan aktif untuk email ini sudah tersedia.');
       const created = await tx.teacherInvitation.create({
-        data: { schoolId: actor.activeSchoolId, email, displayName, tokenHash, expiresAt, createdBy: actor.id },
+        data: { schoolId: activeSchoolId, email, displayName, tokenHash, expiresAt, createdBy: actor.id },
         select: { id: true, email: true, displayName: true, expiresAt: true },
       });
       await this.audit.record({
         actorUserId: actor.id,
-        schoolId: actor.activeSchoolId,
+        schoolId: activeSchoolId,
         eventType: 'auth.teacher_invitation_created',
         outcome: 'SUCCESS',
         metadata: { invitationId: created.id },
