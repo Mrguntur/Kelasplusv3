@@ -83,8 +83,9 @@ export class MidtransService {
 
       let payment = existing;
       if (payment?.expiresAt && payment.expiresAt <= now) {
-        await tx.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
-        payment = null;
+        // Token expiry is not proof that the underlying transaction failed. Require
+        // a Get Status reconciliation before creating another order for this invoice.
+        throw new ConflictException('Checkout telah melewati masa berlaku. Rekonsiliasi status pembayaran terlebih dahulu sebelum membuat checkout baru.');
       }
 
       if (!payment) {
