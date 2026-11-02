@@ -3,6 +3,7 @@ import { Activity, ArrowRight, BookOpenCheck, Building2, CalendarDays, CheckCirc
 import { api, ApiError, type DashboardSummary, type School, type User } from './api';
 import AcademicWorkspace from './AcademicWorkspace';
 import InvitationAcceptance from './InvitationAcceptance';
+import TeacherInvitationAcceptance from './TeacherInvitationAcceptance';
 
 type ViewState = 'loading' | 'login' | 'school' | 'dashboard';
 type AcademicTab = 'students' | 'classes' | 'years' | 'journals' | 'assessments' | 'reports';
@@ -141,6 +142,7 @@ export default function App() {
     setUser(null); setSchool(null); setSummary(null); setPassword(''); setError(''); setNotice(''); setView('login'); setBusy(false);
   }
 
+  if (isTeacherInvitationRoute) return <TeacherInvitationAcceptance />;
   if (isInvitationRoute) return <InvitationAcceptance />;
   if (view === 'loading') return <main className="loading-screen"><div className="brand-mark">K+</div><p>Menyiapkan ruang kerja KELAS+…</p></main>;
   if (view === 'login') return <main className="login-layout">
