@@ -73,6 +73,15 @@ export class BillingController {
     return this.midtrans.createCheckout(user.id, invoiceId);
   }
 
+  @Post('admin/payments/:id/reconcile')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  reconcileMidtransPayment(
+    @CurrentUser() user: { id: string },
+    @Param('id', new ParseUUIDPipe()) paymentId: string,
+  ) {
+    return this.midtrans.reconcilePayment(user.id, paymentId);
+  }
+
   @Post('midtrans/notifications')
   handleMidtransNotification(@Body() body: Record<string, unknown>) {
     return this.midtrans.handleNotification(body);
