@@ -484,6 +484,39 @@ export class AcademicService {
     });
   }
 
+  async listMyClasses(user: AuthenticatedUser) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses kelas saya.');
+    return this.prisma.$transaction(async (tx) => {
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role !== SchoolRole.TEACHER) {
+        throw new ForbiddenException('Fitur Kelas Saya ditujukan untuk akun guru.');
+      }
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!staff) return [];
+      return tx.teachingAssignment.findMany({
+        where: { schoolId: user.activeSchoolId!, staffProfileId: staff.id, archivedAt: null, schoolClass: { status: 'ACTIVE' } },
+        orderBy: [{ schoolClass: { gradeLevel: 'asc' } }, { schoolClass: { name: 'asc' } }, { subject: { name: 'asc' } }],
+        take: 300,
+        select: {
+          id: true,
+          term: { select: { id: true, name: true, sequence: true } },
+          subject: { select: { id: true, name: true, code: true } },
+          schoolClass: {
+            select: {
+              id: true, name: true, gradeLevel: true,
+              academicYear: { select: { id: true, name: true, status: true } },
+              homeroomStaff: { select: { displayName: true } },
+              _count: { select: { enrollments: true } },
+            },
+          },
+        },
+      });
+    });
+  }
+
   async createTeachingAssignment(user: AuthenticatedUser, input: CreateTeachingAssignmentDto) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
