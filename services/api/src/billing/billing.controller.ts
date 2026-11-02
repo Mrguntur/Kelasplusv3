@@ -3,11 +3,12 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PlatformAdminGuard } from '../schools/platform-admin.guard';
 import { BillingService } from './billing.service';
+import { MidtransService } from './midtrans.service';
 import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan.dto';
 
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(private readonly billing: BillingService, private readonly midtrans: MidtransService) {}
 
   @Get('plans')
   listPublishedPlans() {
@@ -61,6 +62,20 @@ export class BillingController {
     @Param('id', new ParseUUIDPipe()) subscriptionId: string,
   ) {
     return this.billing.generateInvoice(user.id, subscriptionId);
+  }
+
+  @Post('admin/invoices/:id/checkout')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  createMidtransCheckout(
+    @CurrentUser() user: { id: string },
+    @Param('id', new ParseUUIDPipe()) invoiceId: string,
+  ) {
+    return this.midtrans.createCheckout(user.id, invoiceId);
+  }
+
+  @Post('midtrans/notifications')
+  handleMidtransNotification(@Body() body: Record<string, unknown>) {
+    return this.midtrans.handleNotification(body);
   }
 
   @Post('admin/subscriptions/expire-trials')
