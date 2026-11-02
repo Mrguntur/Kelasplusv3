@@ -167,7 +167,7 @@ export class MidtransService {
     if (!grossAmount.isFinite() || grossAmount.lt(0)) throw new ConflictException('Invalid payment amount.');
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_user_id', '', true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', '00000000-0000-0000-0000-000000000000', true)`;
       await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
       const payment = await tx.payment.findFirst({
         where: { provider: 'MIDTRANS', providerReference: orderId },
@@ -198,7 +198,7 @@ export class MidtransService {
           status: nextStatus,
           providerTransactionId: typeof notification.transaction_id === 'string' ? notification.transaction_id : undefined,
           paidAt,
-          rawPayload: notification as Prisma.InputJsonValue,
+          rawPayload: notification as unknown as Prisma.InputJsonValue,
         },
       });
       if (nextStatus === 'SUCCEEDED' && payment.invoice.status !== 'PAID') {
