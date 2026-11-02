@@ -1,10 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AcademicService } from './academic.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
+import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { TransferEnrollmentDto } from './dto/transfer-enrollment.dto';
 import { CreateClassDto } from './dto/create-class.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
@@ -33,6 +36,11 @@ export class AcademicController {
     return this.academic.createAcademicYear(user, body);
   }
 
+  @Patch('years/:yearId')
+  updateAcademicYear(@CurrentUser() user: AuthenticatedUser, @Param('yearId', new ParseUUIDPipe()) yearId: string, @Body() body: UpdateAcademicYearDto) {
+    return this.academic.updateAcademicYear(user, yearId, body);
+  }
+
   @Get('years/:yearId/terms')
   listTerms(
     @CurrentUser() user: AuthenticatedUser,
@@ -49,6 +57,11 @@ export class AcademicController {
     @Body() body: CreateTermDto,
   ) {
     return this.academic.createTerm(user, yearId, body);
+  }
+
+  @Patch('students/:studentId')
+  updateStudent(@CurrentUser() user: AuthenticatedUser, @Param('studentId', new ParseUUIDPipe()) studentId: string, @Body() body: UpdateStudentDto) {
+    return this.academic.updateStudent(user, studentId, body);
   }
 
   @Get('students')
@@ -127,6 +140,16 @@ export class AcademicController {
     return this.academic.enrollStudent(user, classId, body);
   }
 
+
+  @Patch('enrollments/:enrollmentId/end')
+  endStudentEnrollment(@CurrentUser() user: AuthenticatedUser, @Param('enrollmentId', new ParseUUIDPipe()) enrollmentId: string) {
+    return this.academic.endStudentEnrollment(user, enrollmentId);
+  }
+
+  @Patch('enrollments/:enrollmentId/transfer')
+  transferStudentEnrollment(@CurrentUser() user: AuthenticatedUser, @Param('enrollmentId', new ParseUUIDPipe()) enrollmentId: string, @Body() body: TransferEnrollmentDto) {
+    return this.academic.transferStudentEnrollment(user, enrollmentId, body);
+  }
 
   @Get('classes/:classId/attendance-sessions')
   listAttendanceSessions(
