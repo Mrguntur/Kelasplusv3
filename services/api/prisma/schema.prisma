@@ -610,7 +610,7 @@ model Invoice {
   subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
   payments       Payment[]
 
-  @@unique([subscriptionId, periodStart, periodEnd])
+  @@unique([subscriptionId, periodStart, periodEnd], map: "invoices_subscription_period_key")
   @@index([subscriptionId, status, issuedAt])
   @@index([status, dueAt])
   @@map("invoices")
