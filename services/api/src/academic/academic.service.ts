@@ -17,6 +17,7 @@ import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateTermDto } from './dto/create-term.dto';
 import { CreateStaffProfileDto } from './dto/create-staff-profile.dto';
+import { UpdateStaffProfileDto } from './dto/update-staff-profile.dto';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -314,6 +315,53 @@ export class AcademicService {
         take: 200,
         select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, createdAt: true },
       });
+    });
+  }
+
+  async updateStaffProfile(user: AuthenticatedUser, staffProfileId: string, input: UpdateStaffProfileDto) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengubah profil staf.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const current = await tx.staffProfile.findFirst({ where: { id: staffProfileId, schoolId: user.activeSchoolId! }, select: { id: true, userId: true, status: true } });
+      if (!current) throw new BadRequestException('Profil staf tidak ditemukan di sekolah aktif.');
+      try {
+        const updated = await tx.staffProfile.update({
+          where: { id: current.id },
+          data: {
+            displayName: input.displayName.trim(),
+            employeeNumber: input.employeeNumber?.trim() || null,
+            status: input.status,
+          },
+          select: { id: true, userId: true, employeeNumber: true, displayName: true, status: true, updatedAt: true },
+        });
+        await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.staff_profile_updated', outcome: 'SUCCESS', metadata: { staffProfileId, status: updated.status } }, tx);
+        return updated;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('Nomor pegawai sudah digunakan oleh staf lain di sekolah ini.');
+        }
+        throw error;
+      }
+    });
+  }
+
+  async setClassHomeroom(user: AuthenticatedUser, classId: string, staffProfileId: string | null) {
+    if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menetapkan wali kelas.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.establishTenant(tx, user, true);
+      const schoolClass = await tx.schoolClass.findFirst({ where: { id: classId, schoolId: user.activeSchoolId! }, select: { id: true, name: true, homeroomStaffProfileId: true } });
+      if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+      if (staffProfileId) {
+        const staff = await tx.staffProfile.findFirst({ where: { id: staffProfileId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true } });
+        if (!staff) throw new BadRequestException('Wali kelas harus merupakan profil staf aktif di sekolah ini.');
+      }
+      const updated = await tx.schoolClass.update({
+        where: { id: schoolClass.id },
+        data: { homeroomStaffProfileId: staffProfileId },
+        include: { homeroomStaff: { select: { id: true, displayName: true, employeeNumber: true } } },
+      });
+      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.class_homeroom_updated', outcome: 'SUCCESS', metadata: { classId, previousStaffProfileId: schoolClass.homeroomStaffProfileId, staffProfileId } }, tx);
+      return updated;
     });
   }
 
