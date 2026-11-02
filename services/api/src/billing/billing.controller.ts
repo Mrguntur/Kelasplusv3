@@ -3,7 +3,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PlatformAdminGuard } from '../schools/platform-admin.guard';
 import { BillingService } from './billing.service';
-import { CreatePlanDto, UpdatePlanDto } from './plan.dto';
+import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan.dto';
 
 @Controller('billing')
 export class BillingController {
@@ -34,5 +34,11 @@ export class BillingController {
     @Body() body: UpdatePlanDto,
   ) {
     return this.billing.updatePlan(user.id, planId, body);
+  }
+
+  @Post('admin/subscriptions/trial')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  assignTrialSubscription(@CurrentUser() user: { id: string }, @Body() body: AssignTrialSubscriptionDto) {
+    return this.billing.assignTrialSubscription(user.id, body);
   }
 }
