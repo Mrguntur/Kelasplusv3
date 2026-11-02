@@ -50,7 +50,10 @@ export class AcademicService {
   async listAcademicYears(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Guru tidak memiliki akses ke pengelolaan tahun ajaran.');
+      }
       return tx.academicYear.findMany({
         where: { schoolId: user.activeSchoolId! },
         orderBy: [{ startDate: 'desc' }, { name: 'asc' }],
@@ -122,7 +125,10 @@ export class AcademicService {
   async listTerms(user: AuthenticatedUser, yearId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Guru tidak memiliki akses ke data semester sekolah.');
+      }
       const year = await tx.academicYear.findFirst({
         where: { id: yearId, schoolId: user.activeSchoolId! },
         select: { id: true },
@@ -179,7 +185,10 @@ export class AcademicService {
   async listStudents(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Akses daftar siswa guru harus melalui kelas dan penugasan mengajar.');
+      }
       return tx.student.findMany({
         where: { schoolId: user.activeSchoolId!, archivedAt: null },
         orderBy: [{ fullName: 'asc' }, { studentNumber: 'asc' }],
@@ -250,7 +259,10 @@ export class AcademicService {
   async listClasses(user: AuthenticatedUser) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
+      if (membership.role === SchoolRole.TEACHER) {
+        throw new ForbiddenException('Akses daftar kelas guru harus melalui penugasan mengajar.');
+      }
       return tx.schoolClass.findMany({
         where: { schoolId: user.activeSchoolId! },
         orderBy: [{ academicYear: { startDate: 'desc' } }, { gradeLevel: 'asc' }, { name: 'asc' }],
