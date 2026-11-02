@@ -28,7 +28,9 @@ const metricLabels: Record<string, string> = {
 const metricIcons = [Users, GraduationCap, UserRound, ClipboardCheck, BookOpenCheck, CheckCircle2];
 
 export default function App() {
-  const isInvitationRoute = window.location.pathname.replace(/\/+$/, '').endsWith('/invite/accept');
+  const invitationPath = window.location.pathname.replace(/\\/+$/, '');
+  const isTeacherInvitationRoute = invitationPath.endsWith('/teacher-invite/accept');
+  const isInvitationRoute = invitationPath.endsWith('/invite/accept');
   const [view, setView] = useState<ViewState>('loading');
   const [user, setUser] = useState<User | null>(null);
   const [schools, setSchools] = useState<School[]>([]);
@@ -142,6 +144,7 @@ export default function App() {
     setUser(null); setSchool(null); setSummary(null); setPassword(''); setError(''); setNotice(''); setView('login'); setBusy(false);
   }
 
+  if (isTeacherInvitationRoute) return <TeacherInvitationAcceptance />;
   if (isTeacherInvitationRoute) return <TeacherInvitationAcceptance />;
   if (isInvitationRoute) return <InvitationAcceptance />;
   if (view === 'loading') return <main className="loading-screen"><div className="brand-mark">K+</div><p>Menyiapkan ruang kerja KELAS+…</p></main>;
