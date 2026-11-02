@@ -121,6 +121,31 @@ describe('MidtransService notification verification', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it('does not restore a fully refunded payment when a delayed settlement arrives', async () => {
+    const payment = {
+      id: 'payment-refunded', invoiceId: 'invoice-1', status: 'REFUNDED',
+      amount: new Prisma.Decimal('125000'), currency: 'IDR', paidAt: new Date(),
+      invoice: { id: 'invoice-1', status: 'PAID', subscription: { schoolId: 'school-1' } },
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      $queryRaw: jest.fn(),
+      payment: {
+        findFirst: jest.fn().mockResolvedValue({ id: payment.id }),
+        findUnique: jest.fn().mockResolvedValue(payment),
+        update: jest.fn(),
+      },
+      invoice: { update: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+
+    const result = await service.handleNotification(signed({ transaction_id: 'midtrans-tx-1', transaction_status: 'settlement' }));
+
+    expect(result).toEqual({ received: true, duplicate: true, paymentStatus: 'REFUNDED' });
+    expect(tx.payment.update).not.toHaveBeenCalled();
+    expect(tx.invoice.update).not.toHaveBeenCalled();
+  });
+
   it('uses the Sandbox configuration by default', () => {
     expect(config.get('MIDTRANS_IS_PRODUCTION')).toBe('false');
   });
