@@ -70,6 +70,16 @@ export class EntitlementService {
     return (features as Record<string, unknown>)[featureKey] === true;
   }
 
+  async assertFeatureEnabled(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    featureKey: string,
+  ): Promise<void> {
+    if (!await this.isFeatureEnabled(tx, schoolId, featureKey)) {
+      throw new ForbiddenException('Fitur ini tidak termasuk dalam paket aktif sekolah.');
+    }
+  }
+
   async getSnapshot(
     tx: Prisma.TransactionClient,
     schoolId: string,
