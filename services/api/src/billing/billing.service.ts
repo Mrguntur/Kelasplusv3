@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { CreatePlanDto, UpdatePlanDto } from './plan.dto';
+import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan.dto';
 
 @Injectable()
 export class BillingService {
@@ -22,7 +22,7 @@ export class BillingService {
   }
 
   async createPlan(adminUserId: string, input: CreatePlanDto) {
-    const code = input.code.trim().toUpperCase().replace(/\s+/g, '_');
+    const code = input.code.trim().toUpperCase().replace(/\\s+/g, '_');
     try {
       return await this.prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
@@ -82,5 +82,74 @@ export class BillingService {
       }, tx);
       return plan;
     });
+  }
+
+  async assignTrialSubscription(adminUserId: string, input: AssignTrialSubscriptionDto) {
+    const now = new Date();
+    const trialEndsAt = new Date(now.getTime() + input.trialDays * 24 * 60 * 60 * 1000);
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+        const [school, plan, currentSubscription] = await Promise.all([
+          tx.school.findUnique({ where: { id: input.schoolId }, select: { id: true, name: true } }),
+          tx.plan.findUnique({ where: { id: input.planId } }),
+          tx.subscription.findFirst({
+            where: { schoolId: input.schoolId, status: { in: ['TRIALING', 'ACTIVE', 'PAST_DUE'] } },
+            select: { id: true, status: true },
+          }),
+        ]);
+
+        if (!school) throw new NotFoundException('Sekolah tidak ditemukan.');
+        if (!plan || !plan.isPublished) throw new NotFoundException('Paket tidak ditemukan atau belum dipublikasikan.');
+        if (currentSubscription) {
+          throw new ConflictException('Sekolah sudah memiliki langganan yang masih berjalan.');
+        }
+
+        const subscription = await tx.subscription.create({
+          data: {
+            id: randomUUID(),
+            schoolId: school.id,
+            planId: plan.id,
+            status: 'TRIALING',
+            billingInterval: plan.billingInterval,
+            priceAmount: plan.priceAmount,
+            currency: plan.currency,
+            startsAt: now,
+            currentPeriodStart: now,
+            currentPeriodEnd: trialEndsAt,
+            trialEndsAt,
+          },
+          select: {
+            id: true, schoolId: true, planId: true, status: true, billingInterval: true,
+            priceAmount: true, currency: true, startsAt: true, currentPeriodStart: true,
+            currentPeriodEnd: true, trialEndsAt: true, createdAt: true,
+          },
+        });
+
+        await this.audit.record({
+          actorUserId: adminUserId,
+          schoolId: school.id,
+          eventType: 'billing.trial_assigned',
+          outcome: 'SUCCESS',
+          metadata: {
+            subscriptionId: subscription.id,
+            planId: plan.id,
+            planCode: plan.code,
+            trialDays: input.trialDays,
+            trialEndsAt: trialEndsAt.toISOString(),
+          },
+        }, tx);
+
+        return { school: { id: school.id, name: school.name }, subscription };
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Sekolah sudah memiliki langganan aktif atau masa uji coba.');
+      }
+      throw error;
+    }
   }
 }
