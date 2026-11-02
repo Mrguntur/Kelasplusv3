@@ -40,6 +40,7 @@ export class MidtransService {
     return {
       serverKey,
       baseUrl: production ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com',
+      apiBaseUrl: production ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com',
       environment: production ? 'production' : 'sandbox',
     };
   }
@@ -142,6 +143,56 @@ export class MidtransService {
       this.logger.error('Midtrans Snap checkout request failed', error instanceof Error ? error.stack : String(error));
       throw new BadGatewayException('Midtrans belum dapat membuat halaman pembayaran. Silakan coba kembali.');
     }
+  }
+
+  async reconcilePayment(adminUserId: string, paymentId: string) {
+    const settings = this.settings();
+    const payment = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      return tx.payment.findUnique({
+        where: { id: paymentId },
+        select: { id: true, provider: true, providerReference: true, status: true },
+      });
+    });
+    if (!payment) throw new NotFoundException('Payment tidak ditemukan.');
+    if (payment.provider !== 'MIDTRANS') throw new ConflictException('Payment ini bukan transaksi Midtrans.');
+    if (!payment.providerReference) throw new ConflictException('Referensi transaksi Midtrans belum tersedia.');
+
+    let response: Response;
+    try {
+      response = await fetch(`${settings.apiBaseUrl}/v2/${encodeURIComponent(payment.providerReference)}/status`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Basic ${Buffer.from(`${settings.serverKey}:`).toString('base64')}`,
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (error) {
+      this.logger.error('Midtrans Get Status request failed', error instanceof Error ? error.stack : String(error));
+      throw new BadGatewayException('Status pembayaran belum dapat diverifikasi ke Midtrans.');
+    }
+
+    // A newly-created Snap transaction can return 404 until the customer selects a payment method.
+    if (response.status === 404) {
+      return { paymentId: payment.id, paymentStatus: payment.status, providerStatus: 'not_found_yet', reconciled: false };
+    }
+    if (!response.ok) {
+      this.logger.warn(`Midtrans Get Status returned HTTP ${response.status}`);
+      throw new BadGatewayException('Midtrans belum dapat mengembalikan status transaksi.');
+    }
+
+    const notification = await response.json() as MidtransNotification;
+    if (notification.order_id !== payment.providerReference ||
+        typeof notification.gross_amount !== 'string' ||
+        typeof notification.status_code !== 'string' ||
+        typeof notification.signature_key !== 'string') {
+      throw new BadGatewayException('Respons status Midtrans tidak lengkap atau tidak cocok.');
+    }
+
+    const result = await this.handleNotification(notification);
+    return { paymentId: payment.id, ...result, reconciled: true, source: 'MIDTRANS_GET_STATUS' };
   }
 
   private verifySignature(notification: MidtransNotification, serverKey: string): boolean {
