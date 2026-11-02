@@ -584,20 +584,27 @@ export class AcademicService {
 
   async transferStudentEnrollment(user: AuthenticatedUser, enrollmentId: string, input: TransferEnrollmentDto) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum memindahkan siswa.');
-    return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user, true);
-      const current = await tx.classEnrollment.findFirst({ where: { id: enrollmentId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true, classId: true, studentId: true } });
-      if (!current) throw new BadRequestException('Penempatan siswa aktif tidak ditemukan.');
-      if (current.classId === input.targetClassId) throw new BadRequestException('Siswa sudah berada di kelas tujuan.');
-      const target = await tx.schoolClass.findFirst({ where: { id: input.targetClassId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true } });
-      if (!target) throw new BadRequestException('Kelas tujuan tidak ditemukan atau tidak aktif di sekolah ini.');
-      const existing = await tx.classEnrollment.findFirst({ where: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId, status: 'ACTIVE' }, select: { id: true } });
-      if (existing) throw new ConflictException('Siswa sudah terdaftar aktif di kelas tujuan.');
-      await tx.classEnrollment.update({ where: { id: current.id }, data: { status: 'ENDED', leftAt: new Date() } });
-      const next = await tx.classEnrollment.create({ data: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId }, select: { id: true, classId: true, studentId: true, enrolledAt: true, status: true } });
-      await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_transferred_class', outcome: 'SUCCESS', metadata: { studentId: current.studentId, fromClassId: current.classId, toClassId: input.targetClassId, previousEnrollmentId: current.id, newEnrollmentId: next.id } }, tx);
-      return next;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.establishTenant(tx, user, true);
+        const current = await tx.classEnrollment.findFirst({ where: { id: enrollmentId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true, classId: true, studentId: true } });
+        if (!current) throw new BadRequestException('Penempatan siswa aktif tidak ditemukan.');
+        if (current.classId === input.targetClassId) throw new BadRequestException('Siswa sudah berada di kelas tujuan.');
+        const target = await tx.schoolClass.findFirst({ where: { id: input.targetClassId, schoolId: user.activeSchoolId!, status: 'ACTIVE' }, select: { id: true } });
+        if (!target) throw new BadRequestException('Kelas tujuan tidak ditemukan atau tidak aktif di sekolah ini.');
+        const existing = await tx.classEnrollment.findFirst({ where: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId, status: 'ACTIVE' }, select: { id: true } });
+        if (existing) throw new ConflictException('Siswa sudah terdaftar aktif di kelas tujuan.');
+        await tx.classEnrollment.update({ where: { id: current.id }, data: { status: 'ENDED', leftAt: new Date() } });
+        const next = await tx.classEnrollment.create({ data: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId }, select: { id: true, classId: true, studentId: true, enrolledAt: true, status: true } });
+        await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_transferred_class', outcome: 'SUCCESS', metadata: { studentId: current.studentId, fromClassId: current.classId, toClassId: input.targetClassId, previousEnrollmentId: current.id, newEnrollmentId: next.id } }, tx);
+        return next;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) {
+        throw new ConflictException('Penempatan siswa berubah bersamaan. Muat ulang data kelas, lalu coba pindahkan siswa kembali.');
+      }
+      throw error;
+    }
   }
 
   async listAttendanceSessions(user: AuthenticatedUser, classId: string) {
