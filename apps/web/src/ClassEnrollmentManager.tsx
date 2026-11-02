@@ -4,7 +4,7 @@ import { api } from './api';
 
 type Student = { id: string; studentNumber: string | null; fullName: string; preferredName: string | null; status: string };
 type SchoolClass = { id: string; name: string; gradeLevel: number; academicYear?: { name: string } };
-type AvailableClass = { id: string; name: string; gradeLevel: number; academicYear?: { name: string } };
+type AvailableClass = { id: string; name: string; gradeLevel: number; status?: string; academicYear?: { name: string } };
 type Enrollment = { id: string; status: string; student: Student };
 
 export default function ClassEnrollmentManager({ schoolClass, students, canManage, onBack, onRefresh }: {
