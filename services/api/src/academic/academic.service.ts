@@ -597,7 +597,7 @@ export class AcademicService {
       const next = await tx.classEnrollment.create({ data: { schoolId: user.activeSchoolId!, classId: input.targetClassId, studentId: current.studentId }, select: { id: true, classId: true, studentId: true, enrolledAt: true, status: true } });
       await this.audit.record({ actorUserId: user.id, schoolId: user.activeSchoolId, eventType: 'academic.student_transferred_class', outcome: 'SUCCESS', metadata: { studentId: current.studentId, fromClassId: current.classId, toClassId: input.targetClassId, previousEnrollmentId: current.id, newEnrollmentId: next.id } }, tx);
       return next;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async listAttendanceSessions(user: AuthenticatedUser, classId: string) {
