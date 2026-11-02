@@ -43,14 +43,28 @@ type Plan = {
   currency: string;
 };
 
+type Subscription = {
+  id: string;
+  status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
+  billingInterval: 'MONTHLY' | 'YEARLY';
+  priceAmount: string | number;
+  currency: string;
+  currentPeriodEnd: string;
+  trialEndsAt: string | null;
+  school: { id: string; name: string; slug: string };
+  plan: { id: string; code: string; name: string };
+};
+
 const statusLabels: Record<string, string> = {
   ACTIVE: 'Aktif', PENDING: 'Menunggu', SUSPENDED: 'Ditangguhkan', CLOSED: 'Ditutup',
+  TRIALING: 'Trial', PAST_DUE: 'Menunggak', CANCELED: 'Dibatalkan', EXPIRED: 'Kedaluwarsa',
 };
 
 export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [overview, setOverview] = useState<PlatformOverview | null>(null);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [trialSchoolId, setTrialSchoolId] = useState('');
   const [trialPlanId, setTrialPlanId] = useState('');
   const [trialDays, setTrialDays] = useState(14);
@@ -62,14 +76,16 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     setBusy(true);
     setError('');
     try {
-      const [summary, requests, publishedPlans] = await Promise.all([
+      const [summary, requests, publishedPlans, currentSubscriptions] = await Promise.all([
         api<PlatformOverview>('/schools/admin/overview'),
         api<Registration[]>('/schools/admin/registration-requests'),
         api<Plan[]>('/billing/plans'),
+        api<Subscription[]>('/billing/admin/subscriptions'),
       ]);
       setOverview(summary);
       setRegistrations(requests);
       setPlans(publishedPlans);
+      setSubscriptions(currentSubscriptions);
       setTrialSchoolId(current => current || summary.schools[0]?.id || '');
       setTrialPlanId(current => current || publishedPlans[0]?.id || '');
     } catch (e) {
@@ -115,6 +131,21 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Masa uji coba belum dapat diberikan.');
+      setBusy(false);
+    }
+  }
+
+
+  async function expireTrials() {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api<{ processed: number; expired: number }>('/billing/admin/subscriptions/expire-trials', { method: 'POST' });
+      setNotice(`Pemeriksaan selesai: ${result.processed} trial diperiksa, ${result.expired} trial kedaluwarsa.`);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Pemeriksaan masa trial belum dapat dilakukan.');
       setBusy(false);
     }
   }
@@ -180,6 +211,24 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
       </form>
       {plans.length === 0 && <p className="panel-footnote">Belum ada paket yang dipublikasikan. Publikasikan paket terlebih dahulu sebelum memberikan trial.</p>}
       <p className="panel-footnote">Trial hanya diberikan kepada sekolah yang belum memiliki langganan berjalan. Tindakan ini tidak memproses pembayaran.</p>
+    </section>
+
+    <section className="panel platform-school-panel">
+      <div className="panel-heading">
+        <div><span className="eyebrow">SUBSCRIPTION MONITORING</span><h2>Status langganan sekolah</h2></div>
+        <button className="secondary-button compact-button" onClick={() => void expireTrials()} disabled={busy}>Periksa trial kedaluwarsa</button>
+      </div>
+      <div className="platform-school-table-wrap"><table className="platform-school-table">
+        <thead><tr><th>Sekolah</th><th>Paket</th><th>Status</th><th>Akhir periode</th></tr></thead>
+        <tbody>{subscriptions.map(item => <tr key={item.id}>
+          <td><strong>{item.school.name}</strong><small>{item.school.slug}</small></td>
+          <td>{item.plan.name}</td>
+          <td><span className={`status-badge status-${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span></td>
+          <td>{new Date(item.trialEndsAt ?? item.currentPeriodEnd).toLocaleDateString('id-ID')}</td>
+        </tr>)}</tbody>
+      </table></div>
+      {!subscriptions.length && <div className="empty-state compact"><strong>Belum ada langganan</strong><p>Trial atau langganan sekolah akan muncul di sini.</p></div>}
+      <p className="panel-footnote">Pemeriksaan trial saat ini dijalankan secara manual oleh Super Admin. Belum ada scheduler otomatis.</p>
     </section>
     <section className="panel platform-school-panel">
       <div className="panel-heading"><div><span className="eyebrow">MULTI-TENANT</span><h2>Daftar sekolah</h2></div><span className="count-pill">{overview?.schools.length ?? 0} ditampilkan</span></div>
