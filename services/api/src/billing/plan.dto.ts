@@ -1,9 +1,10 @@
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreatePlanDto {
   @IsString()
   @MinLength(2)
   @MaxLength(60)
+  @Matches(/^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/)
   code!: string;
 
   @IsString()
@@ -27,6 +28,7 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   @MaxLength(3)
+  @Matches(/^[A-Za-z]{3}$/)
   currency?: string;
 
   @IsOptional()
