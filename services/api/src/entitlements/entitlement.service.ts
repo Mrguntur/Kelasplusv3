@@ -59,6 +59,13 @@ export class EntitlementService {
     }
   }
 
+  async assertSchoolAccess(tx: Prisma.TransactionClient, schoolId: string): Promise<void> {
+    const snapshot = await this.getSnapshot(tx, schoolId);
+    if (!snapshot.access.allowed) {
+      throw new ForbiddenException(snapshot.access.reason ?? 'Langganan sekolah tidak aktif.');
+    }
+  }
+
   async isFeatureEnabled(
     tx: Prisma.TransactionClient,
     schoolId: string,
@@ -117,9 +124,12 @@ export class EntitlementService {
       allowed = true;
     } else {
       if (
-        subscription &&
-        (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') &&
+        subscription?.status === 'ACTIVE' &&
         subscription.currentPeriodEnd <= now
+      ) effectiveStatus = 'EXPIRED';
+      if (
+        subscription?.status === 'TRIALING' &&
+        (!subscription.trialEndsAt || subscription.trialEndsAt <= now)
       ) effectiveStatus = 'EXPIRED';
       reason = subscription?.status === 'PAST_DUE'
         ? 'Langganan menunggak. Selesaikan pembayaran untuk memulihkan akses.'
