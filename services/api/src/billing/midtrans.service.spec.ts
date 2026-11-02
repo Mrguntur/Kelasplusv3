@@ -84,6 +84,7 @@ describe('MidtransService notification verification', () => {
     };
     const tx = {
       $executeRaw: jest.fn(),
+      $queryRaw: jest.fn(),
       payment: { findFirst: jest.fn().mockResolvedValue({ id: payment.id }), findUnique: jest.fn().mockResolvedValue(payment), update: jest.fn() },
       invoice: { update: jest.fn() },
     };
