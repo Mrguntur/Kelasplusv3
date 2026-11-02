@@ -299,7 +299,7 @@ export class SchoolsService {
         if (!school || school.status !== 'PENDING') {
           throw new ConflictException('Sekolah tidak lagi memenuhi syarat aktivasi.');
         }
-        await this.entitlements.assertCanCreate(tx, invitation.schoolId, 'users');
+        await this.entitlements.assertCanCreate(tx, invitation.schoolId, 'users', { allowPendingSchool: true });
 
         const userId = randomUUID();
         const displayName = input.displayName.trim();
