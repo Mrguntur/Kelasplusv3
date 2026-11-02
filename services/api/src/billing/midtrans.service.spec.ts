@@ -55,7 +55,7 @@ describe('MidtransService notification verification', () => {
     const tx = {
       $executeRaw: jest.fn(),
       $queryRaw: jest.fn(),
-      payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn().mockResolvedValue({}) },
+      payment: { findFirst: jest.fn().mockResolvedValue({ id: payment.id }), findUnique: jest.fn().mockResolvedValue(payment), update: jest.fn().mockResolvedValue({}) },
       invoice: { update: jest.fn().mockResolvedValue({}) },
     };
     (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
@@ -82,7 +82,7 @@ describe('MidtransService notification verification', () => {
     };
     const tx = {
       $executeRaw: jest.fn(),
-      payment: { findFirst: jest.fn().mockResolvedValue(payment), update: jest.fn() },
+      payment: { findFirst: jest.fn().mockResolvedValue({ id: payment.id }), findUnique: jest.fn().mockResolvedValue(payment), update: jest.fn() },
       invoice: { update: jest.fn() },
     };
     (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
