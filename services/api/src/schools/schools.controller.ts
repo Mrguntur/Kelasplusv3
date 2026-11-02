@@ -19,6 +19,12 @@ export class SchoolsController {
     return this.schoolsService.requestRegistration(body);
   }
 
+  @Get('admin/overview')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  getPlatformOverview(@CurrentUser() user: { id: string }) {
+    return this.schoolsService.getPlatformOverview(user.id);
+  }
+
   @Get('admin/registration-requests')
   @UseGuards(SessionAuthGuard, PlatformAdminGuard)
   listPendingRegistrations(@CurrentUser() user: { id: string }) {
