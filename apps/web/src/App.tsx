@@ -6,7 +6,7 @@ import InvitationAcceptance from './InvitationAcceptance';
 import TeacherInvitationAcceptance from './TeacherInvitationAcceptance';
 
 type ViewState = 'loading' | 'login' | 'school' | 'dashboard';
-type AcademicTab = 'students' | 'classes' | 'years' | 'journals' | 'assessments' | 'reports';
+type AcademicTab = 'students' | 'classes' | 'years' | 'myClasses' | 'journals' | 'assessments' | 'reports';
 const roleNames: Record<string, string> = {
   SCHOOL_ADMIN: 'Administrator Sekolah',
   SCHOOL_LEADER: 'Pimpinan Sekolah',
@@ -93,7 +93,7 @@ export default function App() {
   const activeRole = school?.role ?? '';
   const quickAccess: Array<{ tab: AcademicTab; label: string; description: string }> =
     activeRole === 'TEACHER'
-      ? [{ tab: 'journals', label: 'Jurnal mengajar', description: 'Catat kegiatan pembelajaran' }, { tab: 'assessments', label: 'Penilaian', description: 'Kelola hasil belajar siswa' }, { tab: 'reports', label: 'Laporan', description: 'Lihat rekap kelas' }]
+      ? [{ tab: 'myClasses', label: 'Kelas Saya', description: 'Lihat kelas dan siswa yang diampu' }, { tab: 'journals', label: 'Jurnal mengajar', description: 'Catat kegiatan pembelajaran' }, { tab: 'assessments', label: 'Penilaian', description: 'Kelola hasil belajar siswa' }, { tab: 'reports', label: 'Laporan', description: 'Lihat rekap kelas' }]
       : activeRole === 'SCHOOL_LEADER'
         ? [{ tab: 'reports', label: 'Laporan akademik', description: 'Tinjau rekap sekolah' }, { tab: 'journals', label: 'Jurnal mengajar', description: 'Pantau aktivitas pembelajaran' }, { tab: 'classes', label: 'Data kelas', description: 'Lihat struktur kelas' }]
         : activeRole === 'SCHOOL_OPERATOR'
