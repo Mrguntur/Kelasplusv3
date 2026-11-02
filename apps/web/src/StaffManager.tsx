@@ -2,11 +2,18 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from './api';
 
 type Staff = { id: string; userId: string; displayName: string; employeeNumber: string | null; status: 'ACTIVE' | 'INACTIVE' };
-type SchoolClass = { id: string; name: string; gradeLevel: number; homeroomStaff?: { id: string; displayName: string } | null };\ntype Subject = { id: string; code: string | null; name: string };\ntype Assignment = { id: string; classId: string; subjectId: string; staffProfileId: string; schoolClass: { name: string }; subject: { name: string }; staffProfile: { displayName: string } };
+type SchoolClass = { id: string; name: string; gradeLevel: number; homeroomStaff?: { id: string; displayName: string } | null };
+type Subject = { id: string; code: string | null; name: string };
+type Assignment = { id: string; classId: string; subjectId: string; staffProfileId: string; schoolClass: { name: string }; subject: { name: string }; staffProfile: { displayName: string } };
 
 export default function StaffManager({ canManage }: { canManage: boolean }) {
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [classes, setClasses] = useState<SchoolClass[]>([]);\n  const [subjects, setSubjects] = useState<Subject[]>([]);\n  const [assignments, setAssignments] = useState<Assignment[]>([]);\n  const [assignmentClassId, setAssignmentClassId] = useState('');\n  const [assignmentSubjectId, setAssignmentSubjectId] = useState('');\n  const [assignmentStaffId, setAssignmentStaffId] = useState('');
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentClassId, setAssignmentClassId] = useState('');
+  const [assignmentSubjectId, setAssignmentSubjectId] = useState('');
+  const [assignmentStaffId, setAssignmentStaffId] = useState('');
   const [editing, setEditing] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -16,11 +23,13 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [staffRows, classRows] = await Promise.all([
+      const [staffRows, classRows, subjectRows, assignmentRows] = await Promise.all([
         api<Staff[]>('/academic/staff'),
         api<SchoolClass[]>('/academic/classes'),
+        api<Subject[]>('/academic/subjects'),
+        api<Assignment[]>('/academic/teaching-assignments'),
       ]);
-      setStaff(staffRows); setClasses(classRows);
+      setStaff(staffRows); setClasses(classRows); setSubjects(subjectRows); setAssignments(assignmentRows);
     } catch (e) { setError(e instanceof Error ? e.message : 'Data guru dan kelas gagal dimuat.'); }
     finally { setLoading(false); }
   }, []);
@@ -46,7 +55,9 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
     if (!assignmentClassId || !assignmentSubjectId || !assignmentStaffId) return;
     setSaving(true); setError(''); setNotice('');
     try {
-      await api('/academic/teaching-assignments', { method: 'POST', body: JSON.stringify({ classId: assignmentClassId, subjectId: assignmentSubjectId, staffProfileId: assignmentStaffId }) });
+      await api('/academic/teaching-assignments', { method: 'POST', body: JSON.stringify({
+        classId: assignmentClassId, subjectId: assignmentSubjectId, staffProfileId: assignmentStaffId,
+      }) });
       setAssignmentClassId(''); setAssignmentSubjectId(''); setAssignmentStaffId('');
       setNotice('Penugasan mengajar berhasil ditambahkan.'); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Penugasan mengajar gagal disimpan.'); }
@@ -77,18 +88,20 @@ export default function StaffManager({ canManage }: { canManage: boolean }) {
     <div className="table-wrap"><table className="academic-table"><thead><tr><th>Nama guru/staf</th><th>Nomor pegawai</th><th>Status</th><th></th></tr></thead><tbody>
       {staff.map(person => <tr key={person.id}><td><strong>{person.displayName}</strong><span className="table-subtitle">Akun sekolah terhubung</span></td><td>{person.employeeNumber || '—'}</td><td><span className="status-tag">{person.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}</span></td><td>{canManage && <button className="table-action" onClick={() => setEditing(person)}>Edit</button>}</td></tr>)}
     </tbody></table>{loading ? <div className="academic-empty">Memuat data guru dan staf…</div> : !staff.length ? <div className="academic-empty">Belum ada profil guru/staf yang terhubung ke akun sekolah.</div> : null}</div>
-    {canManage && <><div className="panel-heading" style={{marginTop:24}}><div><span className="eyebrow">PENGELOLAAN KELAS</span><h2>Penetapan wali kelas</h2></div></div>
-    <div className="table-wrap"><table className="academic-table"><thead><tr><th>Kelas</th><th>Wali kelas</th><th>Perbarui penugasan</th></tr></thead><tbody>
-      {classes.map(item => <tr key={item.id}><td><strong>{item.name}</strong><span className="table-subtitle">Tingkat {item.gradeLevel}</span></td><td>{item.homeroomStaff?.displayName ?? 'Belum ditetapkan'}</td><td><select aria-label={'Wali kelas ' + item.name} disabled={saving} value={item.homeroomStaff?.id ?? ''} onChange={e => void setHomeroom(item.id, e.target.value)}><option value="">Belum ditetapkan</option>{staff.filter(person => person.status === 'ACTIVE').map(person => <option key={person.id} value={person.id}>{person.displayName}</option>)}</select></td></tr>)}
-    </tbody></table>{!classes.length && <div className="academic-empty">Belum ada kelas.</div>}</div></>}
-    {canManage && <><div className="panel-heading" style={{marginTop:24}}><div><span className="eyebrow">PEMBAGIAN TUGAS</span><h2>Penugasan mengajar</h2></div></div>
-    <form className="enrollment-form" onSubmit={createAssignment}>
-      <label>Kelas<select required value={assignmentClassId} onChange={e=>setAssignmentClassId(e.target.value)}><option value="">Pilih kelas</option>{classes.map(item=><option key={item.id} value={item.id}>{item.name} · Tingkat {item.gradeLevel}</option>)}</select></label>
-      <label>Mata pelajaran<select required value={assignmentSubjectId} onChange={e=>setAssignmentSubjectId(e.target.value)}><option value="">Pilih mata pelajaran</option>{subjects.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label>Guru<select required value={assignmentStaffId} onChange={e=>setAssignmentStaffId(e.target.value)}><option value="">Pilih guru</option>{staff.filter(person=>person.status==='ACTIVE').map(person=><option key={person.id} value={person.id}>{person.displayName}</option>)}</select></label>
-      <button className="primary-button" disabled={saving || !assignmentClassId || !assignmentSubjectId || !assignmentStaffId}>Tambah penugasan</button>
-    </form>
-    <div className="table-wrap"><table className="academic-table"><thead><tr><th>Guru</th><th>Mata pelajaran</th><th>Kelas</th></tr></thead><tbody>{assignments.map(item=><tr key={item.id}><td><strong>{item.staffProfile.displayName}</strong></td><td>{item.subject.name}</td><td>{item.schoolClass.name}</td></tr>)}</tbody></table>{!assignments.length&&<div className="academic-empty">Belum ada penugasan mengajar.</div>}</div></>}
+    {canManage && <>
+      <div className="panel-heading" style={{marginTop:24}}><div><span className="eyebrow">PENGELOLAAN KELAS</span><h2>Penetapan wali kelas</h2></div></div>
+      <div className="table-wrap"><table className="academic-table"><thead><tr><th>Kelas</th><th>Wali kelas</th><th>Perbarui penugasan</th></tr></thead><tbody>
+        {classes.map(item => <tr key={item.id}><td><strong>{item.name}</strong><span className="table-subtitle">Tingkat {item.gradeLevel}</span></td><td>{item.homeroomStaff?.displayName ?? 'Belum ditetapkan'}</td><td><select aria-label={'Wali kelas ' + item.name} disabled={saving} value={item.homeroomStaff?.id ?? ''} onChange={e => void setHomeroom(item.id, e.target.value)}><option value="">Belum ditetapkan</option>{staff.filter(person => person.status === 'ACTIVE').map(person => <option key={person.id} value={person.id}>{person.displayName}</option>)}</select></td></tr>)}
+      </tbody></table>{!classes.length && <div className="academic-empty">Belum ada kelas.</div>}</div>
+      <div className="panel-heading" style={{marginTop:24}}><div><span className="eyebrow">PEMBAGIAN TUGAS</span><h2>Penugasan mengajar</h2></div></div>
+      <form className="enrollment-form" onSubmit={createAssignment}>
+        <label>Kelas<select required value={assignmentClassId} onChange={e=>setAssignmentClassId(e.target.value)}><option value="">Pilih kelas</option>{classes.map(item=><option key={item.id} value={item.id}>{item.name} · Tingkat {item.gradeLevel}</option>)}</select></label>
+        <label>Mata pelajaran<select required value={assignmentSubjectId} onChange={e=>setAssignmentSubjectId(e.target.value)}><option value="">Pilih mata pelajaran</option>{subjects.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label>Guru<select required value={assignmentStaffId} onChange={e=>setAssignmentStaffId(e.target.value)}><option value="">Pilih guru</option>{staff.filter(person=>person.status==='ACTIVE').map(person=><option key={person.id} value={person.id}>{person.displayName}</option>)}</select></label>
+        <button className="primary-button" disabled={saving || !assignmentClassId || !assignmentSubjectId || !assignmentStaffId}>Tambah penugasan</button>
+      </form>
+      <div className="table-wrap"><table className="academic-table"><thead><tr><th>Guru</th><th>Mata pelajaran</th><th>Kelas</th></tr></thead><tbody>{assignments.map(item=><tr key={item.id}><td><strong>{item.staffProfile.displayName}</strong></td><td>{item.subject.name}</td><td>{item.schoolClass.name}</td></tr>)}</tbody></table>{!assignments.length&&<div className="academic-empty">Belum ada penugasan mengajar.</div>}</div>
+    </>}
     <p className="form-hint">Akun guru baru dan proses undangan akan ditambahkan setelah alur onboarding identitas diselesaikan. Modul ini saat ini mengelola profil akun yang sudah menjadi anggota sekolah.</p>
   </div>;
 }
