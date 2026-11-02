@@ -391,7 +391,6 @@ export class AcademicService {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
       await this.establishTenant(tx, user, true);
-      await this.entitlements.assertCanCreate(tx, user.activeSchoolId!, 'users');
       const membership = await tx.schoolMembership.findFirst({
         where: { schoolId: user.activeSchoolId!, userId: input.userId },
         select: { id: true },
