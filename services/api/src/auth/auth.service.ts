@@ -7,6 +7,7 @@ import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './auth.dto';
 import { ChangePasswordDto } from './change-password.dto';
 import { AuditService } from '../audit/audit.service';
+import { EntitlementService } from '../entitlements/entitlement.service';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 8;
@@ -20,6 +21,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly entitlements: EntitlementService,
   ) {
     this.dummyHash = argon2.hash(randomBytes(32).toString('hex'), { type: argon2.argon2id });
   }
@@ -442,6 +444,7 @@ export class AuthService {
       if (claimed.count !== 1) throw new UnauthorizedException('Undangan sudah digunakan atau tidak lagi berlaku.');
 
       await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      await this.entitlements.assertCanCreate(tx, invitation.schoolId, 'users');
       const user = await tx.user.create({
         data: { email: invitation.email, displayName: invitation.displayName, passwordHash, status: UserStatus.ACTIVE },
         select: { id: true, email: true, displayName: true },
