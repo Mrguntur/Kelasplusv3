@@ -706,12 +706,33 @@ export class AcademicService {
   async listAttendanceSessions(user: AuthenticatedUser, classId: string) {
     if (!user.activeSchoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum mengakses data akademik.');
     return this.prisma.$transaction(async (tx) => {
-      await this.establishTenant(tx, user);
+      const membership = await this.establishTenant(tx, user);
       const schoolClass = await tx.schoolClass.findFirst({
         where: { id: classId, schoolId: user.activeSchoolId! },
-        select: { id: true },
+        select: { id: true, homeroomStaffProfileId: true },
       });
       if (!schoolClass) throw new BadRequestException('Kelas tidak ditemukan di sekolah aktif.');
+      const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
+      if (!privileged) {
+        if (membership.role !== SchoolRole.TEACHER) {
+          throw new ForbiddenException('Peran akun ini tidak memiliki akses ke riwayat presensi kelas.');
+        }
+        const [assignment, homeroom] = await Promise.all([
+          tx.teachingAssignment.findFirst({
+            where: { schoolId: user.activeSchoolId!, classId, archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' } },
+            select: { id: true },
+          }),
+          schoolClass.homeroomStaffProfileId
+            ? tx.staffProfile.findFirst({
+                where: { id: schoolClass.homeroomStaffProfileId, schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        if (!assignment && !homeroom) {
+          throw new ForbiddenException('Riwayat presensi hanya dapat diakses oleh guru yang ditugaskan pada kelas tersebut, wali kelas, atau pimpinan sekolah.');
+        }
+      }
       return tx.attendanceSession.findMany({
         where: { schoolId: user.activeSchoolId!, classId },
         orderBy: [{ date: 'desc' }, { sessionLabel: 'asc' }],
@@ -1021,7 +1042,9 @@ export class AcademicService {
       const membership = await this.establishTenant(tx, user);
       const where = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER
         ? { schoolId: user.activeSchoolId! }
-        : { schoolId: user.activeSchoolId!, assignment: { staffProfile: { userId: user.id } } };
+        : membership.role === SchoolRole.TEACHER
+          ? { schoolId: user.activeSchoolId!, assignment: { archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' as const } } }
+          : (() => { throw new ForbiddenException('Peran akun ini tidak memiliki akses ke penilaian.'); })();
       return tx.assessment.findMany({
         where,
         orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
