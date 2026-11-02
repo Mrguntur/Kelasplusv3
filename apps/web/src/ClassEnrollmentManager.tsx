@@ -7,7 +7,7 @@ type SchoolClass = { id: string; name: string; gradeLevel: number; academicYear?
 type AvailableClass = { id: string; name: string; gradeLevel: number; status?: string; academicYear?: { name: string } };
 type Enrollment = { id: string; status: string; student: Student };
 
-export default function ClassEnrollmentManager({ schoolClass, students, canManage, onBack, onRefresh }: {
+export default function ClassEnrollmentManager({ schoolClass, students, classes, canManage, onBack, onRefresh }: {
   schoolClass: SchoolClass;
   students: Student[];
   classes: AvailableClass[];
