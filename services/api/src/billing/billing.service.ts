@@ -171,6 +171,117 @@ export class BillingService {
     });
   }
 
+  async generateInvoice(adminUserId: string, subscriptionId: string) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+        const subscription = await tx.subscription.findUnique({
+          where: { id: subscriptionId },
+          include: { school: { select: { id: true, name: true } }, plan: { select: { code: true, name: true } } },
+        });
+        if (!subscription) throw new NotFoundException('Langganan tidak ditemukan.');
+        if (subscription.status !== 'ACTIVE') {
+          throw new ConflictException('Invoice hanya dapat dibuat untuk langganan berstatus aktif. Trial tidak ditagih.');
+        }
+
+        const existing = await tx.invoice.findUnique({
+          where: {
+            subscriptionId_periodStart_periodEnd: {
+              subscriptionId,
+              periodStart: subscription.currentPeriodStart,
+              periodEnd: subscription.currentPeriodEnd,
+            },
+          },
+        });
+        if (existing) return existing;
+
+        const now = new Date();
+        const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+        const invoice = await tx.invoice.create({
+          data: {
+            id: randomUUID(),
+            subscriptionId,
+            invoiceNumber: `KLS-${datePart}-${randomUUID().slice(0, 8).toUpperCase()}`,
+            periodStart: subscription.currentPeriodStart,
+            periodEnd: subscription.currentPeriodEnd,
+            status: 'OPEN',
+            subtotalAmount: subscription.priceAmount,
+            taxAmount: new Prisma.Decimal(0),
+            totalAmount: subscription.priceAmount,
+            currency: subscription.currency,
+            metadata: {
+              schoolId: subscription.school.id,
+              schoolName: subscription.school.name,
+              planCode: subscription.plan.code,
+              planName: subscription.plan.name,
+              billingInterval: subscription.billingInterval,
+              taxPolicy: 'NOT_CONFIGURED',
+            },
+          },
+        });
+
+        await this.audit.record({
+          actorUserId: adminUserId,
+          schoolId: subscription.schoolId,
+          eventType: 'billing.invoice_created',
+          outcome: 'SUCCESS',
+          metadata: {
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            subscriptionId,
+            periodStart: invoice.periodStart.toISOString(),
+            periodEnd: invoice.periodEnd.toISOString(),
+            totalAmount: invoice.totalAmount.toString(),
+            currency: invoice.currency,
+          },
+        }, tx);
+        return invoice;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const subscription = await this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
+        if (subscription) {
+          const invoice = await this.prisma.invoice.findUnique({
+            where: {
+              subscriptionId_periodStart_periodEnd: {
+                subscriptionId,
+                periodStart: subscription.currentPeriodStart,
+                periodEnd: subscription.currentPeriodEnd,
+              },
+            },
+          });
+          if (invoice) return invoice;
+        }
+        throw new ConflictException('Invoice dengan nomor atau periode yang sama sudah tercatat.');
+      }
+      throw error;
+    }
+  }
+
+  async listInvoices(adminUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      return tx.invoice.findMany({
+        orderBy: { issuedAt: 'desc' },
+        take: 200,
+        select: {
+          id: true, invoiceNumber: true, status: true, subtotalAmount: true,
+          taxAmount: true, totalAmount: true, currency: true, issuedAt: true,
+          dueAt: true, paidAt: true, periodStart: true, periodEnd: true,
+          subscription: {
+            select: {
+              school: { select: { id: true, name: true, slug: true } },
+              plan: { select: { code: true, name: true } },
+            },
+          },
+        },
+      });
+    });
+  }
+
   async expireDueTrials(adminUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
