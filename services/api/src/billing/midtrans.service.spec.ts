@@ -146,6 +146,81 @@ describe('MidtransService notification verification', () => {
     expect(tx.invoice.update).not.toHaveBeenCalled();
   });
 
+  it('reuses an unexpired pending checkout for the same invoice', async () => {
+    const invoice = {
+      id: 'invoice-1', invoiceNumber: 'KLS-20261103-ABC123', status: 'OPEN',
+      currency: 'IDR', totalAmount: new Prisma.Decimal('125000'),
+      subscription: { schoolId: 'school-1', school: { name: 'SMP Test', slug: 'smp-test' }, plan: { name: 'Paket Dasar' } },
+    };
+    const payment = {
+      id: 'payment-existing', invoiceId: invoice.id, provider: 'MIDTRANS',
+      providerReference: 'KLS-ORDER-EXISTING', idempotencyKey: 'stable-idempotency-key',
+      status: 'PENDING', paymentUrl: 'https://app.sandbox.midtrans.com/snap/v2/vtweb/existing',
+      expiresAt: new Date(Date.now() + 60_000),
+      rawPayload: { environment: 'sandbox', snapToken: 'existing-token' },
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      $queryRaw: jest.fn(),
+      invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
+      payment: { findFirst: jest.fn().mockResolvedValue(payment) },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    const result = await service.createCheckout('admin-1', invoice.id);
+
+    expect(result).toEqual({
+      paymentId: payment.id, orderId: payment.providerReference, token: 'existing-token',
+      redirectUrl: payment.paymentUrl, environment: 'sandbox', reused: true,
+    });
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('creates one local pending attempt and sends its stable idempotency key to Snap', async () => {
+    const invoice = {
+      id: 'invoice-2', invoiceNumber: 'KLS-20261103-DEF456', status: 'OPEN',
+      currency: 'IDR', totalAmount: new Prisma.Decimal('125000'),
+      subscription: { schoolId: 'school-2', school: { name: 'SMP Test 2', slug: 'smp-test-2' }, plan: { name: 'Paket Dasar' } },
+    };
+    const payment = {
+      id: 'payment-new', invoiceId: invoice.id, provider: 'MIDTRANS',
+      providerReference: 'KLS-ORDER-NEW', idempotencyKey: 'stable-idempotency-key',
+      status: 'PENDING', paymentUrl: null, expiresAt: new Date(Date.now() + 86_400_000),
+    };
+    const tx1 = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
+      payment: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(payment) },
+    };
+    const tx2 = {
+      $executeRaw: jest.fn(),
+      payment: { update: jest.fn().mockResolvedValue({}) },
+    };
+    (prisma.$transaction as jest.Mock)
+      .mockImplementationOnce(async (callback: (client: typeof tx1) => unknown) => callback(tx1))
+      .mockImplementationOnce(async (callback: (client: typeof tx2) => unknown) => callback(tx2));
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 201,
+      json: async () => ({ token: 'snap-token', redirect_url: 'https://app.sandbox.midtrans.com/snap/v2/vtweb/token' }),
+    } as Response);
+    (audit.record as jest.Mock).mockResolvedValue(undefined);
+
+    const result = await service.createCheckout('admin-1', invoice.id);
+
+    expect(result).toEqual(expect.objectContaining({ paymentId: payment.id, orderId: payment.providerReference, reused: false }));
+    expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/snap/v1/transactions'), expect.objectContaining({
+      headers: expect.objectContaining({ 'Idempotency-Key': payment.idempotencyKey }),
+    }));
+    expect(tx2.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: payment.id },
+      data: expect.objectContaining({ paymentUrl: 'https://app.sandbox.midtrans.com/snap/v2/vtweb/token' }),
+    }));
+    fetchSpy.mockRestore();
+  });
+
   it('uses the Sandbox configuration by default', () => {
     expect(config.get('MIDTRANS_IS_PRODUCTION')).toBe('false');
   });
