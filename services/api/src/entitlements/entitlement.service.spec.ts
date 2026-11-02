@@ -67,4 +67,17 @@ describe('EntitlementService', () => {
     expect(await service.isFeatureEnabled(transaction(), schoolId, 'reports')).toBe(true);
     expect(await service.isFeatureEnabled(transaction(), schoolId, 'aiAssistant')).toBe(false);
   });
+
+  it('denies features that are missing or disabled', async () => {
+    await expect(service.assertFeatureEnabled(transaction(), schoolId, 'aiAssistant'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('denies feature access when the school is suspended', async () => {
+    const tx = transaction({
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'SUSPENDED' }) },
+    });
+    await expect(service.assertFeatureEnabled(tx, schoolId, 'reports'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
