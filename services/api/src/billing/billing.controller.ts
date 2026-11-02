@@ -41,4 +41,17 @@ export class BillingController {
   assignTrialSubscription(@CurrentUser() user: { id: string }, @Body() body: AssignTrialSubscriptionDto) {
     return this.billing.assignTrialSubscription(user.id, body);
   }
+
+  @Get('admin/subscriptions')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  listSubscriptions(@CurrentUser() user: { id: string }) {
+    return this.billing.listSubscriptions(user.id);
+  }
+
+  @Post('admin/subscriptions/expire-trials')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  expireDueTrials(@CurrentUser() user: { id: string }) {
+    return this.billing.expireDueTrials(user.id);
+  }
+
 }
