@@ -8,6 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { RejectRegistrationDto } from './reject-registration.dto';
 import { InvitationEmailService } from './invitation-email.service';
 import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
+import { EntitlementService } from '../entitlements/entitlement.service';
 
 @Injectable()
 export class SchoolsService {
@@ -16,6 +17,7 @@ export class SchoolsService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     private readonly invitationEmail: InvitationEmailService,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   async requestRegistration(input: SchoolRegistrationDto) {
@@ -297,6 +299,7 @@ export class SchoolsService {
         if (!school || school.status !== 'PENDING') {
           throw new ConflictException('Sekolah tidak lagi memenuhi syarat aktivasi.');
         }
+        await this.entitlements.assertCanCreate(tx, invitation.schoolId, 'users');
 
         const userId = randomUUID();
         const displayName = input.displayName.trim();
