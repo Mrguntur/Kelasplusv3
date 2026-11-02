@@ -179,6 +179,30 @@ describe('MidtransService notification verification', () => {
     fetchSpy.mockRestore();
   });
 
+  it('requires status reconciliation before replacing an expired pending checkout', async () => {
+    const invoice = {
+      id: 'invoice-expired', invoiceNumber: 'KLS-20261103-EXP123', status: 'OPEN',
+      currency: 'IDR', totalAmount: new Prisma.Decimal('125000'),
+      subscription: { schoolId: 'school-expired', school: { name: 'SMP Test', slug: 'smp-test' }, plan: { name: 'Paket Dasar' } },
+    };
+    const payment = {
+      id: 'payment-expired', invoiceId: invoice.id, provider: 'MIDTRANS',
+      providerReference: 'KLS-ORDER-EXPIRED', idempotencyKey: 'stable-idempotency-key',
+      status: 'PENDING', paymentUrl: 'https://app.sandbox.midtrans.com/snap/expired',
+      expiresAt: new Date(Date.now() - 60_000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
+      payment: { findFirst: jest.fn().mockResolvedValue(payment), create: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+
+    await expect(service.createCheckout('admin-1', invoice.id))
+      .rejects.toThrow('Rekonsiliasi status pembayaran terlebih dahulu');
+    expect(tx.payment.create).not.toHaveBeenCalled();
+  });
+
   it('creates one local pending attempt and sends its stable idempotency key to Snap', async () => {
     const invoice = {
       id: 'invoice-2', invoiceNumber: 'KLS-20261103-DEF456', status: 'OPEN',
