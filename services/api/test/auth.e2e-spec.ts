@@ -18,6 +18,9 @@ describe('Auth API security (e2e)', () => {
     changePassword: jest.fn(),
     revokeToken: jest.fn(),
     revokeAllForCurrentToken: jest.fn(),
+    createTeacherInvitation: jest.fn(),
+    previewTeacherInvitation: jest.fn(),
+    acceptTeacherInvitation: jest.fn(),
   };
   const configService = {
     get: jest.fn((key: string) => {
@@ -187,6 +190,93 @@ describe('Auth API security (e2e)', () => {
       .expect(400);
 
     expect(authService.selectSchool).not.toHaveBeenCalled();
+  });
+
+
+  it('requires an authenticated trusted-origin school session to create a teacher invitation', async () => {
+    authService.validateSession.mockResolvedValue({
+      id: 'admin-1',
+      email: 'admin@example.com',
+      displayName: 'School Admin',
+      activeSchoolId: '11111111-1111-4111-8111-111111111111',
+    });
+    authService.createTeacherInvitation.mockResolvedValue({
+      id: 'invite-1',
+      email: 'teacher@example.com',
+      displayName: 'New Teacher',
+      token: 'a'.repeat(43),
+      expiresAt: '2030-01-04T00:00:00.000Z',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/invitations/teachers')
+      .set('Origin', 'https://app.kelasplus.example')
+      .set('Cookie', 'kelasplus_session=opaque-test-session-token')
+      .send({ email: 'teacher@example.com', displayName: 'New Teacher' })
+      .expect(201);
+
+    expect(authService.createTeacherInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'admin-1', activeSchoolId: '11111111-1111-4111-8111-111111111111' }),
+      { email: 'teacher@example.com', displayName: 'New Teacher' },
+    );
+    expect(response.body.token).toBe('a'.repeat(43));
+  });
+
+  it('rejects teacher invitation creation without a valid session', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/invitations/teachers')
+      .set('Origin', 'https://app.kelasplus.example')
+      .send({ email: 'teacher@example.com', displayName: 'New Teacher' })
+      .expect(401);
+    expect(authService.createTeacherInvitation).not.toHaveBeenCalled();
+  });
+
+  it('rejects teacher invitation creation from an untrusted origin', async () => {
+    authService.validateSession.mockResolvedValue({
+      id: 'admin-1',
+      email: 'admin@example.com',
+      displayName: 'School Admin',
+      activeSchoolId: '11111111-1111-4111-8111-111111111111',
+    });
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/invitations/teachers')
+      .set('Origin', 'https://attacker.example')
+      .set('Cookie', 'kelasplus_session=opaque-test-session-token')
+      .send({ email: 'teacher@example.com', displayName: 'New Teacher' })
+      .expect(403);
+    expect(authService.createTeacherInvitation).not.toHaveBeenCalled();
+  });
+
+  it('previews a teacher invitation using its bearer token', async () => {
+    authService.previewTeacherInvitation.mockResolvedValue({
+      email: 'teacher@example.com',
+      displayName: 'New Teacher',
+      schoolName: 'SMP Example',
+      expiresAt: '2030-01-04T00:00:00.000Z',
+    });
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/auth/teacher-invitations/preview')
+      .query({ token: 'a'.repeat(43) })
+      .expect(200);
+    expect(authService.previewTeacherInvitation).toHaveBeenCalledWith('a'.repeat(43));
+    expect(response.body.schoolName).toBe('SMP Example');
+  });
+
+  it('accepts a valid teacher invitation request through the dedicated endpoint', async () => {
+    authService.acceptTeacherInvitation.mockResolvedValue({
+      success: true,
+      user: { id: 'teacher-1', email: 'teacher@example.com', displayName: 'New Teacher' },
+    });
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/teacher-invitations/accept')
+      .set('Origin', 'https://app.kelasplus.example')
+      .send({ token: 'a'.repeat(43), password: 'a-secure-test-password' })
+      .expect(200);
+    expect(authService.acceptTeacherInvitation).toHaveBeenCalledWith({
+      token: 'a'.repeat(43),
+      password: 'a-secure-test-password',
+    });
+    expect(response.body.success).toBe(true);
   });
 
   it('rejects unexpected request fields rather than silently accepting them', async () => {
