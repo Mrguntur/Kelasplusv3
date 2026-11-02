@@ -47,39 +47,78 @@ export class MidtransService {
 
   async createCheckout(adminUserId: string, invoiceId: string) {
     const settings = this.settings();
-    const invoice = await this.prisma.$transaction(async (tx) => {
+    const checkout = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
       await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
-      const record = await tx.invoice.findUnique({
+
+      // Serialize checkout attempts per invoice. This prevents two API requests from
+      // creating separate local payment records for the same invoice.
+      await tx.$queryRaw`SELECT id FROM invoices WHERE id = ${invoiceId}::uuid FOR UPDATE`;
+      const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
         include: { subscription: { include: { school: true, plan: true } } },
       });
-      if (!record) throw new NotFoundException('Invoice tidak ditemukan.');
-      if (record.status !== 'OPEN') throw new ConflictException('Checkout hanya tersedia untuk invoice berstatus OPEN.');
-      if (record.currency !== 'IDR') throw new ConflictException('Midtrans Snap saat ini hanya dikonfigurasi untuk invoice IDR.');
-      if (record.totalAmount.lte(0)) throw new ConflictException('Nominal invoice harus lebih besar dari nol.');
-      if (record.totalAmount.decimalPlaces() > 0) throw new ConflictException('Nominal invoice harus berupa bilangan bulat rupiah.');
-      return record;
-    });
+      if (!invoice) throw new NotFoundException('Invoice tidak ditemukan.');
+      if (invoice.status !== 'OPEN') throw new ConflictException('Checkout hanya tersedia untuk invoice berstatus OPEN.');
+      if (invoice.currency !== 'IDR') throw new ConflictException('Midtrans Snap saat ini hanya dikonfigurasi untuk invoice IDR.');
+      if (invoice.totalAmount.lte(0)) throw new ConflictException('Nominal invoice harus lebih besar dari nol.');
+      if (invoice.totalAmount.decimalPlaces() > 0) throw new ConflictException('Nominal invoice harus berupa bilangan bulat rupiah.');
 
-    const orderId = `KLS-${invoice.invoiceNumber}-${randomUUID().slice(0, 6)}`;
-    const payment = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
-      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
-      return tx.payment.create({
-        data: {
-          id: randomUUID(),
-          invoiceId,
-          provider: 'MIDTRANS',
-          providerReference: orderId,
-          idempotencyKey: randomUUID(),
-          status: 'PENDING',
-          amount: invoice.totalAmount,
-          currency: invoice.currency,
-        },
+      const now = new Date();
+      const existing = await tx.payment.findFirst({
+        where: { invoiceId, provider: 'MIDTRANS', status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
       });
+      if (existing?.paymentUrl && existing.expiresAt && existing.expiresAt > now) {
+        const payload = existing.rawPayload as { snapToken?: string; environment?: string } | null;
+        return {
+          invoice,
+          payment: existing,
+          reused: true,
+          token: payload?.snapToken ?? null,
+          redirectUrl: existing.paymentUrl,
+          environment: payload?.environment ?? settings.environment,
+        };
+      }
+
+      let payment = existing;
+      if (payment?.expiresAt && payment.expiresAt <= now) {
+        await tx.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
+        payment = null;
+      }
+
+      if (!payment) {
+        const orderId = `KLS-${invoice.invoiceNumber}-${randomUUID().slice(0, 6)}`;
+        payment = await tx.payment.create({
+          data: {
+            id: randomUUID(),
+            invoiceId,
+            provider: 'MIDTRANS',
+            providerReference: orderId,
+            idempotencyKey: randomUUID(),
+            status: 'PENDING',
+            amount: invoice.totalAmount,
+            currency: invoice.currency,
+            expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+      return { invoice, payment, reused: false, token: null, redirectUrl: null, environment: settings.environment };
     });
 
+    if (checkout.reused && checkout.redirectUrl) {
+      return {
+        paymentId: checkout.payment.id,
+        orderId: checkout.payment.providerReference,
+        token: checkout.token,
+        redirectUrl: checkout.redirectUrl,
+        environment: checkout.environment,
+        reused: true,
+      };
+    }
+
+    const orderId = checkout.payment.providerReference;
+    if (!orderId) throw new ConflictException('Referensi transaksi Midtrans belum tersedia.');
     try {
       const response = await fetch(`${settings.baseUrl}/snap/v1/transactions`, {
         method: 'POST',
@@ -87,21 +126,23 @@ export class MidtransService {
           Accept: 'application/json',
           'Content-Type': 'application/json',
           Authorization: `Basic ${Buffer.from(`${settings.serverKey}:`).toString('base64')}`,
+          // Keep this key stable for retries of this exact local payment attempt.
+          'Idempotency-Key': checkout.payment.idempotencyKey,
         },
         body: JSON.stringify({
           transaction_details: {
             order_id: orderId,
-            gross_amount: Number(invoice.totalAmount.toFixed(0)),
+            gross_amount: Number(checkout.invoice.totalAmount.toFixed(0)),
           },
           item_details: [{
-            id: invoice.invoiceNumber,
-            price: Number(invoice.totalAmount.toFixed(0)),
+            id: checkout.invoice.invoiceNumber,
+            price: Number(checkout.invoice.totalAmount.toFixed(0)),
             quantity: 1,
-            name: `KELAS+ ${invoice.subscription.plan.name}`.slice(0, 50),
+            name: `KELAS+ ${checkout.invoice.subscription.plan.name}`.slice(0, 50),
           }],
-          customer_details: { first_name: invoice.subscription.school.name.slice(0, 50) },
-          custom_field1: invoice.invoiceNumber,
-          custom_field2: invoice.subscription.school.slug,
+          customer_details: { first_name: checkout.invoice.subscription.school.name.slice(0, 50) },
+          custom_field1: checkout.invoice.invoiceNumber,
+          custom_field2: checkout.invoice.subscription.school.slug,
         }),
         signal: AbortSignal.timeout(15_000),
       });
@@ -114,34 +155,46 @@ export class MidtransService {
         await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
         await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
         await tx.payment.update({
-          where: { id: payment.id },
-          data: { paymentUrl: payload.redirect_url, rawPayload: { environment: settings.environment, snapToken: payload.token } },
+          where: { id: checkout.payment.id },
+          data: {
+            paymentUrl: payload.redirect_url,
+            rawPayload: { environment: settings.environment, snapToken: payload.token },
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
         });
         await this.audit.record({
           actorUserId: adminUserId,
-          schoolId: invoice.subscription.schoolId,
+          schoolId: checkout.invoice.subscription.schoolId,
           eventType: 'billing.midtrans_checkout_created',
           outcome: 'SUCCESS',
-          metadata: { invoiceId, paymentId: payment.id, orderId, environment: settings.environment },
+          metadata: { invoiceId, paymentId: checkout.payment.id, orderId, environment: settings.environment },
         }, tx);
       });
 
-      return { paymentId: payment.id, orderId, token: payload.token, redirectUrl: payload.redirect_url, environment: settings.environment };
+      return {
+        paymentId: checkout.payment.id,
+        orderId,
+        token: payload.token,
+        redirectUrl: payload.redirect_url,
+        environment: settings.environment,
+        reused: false,
+      };
     } catch (error) {
+      // Do not mark this attempt FAILED on network/ambiguous errors. Midtrans may
+      // already have accepted the request; retry with the same order and idempotency key.
       await this.prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
         await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
-        await tx.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
         await this.audit.record({
           actorUserId: adminUserId,
-          schoolId: invoice.subscription.schoolId,
-          eventType: 'billing.midtrans_checkout_failed',
+          schoolId: checkout.invoice.subscription.schoolId,
+          eventType: 'billing.midtrans_checkout_retryable_error',
           outcome: 'FAILURE',
-          metadata: { invoiceId, paymentId: payment.id, orderId },
+          metadata: { invoiceId, paymentId: checkout.payment.id, orderId },
         }, tx);
       });
       this.logger.error('Midtrans Snap checkout request failed', error instanceof Error ? error.stack : String(error));
-      throw new BadGatewayException('Midtrans belum dapat membuat halaman pembayaran. Silakan coba kembali.');
+      throw new BadGatewayException('Midtrans belum dapat memastikan hasil pembuatan checkout. Silakan coba kembali; sistem akan menggunakan referensi pembayaran yang sama.');
     }
   }
 
