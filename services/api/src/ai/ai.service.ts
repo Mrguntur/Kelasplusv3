@@ -212,7 +212,7 @@ export class AiService {
     return [
       roleInstruction,
       'Jawab dalam Bahasa Indonesia yang jelas dan profesional.',
-      'Gunakan hanya ringkasan statistik agregat berikut. Tidak ada nama, NISN, alamat, atau identitas siswa yang diberikan.',
+      'Gunakan hanya ringkasan statistik agregat berikut. Konteks sekolah tidak memuat nama, NISN, alamat, atau identitas siswa.',
       'Jangan mendiagnosis siswa, jangan mengarang data, dan bedakan fakta dari rekomendasi. Jangan mengulang nama atau identitas individu yang mungkin tertulis di pertanyaan.',
       'Jika data tidak cukup, nyatakan keterbatasannya dan minta verifikasi manusia sebelum keputusan penting.',
       `Ringkasan data: ${JSON.stringify(context)}`,
