@@ -135,6 +135,28 @@ export class EntitlementService {
     }
   }
 
+
+  async getAiMonthlyLimit(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    role: SchoolRole,
+    capability: AiCapability,
+  ): Promise<number> {
+    const capabilities = await this.getAiCapabilities(tx, schoolId, role);
+    if (!capabilities[capability]) return 0;
+
+    const snapshot = await this.getSnapshot(tx, schoolId);
+    const features = snapshot.plan?.features;
+    if (!features || typeof features !== 'object' || Array.isArray(features)) return 0;
+    const key = capability === 'teacher_assistant'
+      ? 'aiTeacherMonthlyRequests'
+      : 'aiLeadershipMonthlyRequests';
+    const value = (features as Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : 0;
+  }
+
   async getSnapshot(
     tx: Prisma.TransactionClient,
     schoolId: string,
