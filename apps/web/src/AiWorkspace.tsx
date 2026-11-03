@@ -121,7 +121,7 @@ export default function AiWorkspace({ role }: { role: string }) {
         <div className="ai-answer-body">{answer.answer}</div>
         <div className="ai-answer-meta">Penggunaan bulan ini: {answer.usage.monthlyUsed}/{answer.usage.monthlyLimit} · Model: {answer.model}</div>
       </article>}
-      {capabilityAvailable && <div className="ai-privacy-note"><ShieldCheck size={16}/><span>AI menggunakan ringkasan data agregat sesuai peran. Jangan masukkan nama siswa, NISN, nomor telepon, atau informasi pribadi. Rekomendasi AI wajib diverifikasi oleh guru atau pimpinan.</span></div>
+      {capabilityAvailable && <div className="ai-privacy-note"><ShieldCheck size={16}/><span>AI menggunakan ringkasan data agregat sesuai peran. Jangan masukkan nama siswa, NISN, nomor telepon, atau informasi pribadi. Rekomendasi AI wajib diverifikasi oleh guru atau pimpinan.</span></div>}
     </section>
   );
 }
