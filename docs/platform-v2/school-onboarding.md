@@ -30,10 +30,13 @@ Semua endpoint di atas memerlukan session autentikasi dan `PlatformAdminGuard`.
 
 ## Konfigurasi email
 
-API memerlukan dua environment variable:
+API memerlukan konfigurasi environment berikut:
 
+- `PUBLIC_APP_URL`: base URL frontend aplikasi, termasuk base path `/app/` (contoh lokal: `http://localhost:5173/app/`; contoh produksi: `https://kelasplus.my.id/app/`).
 - `RESEND_API_KEY`
 - `INVITATION_EMAIL_FROM`
+
+Tautan undangan administrator dibangun relatif terhadap `PUBLIC_APP_URL` dan menggunakan route frontend `/app/invite/accept`.
 
 Gunakan API key khusus environment development/staging. Jangan menaruh key di variabel `VITE_*`, browser, repository, atau percakapan. Jika belum dikonfigurasi, sekolah tetap dapat dibuat dan trial dapat diberikan, tetapi email undangan tidak akan terkirim.
 
