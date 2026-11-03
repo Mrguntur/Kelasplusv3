@@ -7,6 +7,8 @@ on:
       - feat/platform-v2-foundation
       - feat/platform-v2-super-admin
       - feat/platform-v2-subscription-foundation
+      - fix/platform-v2-entitlement-rebased
+      - feat/platform-v2-entitlement-engine
     paths:
       - "services/api/**"
       - "infra/**"

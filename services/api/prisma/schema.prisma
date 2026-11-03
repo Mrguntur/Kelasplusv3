@@ -70,6 +70,7 @@ model School {
   status      SchoolStatus      @default(PENDING)
   timezone    String            @default("Asia/Makassar") @db.VarChar(80)
   locale      String            @default("id-ID") @db.VarChar(20)
+  memberCount Int               @default(0) @map("member_count")
   createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships SchoolMembership[]

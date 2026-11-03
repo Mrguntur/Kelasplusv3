@@ -77,11 +77,21 @@ async function main(): Promise<void> {
     await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
     await tx.$executeRaw`SELECT set_config('app.current_school_id', ${school.id}, true)`;
 
+    const existingMembership = await tx.schoolMembership.findUnique({
+      where: { schoolId_userId: { schoolId: school.id, userId: user.id } },
+      select: { id: true },
+    });
     await tx.schoolMembership.upsert({
       where: { schoolId_userId: { schoolId: school.id, userId: user.id } },
       create: { schoolId: school.id, userId: user.id, role: SchoolRole.SCHOOL_ADMIN },
       update: { role: SchoolRole.SCHOOL_ADMIN },
     });
+    if (!existingMembership) {
+      await tx.school.update({
+        where: { id: school.id },
+        data: { memberCount: { increment: 1 } },
+      });
+    }
 
     return { school, user };
   });

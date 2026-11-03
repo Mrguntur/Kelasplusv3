@@ -318,7 +318,7 @@ export class SchoolsService {
         });
         await tx.school.update({
           where: { id: invitation.schoolId },
-          data: { status: 'ACTIVE' },
+          data: { status: 'ACTIVE', memberCount: { increment: 1 } },
         });
         await this.audit.record({
           actorUserId: userId,
