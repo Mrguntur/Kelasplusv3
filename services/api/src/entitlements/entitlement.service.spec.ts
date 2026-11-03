@@ -52,6 +52,26 @@ describe('EntitlementService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('marks a trial expired when trialEndsAt has passed even if currentPeriodEnd is later', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'TRIALING',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: new Date(Date.now() - 1),
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: { aiAssistant: true, aiTeacherMonthlyRequests: 100 },
+          },
+        }),
+      },
+    });
+    const snapshot = await service.getSnapshot(tx, schoolId);
+    expect(snapshot.access.allowed).toBe(false);
+    expect(snapshot.subscriptionStatus).toBe('EXPIRED');
+  });
+
   it('blocks access when the subscription is past due', async () => {
     const tx = transaction({
       subscription: {
