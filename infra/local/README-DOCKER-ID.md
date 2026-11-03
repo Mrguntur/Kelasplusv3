@@ -16,7 +16,7 @@ Dari PowerShell:
 
 ```powershell
 git fetch origin
-git switch preview/platform-v2-local-complete
+git switch feat/platform-v2-docker-local-stack
 git pull
 ```
 
@@ -41,7 +41,7 @@ docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.ym
 docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml ps
 ```
 
-Pada startup pertama, container API akan memasang dependency, membuat Prisma Client, menjalankan migrasi ke PostgreSQL lokal, lalu menjalankan NestJS. Container web dan landing memasang dependency masing-masing lalu menjalankan Vite.
+Pada startup pertama, service `db-init` menyiapkan role runtime PostgreSQL non-superuser. Container API memasang dependency, membuat Prisma Client, menjalankan migrasi sebagai database owner, lalu menjalankan NestJS menggunakan role `kelasplus_runtime` yang tidak memiliki hak superuser atau bypass RLS. Container web dan landing memasang dependency masing-masing lalu menjalankan Vite.
 
 ## 4. Buat akun demo lokal
 
@@ -49,7 +49,7 @@ Migrasi database otomatis dijalankan saat API container pertama kali aktif. Untu
 
 ```powershell
 $env:KELASPLUS_SEED_ADMIN_PASSWORD = "GantiDenganPasswordLokalMinimal12Karakter"
-docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml exec -e "KELASPLUS_SEED_ADMIN_PASSWORD=$env:KELASPLUS_SEED_ADMIN_PASSWORD" api npm run db:seed
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml exec -e "DATABASE_URL=postgresql://kelasplus_dev:local_dev_password_only@postgres:5432/kelasplus_dev?schema=public" -e "KELASPLUS_SEED_ADMIN_PASSWORD=$env:KELASPLUS_SEED_ADMIN_PASSWORD" api npm run db:seed
 Remove-Item Env:KELASPLUS_SEED_ADMIN_PASSWORD
 ```
 
@@ -57,7 +57,7 @@ Akun demo:
 - Email: `admin@kelasplus.local`
 - Password: gunakan password lokal yang baru kamu tetapkan di atas.
 
-Akun demo memiliki role Admin Sekolah dan termasuk allowlist Super Admin khusus lingkungan lokal. Ganti password demo jika diperlukan; jangan gunakan akun atau password ini di produksi.
+Akun demo memiliki role Admin Sekolah dan termasuk allowlist Super Admin khusus lingkungan lokal. Seed memakai koneksi database owner hanya untuk data demo; aplikasi yang berjalan tetap menggunakan role runtime non-superuser agar kebijakan RLS benar-benar diuji. Ganti password demo jika diperlukan; jangan gunakan akun atau password ini di produksi.
 
 ## 5. Buka aplikasi
 
