@@ -32,21 +32,19 @@ describe('AiService privacy safeguards', () => {
     const prompt = internals.buildPrompt(
       'teacher_assistant',
       { scope: 'kelas yang ditugaskan', activeStudents: 24, activeClasses: 2 },
-      'Bagaimana meningkatkan speaking?',
     );
 
     expect(prompt).toContain('asisten pedagogis guru SMP');
     expect(prompt).toContain('ringkasan statistik agregat');
     expect(prompt).toContain('Jangan mendiagnosis siswa');
     expect(prompt).toContain('activeStudents');
-    expect(prompt).toContain('Bagaimana meningkatkan speaking?');
+    expect(prompt).not.toContain('Pertanyaan pengguna:');
   });
 
   it('keeps leadership insights at school level and requires human verification', () => {
     const prompt = internals.buildPrompt(
       'leadership_insights',
       { scope: 'agregat seluruh sekolah', activeStudents: 300, activeClasses: 12 },
-      'Apa prioritas monitoring?',
     );
 
     expect(prompt).toContain('analis pendidikan untuk pimpinan sekolah');
