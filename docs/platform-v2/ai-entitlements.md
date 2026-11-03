@@ -30,7 +30,7 @@ Both routes require an authenticated session, active school membership, an activ
 ## Privacy and cost controls
 
 - The API constructs school context from aggregate counts; it does not query or send student names, NISN, email, addresses, or individual score rows.
-- Common email, Indonesian mobile-number, and 10-digit identifier patterns are redacted from the submitted question. Name detection is not reliable, so users must not include student names or other identifying details in prompts; the future UI should display this warning.
+- Common email, Indonesian mobile-number, and 10-digit identifier patterns are redacted from the submitted question. Name detection is not reliable, so users must not include student names or other identifying details in prompts; the V2 dashboard displays this warning before requests are submitted.
 - Teacher context is restricted to the teacher's assigned classes.
 - Leadership context uses school-level aggregates.
 - Each accepted request reserves one monthly request before calling Gemini. Failed provider calls are recorded and still consume one request to prevent retries from bypassing quotas.
