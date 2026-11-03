@@ -43,7 +43,23 @@ docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.ym
 
 Pada startup pertama, container API akan memasang dependency, membuat Prisma Client, menjalankan migrasi ke PostgreSQL lokal, lalu menjalankan NestJS. Container web dan landing memasang dependency masing-masing lalu menjalankan Vite.
 
-## 4. Buka aplikasi
+## 4. Buat akun demo lokal
+
+Migrasi database otomatis dijalankan saat API container pertama kali aktif. Untuk membuat sekolah demo dan akun administrator lokal, jalankan seed yang dibatasi hanya untuk database `kelasplus_dev` lokal:
+
+```powershell
+$env:KELASPLUS_SEED_ADMIN_PASSWORD = "GantiDenganPasswordLokalMinimal12Karakter"
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml exec -e "KELASPLUS_SEED_ADMIN_PASSWORD=$env:KELASPLUS_SEED_ADMIN_PASSWORD" api npm run db:seed
+Remove-Item Env:KELASPLUS_SEED_ADMIN_PASSWORD
+```
+
+Akun demo:
+- Email: `admin@kelasplus.local`
+- Password: gunakan password lokal yang baru kamu tetapkan di atas.
+
+Akun demo memiliki role Admin Sekolah dan termasuk allowlist Super Admin khusus lingkungan lokal. Ganti password demo jika diperlukan; jangan gunakan akun atau password ini di produksi.
+
+## 5. Buka aplikasi
 
 | Komponen | Alamat lokal |
 | --- | --- |
@@ -55,7 +71,7 @@ Pada startup pertama, container API akan memasang dependency, membuat Prisma Cli
 
 Database hanya dipublikasikan pada loopback PC. API, web, dan landing juga hanya dipublikasikan pada loopback PC, bukan ke jaringan publik.
 
-## 5. Lihat log dan status
+## 6. Lihat log dan status
 
 ```powershell
 docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml ps
@@ -69,7 +85,7 @@ Untuk memulai ulang layanan setelah mengubah environment:
 docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml up -d --force-recreate api
 ```
 
-## 6. Hentikan stack
+## 7. Hentikan stack
 
 Perintah ini menghentikan container tetapi mempertahankan volume database:
 
