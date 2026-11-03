@@ -1,7 +1,21 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { Prisma, SubscriptionStatus } from '@prisma/client';
+import { Prisma, SchoolRole, SubscriptionStatus } from '@prisma/client';
 
 type QuotaResource = 'users' | 'students' | 'classes';
+
+
+export type AiCapability = 'teacher_assistant' | 'leadership_insights';
+
+const AI_FEATURE_KEYS: Record<AiCapability, string> = {
+  teacher_assistant: 'aiAssistant',
+  leadership_insights: 'aiLeadershipInsights',
+};
+
+const ROLE_AI_CAPABILITIES: Partial<Record<SchoolRole, AiCapability[]>> = {
+  [SchoolRole.TEACHER]: ['teacher_assistant'],
+  [SchoolRole.SCHOOL_LEADER]: ['leadership_insights'],
+  [SchoolRole.SCHOOL_ADMIN]: ['teacher_assistant', 'leadership_insights'],
+};
 
 type EntitlementSnapshot = {
   schoolId: string;
@@ -77,6 +91,47 @@ export class EntitlementService {
   ): Promise<void> {
     if (!await this.isFeatureEnabled(tx, schoolId, featureKey)) {
       throw new ForbiddenException('Fitur ini tidak termasuk dalam paket aktif sekolah.');
+    }
+  }
+
+
+  /**
+   * Resolves AI permissions from the active subscription and the member's
+   * school role. Missing feature flags are deliberately treated as disabled.
+   */
+  async getAiCapabilities(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    role: SchoolRole,
+  ): Promise<Record<AiCapability, boolean>> {
+    const snapshot = await this.getSnapshot(tx, schoolId);
+    const allowedByRole = ROLE_AI_CAPABILITIES[role] ?? [];
+    const features = snapshot.plan?.features;
+    const featureMap = features && typeof features === 'object' && !Array.isArray(features)
+      ? features as Record<string, unknown>
+      : {};
+
+    return {
+      teacher_assistant: snapshot.access.allowed &&
+        allowedByRole.includes('teacher_assistant') &&
+        featureMap[AI_FEATURE_KEYS.teacher_assistant] === true,
+      leadership_insights: snapshot.access.allowed &&
+        allowedByRole.includes('leadership_insights') &&
+        featureMap[AI_FEATURE_KEYS.leadership_insights] === true,
+    };
+  }
+
+  async assertAiCapability(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    role: SchoolRole,
+    capability: AiCapability,
+  ): Promise<void> {
+    const capabilities = await this.getAiCapabilities(tx, schoolId, role);
+    if (!capabilities[capability]) {
+      throw new ForbiddenException(
+        'Akses AI tidak tersedia untuk peran atau paket aktif sekolah ini.',
+      );
     }
   }
 
