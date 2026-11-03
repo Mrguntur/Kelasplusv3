@@ -148,6 +148,7 @@ export default function SchoolOnboardingManager({ onChanged }: { onChanged: () =
     setNotice('');
     try {
       if (!hasValidSubscription(item)) {
+        await api('/billing/admin/subscriptions/expire-trials', { method: 'POST' });
         const planId = selectedPlans[item.school.id] ?? plans[0]?.id;
         if (!planId) throw new Error('Publikasikan minimal satu paket sebelum mengundang administrator.');
         await api('/billing/admin/subscriptions/trial', {
