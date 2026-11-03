@@ -9,6 +9,7 @@ import { SchoolsModule } from './schools/schools.module';
 import { AuditModule } from './audit/audit.module';
 import { AcademicModule } from './academic/academic.module';
 import { BillingModule } from './billing/billing.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { BillingModule } from './billing/billing.module';
     AuditModule,
     AcademicModule,
     BillingModule,
+    AiModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -5,6 +5,7 @@ CREATE ROLE kelasplus_runtime LOGIN PASSWORD 'runtime_ci_only' NOSUPERUSER NOBYP
 GRANT USAGE ON SCHEMA public TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "schools", "school_memberships", "sessions", "users" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "audit_events" TO kelasplus_runtime;
+GRANT SELECT, INSERT, UPDATE ON "ai_usage_events" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE ON "school_registration_requests" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "school_admin_invitations", "teacher_invitations" TO kelasplus_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" TO kelasplus_runtime;
@@ -326,4 +327,40 @@ END $$;
 ROLLBACK;
 RESET ROLE;
 
-REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations", "teacher_invitations", "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores" FROM kelasplus_runtime;
+
+-- Owner-seeded event for school B proves school A cannot read another tenant's usage.
+INSERT INTO "ai_usage_events"
+  ("id","school_id","user_id","capability","model","status","created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc80','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02','teacher_assistant','gemini-test','SUCCEEDED',now());
+
+-- AI usage events are tenant- and actor-scoped; monthly quota reads must not cross schools.
+SET ROLE kelasplus_runtime;
+BEGIN;
+SELECT set_config('app.current_user_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',true);
+SELECT set_config('app.current_school_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
+INSERT INTO "ai_usage_events"
+  ("id","school_id","user_id","capability","model","status","created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc81','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01','teacher_assistant','gemini-test','SUCCEEDED',now());
+DO $ai_usage$
+DECLARE visible_usage integer;
+BEGIN
+  SELECT count(*) INTO visible_usage FROM "ai_usage_events";
+  IF visible_usage <> 1 THEN
+    RAISE EXCEPTION 'RLS failure: own tenant AI usage event should be visible, got %', visible_usage;
+  END IF;
+  BEGIN
+    INSERT INTO "ai_usage_events"
+      ("id","school_id","user_id","capability","model","status","created_at")
+    VALUES
+      ('cccccccc-cccc-4ccc-8ccc-cccccccccc82','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02','teacher_assistant','gemini-test','SUCCEEDED',now());
+    RAISE EXCEPTION 'RLS failure: runtime user inserted AI usage for another tenant';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END $ai_usage$;
+ROLLBACK;
+RESET ROLE;
+
+REVOKE ALL ON "schools", "school_memberships", "sessions", "users", "audit_events", "school_registration_requests", "school_admin_invitations", "teacher_invitations", "academic_years", "terms", "staff_profiles", "students", "school_classes", "class_enrollments", "subjects", "teaching_assignments", "attendance_sessions", "attendance_records", "teaching_journals", "assessments", "assessment_scores", "ai_usage_events" FROM kelasplus_runtime;

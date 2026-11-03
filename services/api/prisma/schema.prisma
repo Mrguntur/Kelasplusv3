@@ -84,6 +84,7 @@ model School {
   enrollments ClassEnrollment[]
   subjects Subject[]
   subscriptions Subscription[]
+  aiUsageEvents AiUsageEvent[]
   @@map("schools")
 }
 
@@ -104,6 +105,7 @@ model User {
   teachingJournals TeachingJournal[]
   assessments Assessment[]
   assessmentScores AssessmentScore[]
+  aiUsageEvents AiUsageEvent[]
 
   @@map("users")
 }
@@ -642,3 +644,23 @@ model Payment {
   @@index([provider, status, createdAt])
   @@map("payments")
 }
+
+
+model AiUsageEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  schoolId         String   @map("school_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  capability       String   @db.VarChar(40)
+  model            String   @db.VarChar(80)
+  status           String   @default("PENDING") @db.VarChar(20)
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  school           School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, capability, createdAt])
+  @@index([userId, createdAt])
+  @@map("ai_usage_events")
+}
+

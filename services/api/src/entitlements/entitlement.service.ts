@@ -1,7 +1,23 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { Prisma, SubscriptionStatus } from '@prisma/client';
+import { Prisma, SchoolRole, SubscriptionStatus } from '@prisma/client';
 
 type QuotaResource = 'users' | 'students' | 'classes';
+
+
+export type AiCapability = 'teacher_assistant' | 'leadership_insights';
+
+const AI_ENABLED_PLAN_CODES = new Set(['GROWTH', 'UNGGULAN']);
+
+const AI_FEATURE_KEYS: Record<AiCapability, string> = {
+  teacher_assistant: 'aiAssistant',
+  leadership_insights: 'aiLeadershipInsights',
+};
+
+const ROLE_AI_CAPABILITIES: Partial<Record<SchoolRole, AiCapability[]>> = {
+  [SchoolRole.TEACHER]: ['teacher_assistant'],
+  [SchoolRole.SCHOOL_LEADER]: ['leadership_insights'],
+  [SchoolRole.SCHOOL_ADMIN]: ['teacher_assistant', 'leadership_insights'],
+};
 
 type EntitlementSnapshot = {
   schoolId: string;
@@ -80,6 +96,70 @@ export class EntitlementService {
     }
   }
 
+
+  /**
+   * Resolves AI permissions from the active subscription and the member's
+   * school role. Missing feature flags are deliberately treated as disabled.
+   */
+  async getAiCapabilities(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    role: SchoolRole,
+  ): Promise<Record<AiCapability, boolean>> {
+    const snapshot = await this.getSnapshot(tx, schoolId);
+    const allowedByRole = ROLE_AI_CAPABILITIES[role] ?? [];
+    const features = snapshot.plan?.features;
+    const planAllowsAi = Boolean(snapshot.plan && AI_ENABLED_PLAN_CODES.has(snapshot.plan.code.toUpperCase()));
+    const featureMap = features && typeof features === 'object' && !Array.isArray(features)
+      ? features as Record<string, unknown>
+      : {};
+
+    return {
+      teacher_assistant: snapshot.access.allowed && planAllowsAi &&
+        allowedByRole.includes('teacher_assistant') &&
+        featureMap[AI_FEATURE_KEYS.teacher_assistant] === true,
+      leadership_insights: snapshot.access.allowed && planAllowsAi &&
+        allowedByRole.includes('leadership_insights') &&
+        featureMap[AI_FEATURE_KEYS.leadership_insights] === true,
+    };
+  }
+
+  async assertAiCapability(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    role: SchoolRole,
+    capability: AiCapability,
+  ): Promise<void> {
+    const capabilities = await this.getAiCapabilities(tx, schoolId, role);
+    if (!capabilities[capability]) {
+      throw new ForbiddenException(
+        'Akses AI tidak tersedia untuk peran atau paket aktif sekolah ini.',
+      );
+    }
+  }
+
+
+  async getAiMonthlyLimit(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    role: SchoolRole,
+    capability: AiCapability,
+  ): Promise<number> {
+    const capabilities = await this.getAiCapabilities(tx, schoolId, role);
+    if (!capabilities[capability]) return 0;
+
+    const snapshot = await this.getSnapshot(tx, schoolId);
+    const features = snapshot.plan?.features;
+    if (!features || typeof features !== 'object' || Array.isArray(features)) return 0;
+    const key = capability === 'teacher_assistant'
+      ? 'aiTeacherMonthlyRequests'
+      : 'aiLeadershipMonthlyRequests';
+    const value = (features as Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : 0;
+  }
+
   async getSnapshot(
     tx: Prisma.TransactionClient,
     schoolId: string,
@@ -114,9 +194,8 @@ export class EntitlementService {
       allowed = true;
     } else {
       if (
-        subscription &&
-        (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') &&
-        subscription.currentPeriodEnd <= now
+        (subscription?.status === 'ACTIVE' && subscription.currentPeriodEnd <= now) ||
+        (subscription?.status === 'TRIALING' && (!subscription.trialEndsAt || subscription.trialEndsAt <= now))
       ) effectiveStatus = 'EXPIRED';
       reason = subscription?.status === 'PAST_DUE'
         ? 'Langganan menunggak. Selesaikan pembayaran untuk memulihkan akses.'

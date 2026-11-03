@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, SchoolRole } from '@prisma/client';
 import { EntitlementService } from './entitlement.service';
 
 describe('EntitlementService', () => {
@@ -52,6 +52,26 @@ describe('EntitlementService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('marks a trial expired when trialEndsAt has passed even if currentPeriodEnd is later', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'TRIALING',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: new Date(Date.now() - 1),
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: { aiAssistant: true, aiTeacherMonthlyRequests: 100 },
+          },
+        }),
+      },
+    });
+    const snapshot = await service.getSnapshot(tx, schoolId);
+    expect(snapshot.access.allowed).toBe(false);
+    expect(snapshot.subscriptionStatus).toBe('EXPIRED');
+  });
+
   it('blocks access when the subscription is past due', async () => {
     const tx = transaction({
       subscription: {
@@ -89,4 +109,147 @@ describe('EntitlementService', () => {
     await expect(service.assertFeatureEnabled(tx, schoolId, 'reports'))
       .rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('grants teacher AI assistant only when the plan explicitly enables it', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    expect(await service.getAiCapabilities(tx, schoolId, SchoolRole.TEACHER)).toEqual({
+      teacher_assistant: true,
+      leadership_insights: false,
+    });
+  });
+
+  it('grants leadership insights to school leaders but not teachers', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    expect((await service.getAiCapabilities(tx, schoolId, SchoolRole.SCHOOL_LEADER)).leadership_insights).toBe(true);
+    await expect(service.assertAiCapability(tx, schoolId, SchoolRole.TEACHER, 'leadership_insights'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('denies all AI capabilities when flags are missing or subscription is inactive', async () => {
+    const noFlags = transaction();
+    expect(await service.getAiCapabilities(noFlags, schoolId, SchoolRole.SCHOOL_ADMIN)).toEqual({
+      teacher_assistant: false,
+      leadership_insights: false,
+    });
+    const inactive = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'PAST_DUE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'UNGGULAN', name: 'Unggulan',
+            maxUsers: 100, maxStudents: 2000, maxClasses: 100,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    await expect(service.assertAiCapability(inactive, schoolId, SchoolRole.SCHOOL_ADMIN, 'teacher_assistant'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('does not grant AI access to school operators', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'UNGGULAN', name: 'Unggulan',
+            maxUsers: 100, maxStudents: 2000, maxClasses: 100,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    await expect(service.assertAiCapability(tx, schoolId, SchoolRole.SCHOOL_OPERATOR, 'teacher_assistant'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+
+  it('returns a monthly AI quota only when capability and quota are explicitly configured', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: {
+              aiAssistant: true,
+              aiLeadershipInsights: true,
+              aiTeacherMonthlyRequests: 120,
+              aiLeadershipMonthlyRequests: 30,
+            },
+          },
+        }),
+      },
+    });
+    expect(await service.getAiMonthlyLimit(tx, schoolId, SchoolRole.TEACHER, 'teacher_assistant')).toBe(120);
+    expect(await service.getAiMonthlyLimit(tx, schoolId, SchoolRole.SCHOOL_LEADER, 'leadership_insights')).toBe(30);
+  });
+
+  it('fails closed when an AI monthly quota is missing', async () => {
+    expect(await service.getAiMonthlyLimit(transaction(), schoolId, SchoolRole.TEACHER, 'teacher_assistant')).toBe(0);
+  });
+
+
+  it('keeps AI disabled on Rintisan even if AI flags are mistakenly configured', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-starter', code: 'RINTISAN', name: 'Rintisan',
+            maxUsers: 5, maxStudents: 100, maxClasses: 5,
+            features: {
+              aiAssistant: true,
+              aiLeadershipInsights: true,
+              aiTeacherMonthlyRequests: 100,
+              aiLeadershipMonthlyRequests: 20,
+            },
+          },
+        }),
+      },
+    });
+    expect(await service.getAiCapabilities(tx, schoolId, SchoolRole.SCHOOL_ADMIN)).toEqual({
+      teacher_assistant: false,
+      leadership_insights: false,
+    });
+    expect(await service.getAiMonthlyLimit(tx, schoolId, SchoolRole.SCHOOL_ADMIN, 'teacher_assistant')).toBe(0);
+  });
+
+
 });
