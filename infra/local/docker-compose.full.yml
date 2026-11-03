@@ -36,6 +36,9 @@ services:
       CORS_ORIGINS: http://localhost:5173,http://localhost:5174
       PASSWORD_MIN_LENGTH: 12
       PUBLIC_APP_URL: http://localhost:5173/app/
+      KELASPLUS_SEED_ADMIN_EMAIL: ${KELASPLUS_SEED_ADMIN_EMAIL:-admin@kelasplus.local}
+      KELASPLUS_SEED_ADMIN_NAME: ${KELASPLUS_SEED_ADMIN_NAME:-Administrator Demo KELAS+}
+      PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-admin@kelasplus.local}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
