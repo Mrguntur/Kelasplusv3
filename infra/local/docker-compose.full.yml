@@ -40,6 +40,8 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
       MIDTRANS_IS_PRODUCTION: "false"
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      INVITATION_EMAIL_FROM: ${INVITATION_EMAIL_FROM:-}
     volumes:
       - ../..:/workspace
       - api_node_modules:/workspace/services/api/node_modules
