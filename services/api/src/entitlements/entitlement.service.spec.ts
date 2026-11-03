@@ -89,4 +89,89 @@ describe('EntitlementService', () => {
     await expect(service.assertFeatureEnabled(tx, schoolId, 'reports'))
       .rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('grants teacher AI assistant only when the plan explicitly enables it', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    expect(await service.getAiCapabilities(tx, schoolId, 'TEACHER')).toEqual({
+      teacher_assistant: true,
+      leadership_insights: false,
+    });
+  });
+
+  it('grants leadership insights to school leaders but not teachers', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    expect((await service.getAiCapabilities(tx, schoolId, 'SCHOOL_LEADER')).leadership_insights).toBe(true);
+    await expect(service.assertAiCapability(tx, schoolId, 'TEACHER', 'leadership_insights'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('denies all AI capabilities when flags are missing or subscription is inactive', async () => {
+    const noFlags = transaction();
+    expect(await service.getAiCapabilities(noFlags, schoolId, 'SCHOOL_ADMIN')).toEqual({
+      teacher_assistant: false,
+      leadership_insights: false,
+    });
+    const inactive = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'PAST_DUE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'UNGGULAN', name: 'Unggulan',
+            maxUsers: 100, maxStudents: 2000, maxClasses: 100,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    await expect(service.assertAiCapability(inactive, schoolId, 'SCHOOL_ADMIN', 'teacher_assistant'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('does not grant AI access to school operators', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'UNGGULAN', name: 'Unggulan',
+            maxUsers: 100, maxStudents: 2000, maxClasses: 100,
+            features: { aiAssistant: true, aiLeadershipInsights: true },
+          },
+        }),
+      },
+    });
+    await expect(service.assertAiCapability(tx, schoolId, 'SCHOOL_OPERATOR', 'teacher_assistant'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
 });
