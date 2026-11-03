@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Activity, Building2, CheckCircle2, Clock3, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import { api } from './api';
+import PlanManagement from './PlanManagement';
 
 type PlatformOverview = {
   generatedAt: string;
@@ -242,6 +243,8 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
         <p className="panel-footnote">Persetujuan membuat sekolah berstatus menunggu. Administrator sekolah tetap harus menerima undangan sebelum sekolah diaktifkan.</p>
       </article>
     </section>
+    <PlanManagement onChanged={refresh} />
+
     <section className="panel platform-school-panel">
       <div className="panel-heading"><div><span className="eyebrow">SUBSCRIPTION</span><h2>Berikan masa uji coba</h2></div></div>
       <form className="platform-trial-form" onSubmit={event => void assignTrial(event)}>
