@@ -84,8 +84,8 @@ export class EntitlementService {
     tx: Prisma.TransactionClient,
     schoolId: string,
   ): Promise<EntitlementSnapshot> {
-    const [school, subscription, users, students, classes] = await Promise.all([
-      tx.school.findUnique({ where: { id: schoolId }, select: { id: true, status: true } }),
+    const [school, subscription, students, classes] = await Promise.all([
+      tx.school.findUnique({ where: { id: schoolId }, select: { id: true, status: true, memberCount: true } }),
       tx.subscription.findFirst({
         where: { schoolId },
         orderBy: [{ createdAt: 'desc' }],
@@ -94,7 +94,6 @@ export class EntitlementService {
           maxStudents: true, maxClasses: true, features: true,
         } } },
       }),
-      tx.schoolMembership.count({ where: { schoolId } }),
       tx.student.count({ where: { schoolId, status: 'ACTIVE', archivedAt: null } }),
       tx.schoolClass.count({ where: { schoolId, status: 'ACTIVE' } }),
     ]);
@@ -133,7 +132,7 @@ export class EntitlementService {
         ? subscription.trialEndsAt
         : subscription?.currentPeriodEnd ?? null,
       quotas: {
-        users: { used: users, limit: subscription?.plan.maxUsers ?? null },
+        users: { used: school?.memberCount ?? 0, limit: subscription?.plan.maxUsers ?? null },
         students: { used: students, limit: subscription?.plan.maxStudents ?? null },
         classes: { used: classes, limit: subscription?.plan.maxClasses ?? null },
       },
