@@ -88,7 +88,8 @@ export class AiService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            systemInstruction: { parts: [{ text: prompt }] },
+            contents: [{ role: 'user', parts: [{ text: safeQuestion }] }],
             generationConfig: { temperature: 0.3, maxOutputTokens: 900 },
           }),
           signal: AbortSignal.timeout(30_000),
@@ -204,7 +205,7 @@ export class AiService {
       .replace(/\b\d{10}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
   }
 
-  private buildPrompt(capability: AiCapability, context: Record<string, unknown>, question: string): string {
+  private buildPrompt(capability: AiCapability, context: Record<string, unknown>): string {
     const roleInstruction = capability === 'teacher_assistant'
       ? 'Bertindak sebagai asisten pedagogis guru SMP. Berikan strategi pembelajaran, tindak lanjut kelas, dan asesmen formatif yang realistis.'
       : 'Bertindak sebagai analis pendidikan untuk pimpinan sekolah. Berikan insight tingkat sekolah, prioritas tindak lanjut, dan rekomendasi monitoring.';
@@ -214,8 +215,7 @@ export class AiService {
       'Gunakan hanya ringkasan statistik agregat berikut. Konteks sekolah tidak memuat nama, NISN, alamat, atau identitas siswa.',
       'Jangan mendiagnosis siswa, jangan mengarang data, dan bedakan fakta dari rekomendasi. Jangan mengulang nama atau identitas individu yang mungkin tertulis di pertanyaan.',
       'Jika data tidak cukup, nyatakan keterbatasannya dan minta verifikasi manusia sebelum keputusan penting.',
-      `Ringkasan data: ${JSON.stringify(context)}`,
-      `Pertanyaan pengguna: ${question}`,
+      `Ringkasan data agregat: ${JSON.stringify(context)}`,
     ].join('\n\n');
   }
 
