@@ -380,39 +380,41 @@ export class SchoolsService {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
       await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
 
-      const [totalSchools, activeSchools, pendingSchools, suspendedSchools, registrationGroups, schools] =
-        await Promise.all([
-          tx.school.count(),
-          tx.school.count({ where: { status: 'ACTIVE' } }),
-          tx.school.count({ where: { status: 'PENDING' } }),
-          tx.school.count({ where: { status: 'SUSPENDED' } }),
-          tx.schoolRegistrationRequest.groupBy({
-            by: ['status'],
-            _count: { _all: true },
-          }),
-          tx.school.findMany({
-            orderBy: { createdAt: 'desc' },
-            take: 100,
-            select: {
-              id: true,
-              slug: true,
-              name: true,
-              status: true,
-              timezone: true,
-              locale: true,
-              createdAt: true,
-              _count: { select: { memberships: true, students: true, schoolClasses: true } },
-            },
-          }),
-        ]);
+      const [schoolGroups, registrationGroups, schools] = await Promise.all([
+        tx.school.groupBy({
+          by: ['status'],
+          _count: { _all: true },
+        }),
+        tx.schoolRegistrationRequest.groupBy({
+          by: ['status'],
+          _count: { _all: true },
+        }),
+        tx.school.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            status: true,
+            timezone: true,
+            locale: true,
+            createdAt: true,
+            _count: { select: { memberships: true, students: true, schoolClasses: true } },
+          },
+        }),
+      ]);
+
+      const schoolCounts = new Map(schoolGroups.map((item) => [item.status, item._count._all]));
+      const totalSchools = schoolGroups.reduce((total, item) => total + item._count._all, 0);
 
       return {
         generatedAt: new Date().toISOString(),
         metrics: {
           totalSchools,
-          activeSchools,
-          pendingSchools,
-          suspendedSchools,
+          activeSchools: schoolCounts.get('ACTIVE') ?? 0,
+          pendingSchools: schoolCounts.get('PENDING') ?? 0,
+          suspendedSchools: schoolCounts.get('SUSPENDED') ?? 0,
           pendingRegistrations: registrationGroups.find((item) => item.status === 'PENDING')?._count._all ?? 0,
           approvedRegistrations: registrationGroups.find((item) => item.status === 'APPROVED')?._count._all ?? 0,
           rejectedRegistrations: registrationGroups.find((item) => item.status === 'REJECTED')?._count._all ?? 0,
