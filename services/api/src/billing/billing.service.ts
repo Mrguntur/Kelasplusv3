@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
@@ -9,15 +9,25 @@ import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan
 export class BillingService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
-  async listPlans(includeUnpublished = false) {
-    return this.prisma.plan.findMany({
-      where: includeUnpublished ? undefined : { isPublished: true },
-      orderBy: [{ billingInterval: 'asc' }, { priceAmount: 'asc' }, { name: 'asc' }],
-      select: {
-        id: true, code: true, name: true, description: true, billingInterval: true,
-        priceAmount: true, currency: true, maxUsers: true, maxStudents: true,
-        maxClasses: true, features: true, isPublished: true, createdAt: true, updatedAt: true,
-      },
+  async listPlans(includeUnpublished = false, adminUserId?: string) {
+    const select = {
+      id: true, code: true, name: true, description: true, billingInterval: true,
+      priceAmount: true, currency: true, maxUsers: true, maxStudents: true,
+      maxClasses: true, features: true, isPublished: true, createdAt: true, updatedAt: true,
+    } as const;
+    const orderBy = [{ billingInterval: 'asc' as const }, { priceAmount: 'asc' as const }, { name: 'asc' as const }];
+
+    if (!includeUnpublished) {
+      return this.prisma.plan.findMany({ where: { isPublished: true }, orderBy, select });
+    }
+    if (!adminUserId) {
+      throw new ForbiddenException('Identitas platform admin diperlukan untuk melihat seluruh paket.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      return tx.plan.findMany({ orderBy, select });
     });
   }
 

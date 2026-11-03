@@ -17,8 +17,8 @@ export class BillingController {
 
   @Get('admin/plans')
   @UseGuards(SessionAuthGuard, PlatformAdminGuard)
-  listAllPlans() {
-    return this.billing.listPlans(true);
+  listAllPlans(@CurrentUser() user: { id: string }) {
+    return this.billing.listPlans(true, user.id);
   }
 
   @Post('admin/plans')

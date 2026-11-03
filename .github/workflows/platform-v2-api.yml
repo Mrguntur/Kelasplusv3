@@ -70,6 +70,9 @@ jobs:
       - name: Test PostgreSQL tenant RLS policies
         run: psql "postgresql://postgres:postgres@localhost:5432/kelasplus_test" -f test/rls.integration.sql
 
+      - name: Test PostgreSQL billing RLS policies
+        run: psql "postgresql://postgres:postgres@localhost:5432/kelasplus_test" -f test/billing-rls.integration.sql
+
       - name: Type check
         run: npm run typecheck
 
