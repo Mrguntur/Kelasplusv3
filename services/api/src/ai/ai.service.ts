@@ -81,7 +81,8 @@ export class AiService {
     });
 
     try {
-      const prompt = this.buildPrompt(capability, reservation.context, normalizedQuestion);
+      const safeQuestion = this.redactSensitiveText(normalizedQuestion);
+      const prompt = this.buildPrompt(capability, reservation.context, safeQuestion);
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
@@ -205,7 +206,7 @@ export class AiService {
       roleInstruction,
       'Jawab dalam Bahasa Indonesia yang jelas dan profesional.',
       'Gunakan hanya ringkasan statistik agregat berikut. Tidak ada nama, NISN, alamat, atau identitas siswa yang diberikan.',
-      'Jangan mendiagnosis siswa, jangan mengarang data, dan bedakan fakta dari rekomendasi.',
+      'Jangan mendiagnosis siswa, jangan mengarang data, dan bedakan fakta dari rekomendasi. Jangan mengulang nama atau identitas individu yang mungkin tertulis di pertanyaan.',
       'Jika data tidak cukup, nyatakan keterbatasannya dan minta verifikasi manusia sebelum keputusan penting.',
       `Ringkasan data: ${JSON.stringify(context)}`,
       `Pertanyaan pengguna: ${question}`,
