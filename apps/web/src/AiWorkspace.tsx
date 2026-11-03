@@ -3,6 +3,7 @@ import { Bot, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import { api, ApiError } from './api';
 
 type Capability = 'teacher_assistant' | 'leadership_insights';
+type AiCapabilities = Record<Capability, { enabled: boolean; monthlyLimit: number }>;
 type AiResponse = {
   answer: string;
   usage: { monthlyUsed: number; monthlyLimit: number };
@@ -17,19 +18,41 @@ export default function AiWorkspace({ role }: { role: string }) {
   const [answer, setAnswer] = useState<AiResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [capabilities, setCapabilities] = useState<AiCapabilities | null>(null);
+  const [capabilityLoading, setCapabilityLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setCapability(role === 'SCHOOL_LEADER' ? 'leadership_insights' : 'teacher_assistant');
     setAnswer(null);
     setError('');
+    setCapabilities(null);
+    setCapabilityLoading(true);
+    void api<AiCapabilities>('/ai/capabilities')
+      .then(result => {
+        if (cancelled) return;
+        setCapabilities(result);
+        if (role === 'SCHOOL_LEADER') setCapability('leadership_insights');
+        else if (role === 'TEACHER') setCapability('teacher_assistant');
+        else if (!result.teacher_assistant.enabled && result.leadership_insights.enabled) setCapability('leadership_insights');
+        else setCapability('teacher_assistant');
+      })
+      .catch(cause => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Hak akses AI belum dapat diperiksa.');
+      })
+      .finally(() => { if (!cancelled) setCapabilityLoading(false); });
+    return () => { cancelled = true; };
   }, [role]);
 
   if (!['TEACHER', 'SCHOOL_LEADER', 'SCHOOL_ADMIN'].includes(role)) return null;
 
+  const capabilityAvailable = capabilities?.[capability].enabled === true;
+  const anyCapabilityAvailable = capabilities?.teacher_assistant.enabled === true || capabilities?.leadership_insights.enabled === true;
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const prompt = question.trim();
-    if (prompt.length < 5 || prompt.length > 3000 || busy) return;
+    if (prompt.length < 5 || prompt.length > 3000 || busy || !capabilityAvailable) return;
     setBusy(true);
     setError('');
     setAnswer(null);
@@ -70,12 +93,14 @@ export default function AiWorkspace({ role }: { role: string }) {
       {isAdmin && (
         <label className="ai-capability-select">Mode bantuan
           <select value={capability} onChange={event => { setCapability(event.target.value as Capability); setAnswer(null); setError(''); }}>
-            <option value="teacher_assistant">Asisten pembelajaran guru</option>
-            <option value="leadership_insights">Insight pimpinan sekolah</option>
+            <option value="teacher_assistant" disabled={!capabilities?.teacher_assistant.enabled}>Asisten pembelajaran guru</option>
+            <option value="leadership_insights" disabled={!capabilities?.leadership_insights.enabled}>Insight pimpinan sekolah</option>
           </select>
         </label>
       )}
-      <form className="ai-prompt-form" onSubmit={submit}>
+      {capabilityLoading ? <div className="academic-empty">Memeriksa hak akses dan paket AI…</div>
+        : !anyCapabilityAvailable ? <div className="ai-unavailable" role="status">Fitur AI belum termasuk dalam paket sekolah atau belum diaktifkan. Hubungi administrator platform untuk informasi paket.</div>
+        : capabilityAvailable && <form className="ai-prompt-form" onSubmit={submit}>
         <label htmlFor="kelasplus-ai-question">Apa yang ingin Anda konsultasikan?</label>
         <textarea id="kelasplus-ai-question" rows={4} minLength={5} maxLength={3000}
           value={question} onChange={event => setQuestion(event.target.value)}
@@ -89,14 +114,14 @@ export default function AiWorkspace({ role }: { role: string }) {
             {busy ? 'Menyusun jawaban…' : 'Tanyakan kepada AI'} {busy ? <Bot size={16}/> : <Send size={16}/>}
           </button>
         </div>
-      </form>
+      </form>}
       {error && <div className="alert error" role="alert">{error}</div>}
       {answer && <article className="ai-answer" aria-live="polite">
         <div className="ai-answer-title"><Bot size={18}/><strong>Jawaban KELAS+ AI</strong></div>
         <div className="ai-answer-body">{answer.answer}</div>
         <div className="ai-answer-meta">Penggunaan bulan ini: {answer.usage.monthlyUsed}/{answer.usage.monthlyLimit} · Model: {answer.model}</div>
       </article>}
-      <div className="ai-privacy-note"><ShieldCheck size={16}/><span>AI menggunakan ringkasan data agregat sesuai peran. Jangan masukkan nama siswa, NISN, nomor telepon, atau informasi pribadi. Rekomendasi AI wajib diverifikasi oleh guru atau pimpinan.</span></div>
+      {capabilityAvailable && <div className="ai-privacy-note"><ShieldCheck size={16}/><span>AI menggunakan ringkasan data agregat sesuai peran. Jangan masukkan nama siswa, NISN, nomor telepon, atau informasi pribadi. Rekomendasi AI wajib diverifikasi oleh guru atau pimpinan.</span></div>
     </section>
   );
 }
