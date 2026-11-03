@@ -312,3 +312,47 @@
 
 
 .ai-unavailable{margin-top:12px;padding:14px 15px;border:1px solid #e7dfc9;border-radius:10px;background:#fffaf0;color:#826b3f;font-size:12px;line-height:1.65}
+
+
+/* Super Admin plan management */
+.plan-management-panel{margin-bottom:24px}
+.plan-management-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.plan-management-intro{margin:0 0 18px;color:#718198;font-size:12px;line-height:1.65}
+.plan-management-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.plan-management-card{display:flex;flex-direction:column;min-width:0;padding:17px;border:1px solid #e2eaf3;border-radius:14px;background:#fff}
+.plan-management-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.plan-management-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:#edf4ff;color:#3569ad}
+.plan-management-card>.eyebrow{font-size:9px}
+.plan-management-card h3{margin:6px 0;color:#203957;font:800 18px Manrope,sans-serif}
+.plan-management-description{min-height:38px;margin:0 0 12px;color:#7d8da3;font-size:11px;line-height:1.6}
+.plan-management-price{color:#1d3d68;font:800 19px Manrope,sans-serif;overflow-wrap:anywhere}
+.plan-management-limits{display:flex;flex-wrap:wrap;gap:6px;margin:13px 0;padding:11px 0;border-top:1px solid #edf1f6;border-bottom:1px solid #edf1f6}
+.plan-management-limits span{padding:5px 7px;border-radius:7px;background:#f4f7fb;color:#61738a;font-size:10px}
+.plan-management-ai{display:grid;gap:7px;margin-bottom:15px;color:#687b92;font-size:10px;line-height:1.5}
+.plan-management-ai span{display:flex;align-items:flex-start;gap:6px}
+.plan-management-ai svg{flex-shrink:0;color:#5b82b8}
+.plan-management-card-actions{display:flex;align-items:center;gap:8px;margin-top:auto}
+.plan-management-card-actions button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:35px}
+.plan-management-form{margin-top:20px;padding:19px;border:1px solid #dce6f2;border-radius:14px;background:#f9fbfe}
+.plan-management-form-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.plan-management-form-heading h3{margin:5px 0 0;color:#203957;font:800 17px Manrope,sans-serif}
+.plan-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.plan-form-grid label,.plan-ai-config-grid>label:not(.plan-ai-toggle){display:grid;gap:6px;color:#526780;font-size:11px;font-weight:700}
+.plan-form-grid input,.plan-form-grid select,.plan-form-grid textarea,.plan-ai-config-grid input{width:100%;min-width:0;min-height:40px;padding:9px 11px;border:1px solid #dce5ef;border-radius:9px;background:#fff;color:#263f5e;font:12px 'DM Sans',sans-serif}
+.plan-form-grid textarea{resize:vertical}
+.plan-form-wide{grid-column:1/-1}
+.plan-ai-config{margin-top:18px;padding-top:17px;border-top:1px solid #e3eaf2}
+.plan-ai-config-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.plan-ai-config-heading>div{display:grid;gap:5px}
+.plan-ai-config-heading strong{color:#2c4565;font-size:12px}
+.plan-ai-locked{padding:6px 9px;border-radius:8px;background:#fff5e9;color:#a45c20;font-size:10px;font-weight:700}
+.plan-ai-config-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.plan-ai-toggle{display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid #e1e9f2;border-radius:10px;background:#fff}
+.plan-ai-toggle input{width:16px;height:16px;margin:2px 0 0;flex-shrink:0;accent-color:#2865c4}
+.plan-ai-toggle span{display:grid;gap:4px}
+.plan-ai-toggle strong{color:#2c4565;font-size:11px}
+.plan-ai-toggle small{color:#8291a5;font-size:10px;line-height:1.5}
+.plan-ai-config-grid>label input:disabled{background:#f1f4f8;color:#9aa6b5}
+.plan-management-form .form-actions{margin-top:18px}
+@media(max-width:900px){.plan-management-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.plan-management-grid,.plan-form-grid,.plan-ai-config-grid{grid-template-columns:1fr}.plan-form-wide{grid-column:auto}.plan-management-actions{width:100%;justify-content:flex-start}.plan-management-card-actions{flex-wrap:wrap}.plan-management-card-actions button{flex:1}.plan-ai-config-heading{align-items:flex-start;flex-direction:column}}
