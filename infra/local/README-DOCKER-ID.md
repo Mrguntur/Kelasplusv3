@@ -16,7 +16,7 @@ Dari PowerShell:
 
 ```powershell
 git fetch origin
-git switch feat/platform-v2-docker-local-stack
+git switch preview/platform-v2-local-complete
 git pull
 ```
 
