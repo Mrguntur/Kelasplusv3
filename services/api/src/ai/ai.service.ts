@@ -55,9 +55,8 @@ export class AiService {
         throw new ForbiddenException('Kuota AI belum tersedia pada paket sekolah ini.');
       }
 
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
         where: { schoolId, capability, createdAt: { gte: monthStart } },
       });
@@ -97,8 +96,7 @@ export class AiService {
       );
 
       if (!response.ok) {
-        const detail = (await response.text()).slice(0, 500);
-        throw new BadGatewayException(`Penyedia AI gagal memproses permintaan (HTTP ${response.status}): ${detail}`);
+        throw new BadGatewayException('Penyedia AI gagal memproses permintaan. Silakan coba kembali nanti.');
       }
 
       const payload = await response.json() as AiProviderResponse;
@@ -165,9 +163,9 @@ export class AiService {
     const attendanceWhere: Prisma.AttendanceRecordWhereInput = classIds
       ? {
           schoolId,
-          attendanceSession: { classId: { in: classIds }, date: { gte: since } },
+          attendanceSession: { classId: { in: classIds }, date: { gte: since }, status: 'FINALIZED' },
         }
-      : { schoolId, attendanceSession: { date: { gte: since } } };
+      : { schoolId, attendanceSession: { date: { gte: since }, status: 'FINALIZED' } };
     const scoreWhere: Prisma.AssessmentScoreWhereInput = teacherStaffProfileId
       ? {
           schoolId,
