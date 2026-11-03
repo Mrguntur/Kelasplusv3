@@ -49,6 +49,7 @@ Pada startup pertama, container API akan memasang dependency, membuat Prisma Cli
 | --- | --- |
 | Public landing page | http://localhost:5174/ |
 | KELAS+ V2 workspace | http://localhost:5173/app/ |
+| Admin invitation acceptance | http://localhost:5173/app/invite/accept?token=... |
 | API health check | http://localhost:3000/api/v1/health |
 | PostgreSQL dari PC | localhost:5433 |
 
