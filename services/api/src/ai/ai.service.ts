@@ -128,7 +128,8 @@ export class AiService {
     userId: string,
     role: SchoolRole,
   ) {
-    const since = new Date();
+    const until = new Date();
+    const since = new Date(until);
     since.setDate(since.getDate() - 30);
     let classIds: string[] | null = null;
     let teacherStaffProfileId: string | null = null;
@@ -163,7 +164,7 @@ export class AiService {
     const attendanceWhere: Prisma.AttendanceRecordWhereInput = classIds
       ? {
           schoolId,
-          attendanceSession: { classId: { in: classIds }, date: { gte: since }, status: 'FINALIZED' },
+          attendanceSession: { classId: { in: classIds }, date: { gte: since, lte: until }, status: 'FINALIZED' },
         }
       : { schoolId, attendanceSession: { date: { gte: since }, status: 'FINALIZED' } };
     const scoreWhere: Prisma.AssessmentScoreWhereInput = teacherStaffProfileId
