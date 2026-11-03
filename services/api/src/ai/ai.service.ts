@@ -25,6 +25,33 @@ export class AiService {
     private readonly entitlements: EntitlementService,
   ) {}
 
+
+  async getCapabilities(user: AuthenticatedUser) {
+    const schoolId = user.activeSchoolId;
+    if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menggunakan AI.');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+
+      const membership = await tx.schoolMembership.findUnique({
+        where: { schoolId_userId: { schoolId, userId: user.id } },
+        select: { role: true },
+      });
+      if (!membership) throw new ForbiddenException('Keanggotaan sekolah tidak ditemukan.');
+
+      const capabilities = await this.entitlements.getAiCapabilities(tx, schoolId, membership.role);
+      const [teacherLimit, leadershipLimit] = await Promise.all([
+        this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, 'teacher_assistant'),
+        this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, 'leadership_insights'),
+      ]);
+      return {
+        teacher_assistant: { enabled: capabilities.teacher_assistant, monthlyLimit: teacherLimit },
+        leadership_insights: { enabled: capabilities.leadership_insights, monthlyLimit: leadershipLimit },
+      };
+    });
+  }
+
   async generate(user: AuthenticatedUser, capability: AiCapability, question: string) {
     const schoolId = user.activeSchoolId;
     if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menggunakan AI.');
