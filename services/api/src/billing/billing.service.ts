@@ -9,8 +9,8 @@ import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan
 export class BillingService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
-  async listPlans(includeUnpublished = false) {
-    return this.prisma.plan.findMany({
+  async listPlans(includeUnpublished = false, adminUserId?: string) {
+    const query = (client: typeof this.prisma | Prisma.TransactionClient) => client.plan.findMany({
       where: includeUnpublished ? undefined : { isPublished: true },
       orderBy: [{ billingInterval: 'asc' }, { priceAmount: 'asc' }, { name: 'asc' }],
       select: {
@@ -18,6 +18,17 @@ export class BillingService {
         priceAmount: true, currency: true, maxUsers: true, maxStudents: true,
         maxClasses: true, features: true, isPublished: true, createdAt: true, updatedAt: true,
       },
+    });
+
+    if (!includeUnpublished) return query(this.prisma);
+    if (!adminUserId) {
+      throw new ConflictException('Identitas platform admin diperlukan untuk melihat seluruh paket.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      return query(tx);
     });
   }
 
