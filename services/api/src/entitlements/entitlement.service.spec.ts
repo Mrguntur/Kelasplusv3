@@ -174,4 +174,33 @@ describe('EntitlementService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
+
+  it('returns a monthly AI quota only when capability and quota are explicitly configured', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-1', code: 'GROWTH', name: 'Berkembang',
+            maxUsers: 20, maxStudents: 500, maxClasses: 20,
+            features: {
+              aiAssistant: true,
+              aiLeadershipInsights: true,
+              aiTeacherMonthlyRequests: 120,
+              aiLeadershipMonthlyRequests: 30,
+            },
+          },
+        }),
+      },
+    });
+    expect(await service.getAiMonthlyLimit(tx, schoolId, SchoolRole.TEACHER, 'teacher_assistant')).toBe(120);
+    expect(await service.getAiMonthlyLimit(tx, schoolId, SchoolRole.SCHOOL_LEADER, 'leadership_insights')).toBe(30);
+  });
+
+  it('fails closed when an AI monthly quota is missing', async () => {
+    expect(await service.getAiMonthlyLimit(transaction(), schoolId, SchoolRole.TEACHER, 'teacher_assistant')).toBe(0);
+  });
+
 });
