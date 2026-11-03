@@ -137,7 +137,7 @@ describe('SchoolsService manual onboarding', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].school.status).toBe('PENDING');
-    expect(result[0].school.subscription.plan.code).toBe('GROWTH');
+    expect(result[0].school.subscription?.plan.code).toBe('GROWTH');
     expect(result[0].school.invitation).toBeNull();
   });
 });
