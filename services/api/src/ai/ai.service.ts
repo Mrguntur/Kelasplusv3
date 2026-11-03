@@ -172,7 +172,7 @@ export class AiService {
           schoolId,
           assessment: {
             status: 'PUBLISHED',
-            teachingAssignment: { staffProfileId: teacherStaffProfileId },
+            assignment: { staffProfileId: teacherStaffProfileId },
           },
         }
       : { schoolId, assessment: { status: 'PUBLISHED' } };
