@@ -22,6 +22,10 @@ export default function AiWorkspace({ role }: { role: string }) {
   const [capabilityLoading, setCapabilityLoading] = useState(true);
 
   useEffect(() => {
+    if (!['TEACHER', 'SCHOOL_LEADER', 'SCHOOL_ADMIN'].includes(role)) {
+      setCapabilityLoading(false);
+      return;
+    }
     let cancelled = false;
     setCapability(role === 'SCHOOL_LEADER' ? 'leadership_insights' : 'teacher_assistant');
     setAnswer(null);
