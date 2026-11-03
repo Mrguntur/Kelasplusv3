@@ -83,6 +83,6 @@ docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.ym
 - Compose ini adalah lingkungan development, bukan konfigurasi produksi.
 - Jangan gunakan data siswa sungguhan atau salinan database produksi.
 - Jangan expose port database/API ke internet.
-- Gemini dan Midtrans tidak diperlukan untuk menyalakan stack; integrasi tersebut hanya aktif jika secret development yang sesuai disediakan.
+- Gemini, Midtrans, dan Resend tidak diperlukan untuk menyalakan stack. Untuk menguji AI, pembayaran, atau pengiriman undangan email, isi secret khusus development pada `infra/local/.env`. Email undangan membutuhkan `RESEND_API_KEY` dan `INVITATION_EMAIL_FROM`.
 - Pengiriman undangan email tetap memerlukan konfigurasi provider email yang sesuai. Jangan menganggap email benar-benar terkirim hanya karena endpoint berhasil dijalankan.
 - Docker tidak menggantikan pengujian browser lintas perangkat, pengujian keamanan, atau staging publik. Setelah UI dan API stabil, kita tetap perlu staging sebelum rilis.
