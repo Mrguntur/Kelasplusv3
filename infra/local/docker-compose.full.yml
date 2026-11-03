@@ -19,6 +19,22 @@ services:
       timeout: 3s
       retries: 20
 
+  db-init:
+    image: postgres:17-alpine
+    container_name: kelasplus-v2-db-init
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: local_dev_password_only
+    volumes:
+      - ./init/001-runtime-role.sql:/init/001-runtime-role.sql:ro
+    command:
+      - sh
+      - -c
+      - psql -h postgres -U kelasplus_dev -d kelasplus_dev -v ON_ERROR_STOP=1 -f /init/001-runtime-role.sql
+
   api:
     image: node:22-bookworm-slim
     container_name: kelasplus-v2-api
@@ -28,11 +44,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 3000
       API_GLOBAL_PREFIX: api/v1
-      DATABASE_URL: postgresql://kelasplus_dev:local_dev_password_only@postgres:5432/kelasplus_dev?schema=public
+      DATABASE_URL: postgresql://kelasplus_runtime:local_runtime_password_only@postgres:5432/kelasplus_dev?schema=public
       CORS_ORIGINS: http://localhost:5173,http://localhost:5174
       PASSWORD_MIN_LENGTH: 12
       PUBLIC_APP_URL: http://localhost:5173/app/
@@ -51,7 +69,9 @@ services:
     command: >-
       sh -c "npm install &&
       npx prisma generate &&
+      export DATABASE_URL='postgresql://kelasplus_dev:local_dev_password_only@postgres:5432/kelasplus_dev?schema=public' &&
       npx prisma migrate deploy &&
+      export DATABASE_URL='postgresql://kelasplus_runtime:local_runtime_password_only@postgres:5432/kelasplus_dev?schema=public' &&
       npm run start:dev"
     ports:
       - "127.0.0.1:3000:3000"
