@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Bot, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import { api, ApiError } from './api';
 
@@ -17,6 +17,12 @@ export default function AiWorkspace({ role }: { role: string }) {
   const [answer, setAnswer] = useState<AiResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setCapability(role === 'SCHOOL_LEADER' ? 'leadership_insights' : 'teacher_assistant');
+    setAnswer(null);
+    setError('');
+  }, [role]);
 
   if (!['TEACHER', 'SCHOOL_LEADER', 'SCHOOL_ADMIN'].includes(role)) return null;
 
