@@ -1,0 +1,27 @@
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { CurrentUser, AuthenticatedUser } from '../auth/current-user.decorator';
+import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { AiService } from './ai.service';
+import { AiRequestDto } from './dto/ai-request.dto';
+
+@Controller('ai')
+@UseGuards(SessionAuthGuard)
+export class AiController {
+  constructor(private readonly ai: AiService) {}
+
+  @Post('teacher/assistant')
+  teacherAssistant(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AiRequestDto,
+  ) {
+    return this.ai.generate(user, 'teacher_assistant', body.question);
+  }
+
+  @Post('leadership/insights')
+  leadershipInsights(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AiRequestDto,
+  ) {
+    return this.ai.generate(user, 'leadership_insights', body.question);
+  }
+}
