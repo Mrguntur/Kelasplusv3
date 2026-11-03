@@ -9,7 +9,7 @@ describe('EntitlementService', () => {
   function transaction(overrides: Record<string, unknown> = {}) {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'ACTIVE' }) },
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'ACTIVE', memberCount: 2 }) },
       subscription: {
         findFirst: jest.fn().mockResolvedValue({
           status: 'ACTIVE',
@@ -34,12 +34,21 @@ describe('EntitlementService', () => {
     const snapshot = await service.getSnapshot(transaction(), schoolId);
     expect(snapshot.access.allowed).toBe(true);
     expect(snapshot.plan?.code).toBe('BASIC');
+    expect(snapshot.quotas.users).toEqual({ used: 2, limit: 5 });
     expect(snapshot.quotas.students).toEqual({ used: 2, limit: 2 });
     expect(snapshot.quotas.classes).toEqual({ used: 1, limit: 1 });
   });
 
   it('blocks creating resources when the configured quota is reached', async () => {
     await expect(service.assertCanCreate(transaction(), schoolId, 'students'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('blocks adding a member when the school user quota is reached', async () => {
+    const tx = transaction({
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'ACTIVE', memberCount: 5 }) },
+    });
+    await expect(service.assertCanCreate(tx, schoolId, 'users'))
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
