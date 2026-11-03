@@ -11,6 +11,8 @@ describe('School registration API security (e2e)', () => {
   let app: INestApplication;
   const schoolsService = {
     requestRegistration: jest.fn(),
+    createSchoolManually: jest.fn(),
+    listOnboarding: jest.fn(),
     listPendingRegistrations: jest.fn(),
     rejectRegistration: jest.fn(),
     approveRegistration: jest.fn(),
@@ -84,6 +86,41 @@ describe('School registration API security (e2e)', () => {
       .expect(400);
 
     expect(schoolsService.requestRegistration).not.toHaveBeenCalled();
+  });
+
+  it('creates a school manually only through the protected Super Admin route', async () => {
+    schoolsService.createSchoolManually.mockResolvedValue({
+      school: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', slug: 'smp-contoh', name: 'SMP Contoh', status: 'PENDING' },
+      requestId: 'cccccccc-cccc-4ccc-8ccc-cccccccccc81',
+      registrationStatus: 'APPROVED',
+      onboardingStatus: 'PENDING_TRIAL_AND_ADMIN_INVITATION',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/schools/admin/schools')
+      .send(validRequest)
+      .expect(201);
+
+    expect(schoolsService.createSchoolManually).toHaveBeenCalledWith(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      validRequest,
+    );
+    expect(response.body.school.status).toBe('PENDING');
+    expect(response.body.onboardingStatus).toBe('PENDING_TRIAL_AND_ADMIN_INVITATION');
+  });
+
+  it('returns the approved onboarding queue only through the protected admin route', async () => {
+    schoolsService.listOnboarding.mockResolvedValue([{
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc81',
+      school: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', status: 'PENDING' },
+    }]);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/schools/admin/onboarding')
+      .expect(200);
+
+    expect(schoolsService.listOnboarding).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01');
+    expect(response.body).toHaveLength(1);
   });
 
   it('lists pending registration requests only through the protected admin route', async () => {

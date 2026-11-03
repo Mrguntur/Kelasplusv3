@@ -53,10 +53,14 @@ All routes below are under `/api/v1`. Protected endpoints require the authentica
 
 - `POST /schools/registration-requests` — public, rate-limited request intake; does not immediately activate a school.
 - `GET /schools/admin/registration-requests` — platform-admin allowlist only.
+- `POST /schools/admin/schools` — create a pending school manually from the Super Admin dashboard.
+- `GET /schools/admin/onboarding` — recoverable onboarding queue with latest subscription and invitation state.
 - `POST /schools/admin/registration-requests/:id/approve`
 - `POST /schools/admin/registration-requests/:id/reject`
-- `POST /schools/admin/registration-requests/:id/invite-admin`
-- `POST /schools/invitations/accept`
+- `POST /schools/admin/registration-requests/:id/invite-admin` — requires a valid trial/subscription and an available first-administrator seat.
+- `POST /schools/invitations/accept` — rechecks subscription and user quota before activating the school.
+
+See [Super Admin school onboarding](docs/platform-v2/school-onboarding.md) for the manual onboarding flow and Resend email configuration.
 
 ### Academic data
 

@@ -356,3 +356,34 @@
 .plan-management-form .form-actions{margin-top:18px}
 @media(max-width:900px){.plan-management-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.plan-management-grid,.plan-form-grid,.plan-ai-config-grid{grid-template-columns:1fr}.plan-form-wide{grid-column:auto}.plan-management-actions{width:100%;justify-content:flex-start}.plan-management-card-actions{flex-wrap:wrap}.plan-management-card-actions button{flex:1}.plan-ai-config-heading{align-items:flex-start;flex-direction:column}}
+
+
+/* Super Admin school onboarding workflow */
+.school-onboarding-panel{margin-bottom:24px}
+.school-onboarding-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.school-onboarding-intro{margin:0 0 17px;color:#718198;font-size:12px;line-height:1.65}
+.school-onboarding-form{margin:16px 0 20px;padding:18px;border:1px solid #dce6f2;border-radius:13px;background:#f9fbfe}
+.school-onboarding-form-heading{display:grid;gap:4px;margin-bottom:14px}
+.school-onboarding-form-heading strong{color:#233d5d;font:800 15px Manrope,sans-serif}
+.school-onboarding-form-heading span{color:#8392a6;font-size:11px}
+.school-onboarding-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.school-onboarding-form-grid label,.school-onboarding-trial-controls label{display:grid;gap:6px;color:#536984;font-size:11px;font-weight:700}
+.school-onboarding-form-grid input,.school-onboarding-trial-controls input,.school-onboarding-trial-controls select{width:100%;min-width:0;min-height:40px;padding:9px 11px;border:1px solid #dce5ef;border-radius:9px;background:#fff;color:#263f5e;font:12px 'DM Sans',sans-serif}
+.school-onboarding-form .form-actions{margin-top:16px}
+.school-onboarding-list{display:grid;gap:12px}
+.school-onboarding-card{padding:16px;border:1px solid #e2eaf3;border-radius:13px;background:#fff}
+.school-onboarding-card-head{display:flex;align-items:center;gap:11px;min-width:0}
+.school-onboarding-school-icon{width:39px;height:39px;display:grid;place-items:center;flex-shrink:0;border-radius:11px;background:#edf4ff;color:#3569ad}
+.school-onboarding-school-copy{display:grid;gap:3px;min-width:0;flex:1}
+.school-onboarding-school-copy strong{color:#243d5c;font-size:13px}
+.school-onboarding-school-copy span{color:#64778f;font-size:11px;overflow-wrap:anywhere}
+.school-onboarding-school-copy small{color:#94a3b8;font-size:10px}
+.school-onboarding-state{display:flex;flex-wrap:wrap;gap:8px 16px;margin:13px 0;color:#718198;font-size:10px}
+.school-onboarding-state span{display:inline-flex;align-items:center;gap:5px}
+.school-onboarding-state svg{color:#6b8db9;flex-shrink:0}
+.school-onboarding-next-step{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding-top:13px;border-top:1px solid #edf1f6}
+.school-onboarding-trial-controls{display:grid;grid-template-columns:minmax(180px,1fr) 110px;gap:10px;flex:1;max-width:460px}
+.school-onboarding-next-step>.primary-button{white-space:nowrap}
+.school-onboarding-complete{display:flex;align-items:center;gap:7px;margin:12px 0 0;padding-top:12px;border-top:1px solid #edf1f6;color:#178153;font-size:11px}
+@media(max-width:680px){.school-onboarding-form-grid{grid-template-columns:1fr}.school-onboarding-next-step{align-items:stretch;flex-direction:column}.school-onboarding-trial-controls{max-width:none}.school-onboarding-next-step>.primary-button{width:100%;justify-content:center}.school-onboarding-card-head{align-items:flex-start;flex-wrap:wrap}.school-onboarding-card-head>.status-badge{margin-left:50px}}
+@media(max-width:480px){.school-onboarding-trial-controls{grid-template-columns:1fr}.school-onboarding-actions{width:100%}.school-onboarding-actions button{flex:1}}

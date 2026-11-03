@@ -8,6 +8,17 @@ import { AuditService } from '../audit/audit.service';
 import { RejectRegistrationDto } from './reject-registration.dto';
 import { InvitationEmailService } from './invitation-email.service';
 import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
+import { EntitlementService } from '../entitlements/entitlement.service';
+
+export function buildSchoolAdminInvitationUrl(publicAppUrl: string, rawToken: string): string {
+  const baseUrl = publicAppUrl.endsWith('/') ? publicAppUrl : `${publicAppUrl}/`;
+  const url = new URL('invite/accept', baseUrl);
+  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
+    throw new Error('HTTPS required');
+  }
+  url.searchParams.set('token', rawToken);
+  return url.toString();
+}
 
 @Injectable()
 export class SchoolsService {
@@ -16,7 +27,138 @@ export class SchoolsService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     private readonly invitationEmail: InvitationEmailService,
+    private readonly entitlements: EntitlementService,
   ) {}
+
+  async createSchoolManually(adminUserId: string, input: SchoolRegistrationDto) {
+    const schoolName = input.schoolName.trim();
+    const requestedSlug = input.requestedSlug.trim().toLowerCase();
+    const contactName = input.contactName.trim();
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone?.trim() || null;
+    const requestId = randomUUID();
+    const schoolId = randomUUID();
+    const now = new Date();
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+        const existingSchool = await tx.school.findUnique({
+          where: { slug: requestedSlug },
+          select: { id: true },
+        });
+        if (existingSchool) throw new ConflictException('Slug sekolah sudah digunakan.');
+
+        const school = await tx.school.create({
+          data: { id: schoolId, slug: requestedSlug, name: schoolName, status: 'PENDING' },
+          select: { id: true, slug: true, name: true, status: true, createdAt: true },
+        });
+        await tx.schoolRegistrationRequest.create({
+          data: {
+            id: requestId,
+            schoolName,
+            requestedSlug,
+            contactName,
+            email,
+            phone,
+            status: 'APPROVED',
+            reviewedAt: now,
+            reviewedBy: adminUserId,
+          },
+        });
+        await this.audit.record({
+          actorUserId: adminUserId,
+          schoolId,
+          eventType: 'school.created_manually',
+          outcome: 'SUCCESS',
+          metadata: { requestId, requestedSlug, contactEmail: email },
+        }, tx);
+
+        return {
+          school,
+          requestId,
+          registrationStatus: 'APPROVED',
+          onboardingStatus: 'PENDING_TRIAL_AND_ADMIN_INVITATION',
+          message: 'Sekolah dibuat dalam status menunggu. Tetapkan paket dan masa trial sebelum mengundang administrator.',
+        };
+      });
+    } catch (error) {
+      if (error instanceof ConflictException) throw error;
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+        throw new ConflictException('Slug sekolah sudah digunakan.');
+      }
+      throw error;
+    }
+  }
+
+  async listOnboarding(adminUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+      const requests = await tx.schoolRegistrationRequest.findMany({
+        where: { status: 'APPROVED' },
+        orderBy: { reviewedAt: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          schoolName: true,
+          requestedSlug: true,
+          contactName: true,
+          email: true,
+          phone: true,
+          reviewedAt: true,
+          createdAt: true,
+        },
+      });
+      if (!requests.length) return [];
+
+      const schools = await tx.school.findMany({
+        where: { slug: { in: requests.map((request) => request.requestedSlug) } },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          status: true,
+          subscriptions: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              trialEndsAt: true,
+              currentPeriodEnd: true,
+              plan: { select: { id: true, code: true, name: true } },
+            },
+          },
+          adminInvitations: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { id: true, email: true, expiresAt: true, acceptedAt: true, revokedAt: true },
+          },
+        },
+      });
+      const schoolsBySlug = new Map(schools.map((school) => [school.slug, school] as const));
+
+      return requests.flatMap((request) => {
+        const school = schoolsBySlug.get(request.requestedSlug);
+        if (!school) return [];
+        return [{
+          ...request,
+          school: {
+            id: school.id,
+            slug: school.slug,
+            name: school.name,
+            status: school.status,
+            subscription: school.subscriptions[0] ?? null,
+            invitation: school.adminInvitations[0] ?? null,
+          },
+        }];
+      });
+    });
+  }
 
   async requestRegistration(input: SchoolRegistrationDto) {
     const requestId = randomUUID();
@@ -145,12 +287,7 @@ export class SchoolsService {
 
     let invitationUrl: string;
     try {
-      const url = new URL('/accept-school-invitation', publicAppUrl);
-      if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
-        throw new Error('HTTPS required');
-      }
-      url.searchParams.set('token', rawToken);
-      invitationUrl = url.toString();
+      invitationUrl = buildSchoolAdminInvitationUrl(publicAppUrl, rawToken);
     } catch {
       throw new ServiceUnavailableException('Alamat aplikasi publik tidak valid atau tidak aman.');
     }
@@ -175,6 +312,8 @@ export class SchoolsService {
       if (!school || school.status !== 'PENDING') {
         throw new ConflictException('Sekolah tidak ditemukan atau tidak lagi menunggu aktivasi.');
       }
+
+      await this.entitlements.assertCanCreate(tx, school.id, 'users', { allowPendingSchool: true });
 
       const email = registration.email.trim().toLowerCase();
       const existingUser = await tx.user.findUnique({ where: { email }, select: { id: true } });
@@ -297,6 +436,8 @@ export class SchoolsService {
         if (!school || school.status !== 'PENDING') {
           throw new ConflictException('Sekolah tidak lagi memenuhi syarat aktivasi.');
         }
+
+        await this.entitlements.assertCanCreate(tx, invitation.schoolId, 'users', { allowPendingSchool: true });
 
         const userId = randomUUID();
         const displayName = input.displayName.trim();

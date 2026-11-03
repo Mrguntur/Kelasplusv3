@@ -52,6 +52,48 @@ describe('EntitlementService', () => {
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('allows a pending school onboarding quota check only when explicitly requested and subscription is valid', async () => {
+    const pending = transaction({
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'PENDING', memberCount: 0 }) },
+    });
+    await expect(service.assertCanCreate(pending, schoolId, 'users'))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.assertCanCreate(pending, schoolId, 'users', { allowPendingSchool: true }))
+      .resolves.toBeUndefined();
+  });
+
+  it('does not allow pending-school onboarding when its trial has expired', async () => {
+    const pending = transaction({
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'PENDING', memberCount: 0 }) },
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'TRIALING',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: new Date(Date.now() - 1),
+          plan: { id: 'plan-1', code: 'GROWTH', name: 'Berkembang', maxUsers: 5, maxStudents: 100, maxClasses: 5, features: {} },
+        }),
+      },
+    });
+    await expect(service.assertCanCreate(pending, schoolId, 'users', { allowPendingSchool: true }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('enforces the first administrator seat quota on a pending school', async () => {
+    const pending = transaction({
+      school: { findUnique: jest.fn().mockResolvedValue({ id: schoolId, status: 'PENDING', memberCount: 1 }) },
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: { id: 'plan-1', code: 'RINTISAN', name: 'Rintisan', maxUsers: 1, maxStudents: 100, maxClasses: 5, features: {} },
+        }),
+      },
+    });
+    await expect(service.assertCanCreate(pending, schoolId, 'users', { allowPendingSchool: true }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('marks a trial expired when trialEndsAt has passed even if currentPeriodEnd is later', async () => {
     const tx = transaction({
       subscription: {
