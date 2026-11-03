@@ -12,7 +12,7 @@ describe('AiService privacy safeguards', () => {
 
   const internals = service as unknown as {
     redactSensitiveText(value: string): string;
-    buildPrompt(capability: 'teacher_assistant' | 'leadership_insights', context: Record<string, unknown>, question: string): string;
+    buildPrompt(capability: 'teacher_assistant' | 'leadership_insights', context: Record<string, unknown>): string;
   };
 
   it('redacts common email, Indonesian mobile and 10-digit identifier patterns', () => {
