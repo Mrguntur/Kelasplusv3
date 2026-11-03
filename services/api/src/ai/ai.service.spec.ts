@@ -5,9 +5,9 @@ import type { EntitlementService } from '../entitlements/entitlement.service';
 
 describe('AiService privacy safeguards', () => {
   const service = new AiService(
-    {} as PrismaService,
-    {} as ConfigService,
-    {} as EntitlementService,
+    {} as unknown as PrismaService,
+    {} as unknown as ConfigService,
+    {} as unknown as EntitlementService,
   );
 
   const internals = service as unknown as {
