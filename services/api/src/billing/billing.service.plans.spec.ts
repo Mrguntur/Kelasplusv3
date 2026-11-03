@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { BillingService } from './billing.service';
 
 describe('BillingService plan visibility', () => {
@@ -29,7 +29,7 @@ describe('BillingService plan visibility', () => {
   it('requires an authenticated platform-admin identity for unpublished plans', async () => {
     const { service, prisma } = setup();
 
-    await expect(service.listPlans(true)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.listPlans(true)).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
