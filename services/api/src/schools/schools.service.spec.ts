@@ -71,9 +71,10 @@ describe('SchoolsService manual onboarding', () => {
         reviewedBy: adminUserId,
       }),
     }));
+    const createdSchoolId = (tx.school.create.mock.calls[0][0] as { data: { id: string } }).data.id;
     expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
       actorUserId: adminUserId,
-      schoolId: result.school.id,
+      schoolId: createdSchoolId,
       eventType: 'school.created_manually',
       outcome: 'SUCCESS',
     }), expect.anything());
