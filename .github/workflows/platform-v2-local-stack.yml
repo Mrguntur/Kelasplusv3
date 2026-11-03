@@ -9,6 +9,7 @@ on:
     branches:
       - feat/platform-v2-foundation
       - feat/platform-v2-docker-local-stack
+      - preview/platform-v2-local-complete
     paths:
       - "infra/local/**"
       - ".github/workflows/platform-v2-local-stack.yml"
