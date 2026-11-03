@@ -130,7 +130,7 @@ export class SchoolsService {
           },
         },
       });
-      const schoolsBySlug = new Map(schools.map((school) => [school.slug, school]));
+      const schoolsBySlug = new Map(schools.map((school) => [school.slug, school] as const));
 
       return requests.flatMap((request) => {
         const school = schoolsBySlug.get(request.requestedSlug);
