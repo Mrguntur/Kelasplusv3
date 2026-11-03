@@ -1,0 +1,108 @@
+name: kelasplus-v2-local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: kelasplus-v2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kelasplus_dev
+      POSTGRES_USER: kelasplus_dev
+      POSTGRES_PASSWORD: local_dev_password_only
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - kelasplus_v2_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kelasplus_dev -d kelasplus_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: node:22-bookworm-slim
+    container_name: kelasplus-v2-api
+    working_dir: /workspace/services/api
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      API_GLOBAL_PREFIX: api/v1
+      DATABASE_URL: postgresql://kelasplus_dev:local_dev_password_only@postgres:5432/kelasplus_dev?schema=public
+      CORS_ORIGINS: http://localhost:5173,http://localhost:5174
+      PASSWORD_MIN_LENGTH: 12
+      PUBLIC_APP_URL: http://localhost:5173/app/
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
+      MIDTRANS_IS_PRODUCTION: "false"
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      INVITATION_EMAIL_FROM: ${INVITATION_EMAIL_FROM:-}
+    volumes:
+      - ../..:/workspace
+      - api_node_modules:/workspace/services/api/node_modules
+    command: >-
+      sh -c "npm install &&
+      npx prisma generate &&
+      npx prisma migrate deploy &&
+      npm run start:dev"
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  web:
+    image: node:22-bookworm-slim
+    container_name: kelasplus-v2-web
+    working_dir: /workspace/apps/web
+    restart: unless-stopped
+    init: true
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api/v1
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ../..:/workspace
+      - web_node_modules:/workspace/apps/web/node_modules
+    command: >-
+      sh -c "npm install &&
+      npm run dev"
+    ports:
+      - "127.0.0.1:5173:5173"
+
+  landing:
+    image: node:22-bookworm-slim
+    container_name: kelasplus-v2-landing
+    working_dir: /workspace/apps/landing
+    restart: unless-stopped
+    init: true
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ../..:/workspace
+      - landing_node_modules:/workspace/apps/landing/node_modules
+    command: >-
+      sh -c "npm install &&
+      npm run dev"
+    ports:
+      - "127.0.0.1:5174:5174"
+
+volumes:
+  kelasplus_v2_pgdata:
+  api_node_modules:
+  web_node_modules:
+  landing_node_modules:
