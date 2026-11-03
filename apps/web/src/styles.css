@@ -309,3 +309,6 @@
 .ai-privacy-note{display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding-top:13px;border-top:1px solid #edf1f6;color:#8593a6;font-size:10px;line-height:1.65}
 .ai-privacy-note svg{flex-shrink:0;color:#4b83c4}
 @media(max-width:600px){.ai-workspace{padding:16px}.ai-prompt-footer{align-items:flex-start;flex-direction:column}.ai-prompt-footer .primary-button{width:100%;justify-content:center}}
+
+
+.ai-unavailable{margin-top:12px;padding:14px 15px;border:1px solid #e7dfc9;border-radius:10px;background:#fffaf0;color:#826b3f;font-size:12px;line-height:1.65}
