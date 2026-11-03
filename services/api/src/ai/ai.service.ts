@@ -108,7 +108,7 @@ export class AiService {
 
     try {
       const safeQuestion = this.redactSensitiveText(normalizedQuestion);
-      const prompt = this.buildPrompt(capability, reservation.context, safeQuestion);
+      const prompt = this.buildPrompt(capability, reservation.context);
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
