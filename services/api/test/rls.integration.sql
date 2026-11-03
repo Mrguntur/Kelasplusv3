@@ -328,6 +328,12 @@ ROLLBACK;
 RESET ROLE;
 
 
+-- Owner-seeded event for school B proves school A cannot read another tenant's usage.
+INSERT INTO "ai_usage_events"
+  ("id","school_id","user_id","capability","model","status","created_at")
+VALUES
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccc80','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02','teacher_assistant','gemini-test','SUCCEEDED',now());
+
 -- AI usage events are tenant- and actor-scoped; monthly quota reads must not cross schools.
 SET ROLE kelasplus_runtime;
 BEGIN;
