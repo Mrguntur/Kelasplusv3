@@ -277,7 +277,8 @@ export class SchoolsService {
 
     let invitationUrl: string;
     try {
-      const url = new URL('/accept-school-invitation', publicAppUrl);
+      const baseUrl = `${publicAppUrl.replace(/\\/+$/, '')}/`;
+      const url = new URL('invite/accept', baseUrl);
       if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
         throw new Error('HTTPS required');
       }
