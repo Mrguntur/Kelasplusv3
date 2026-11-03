@@ -14,7 +14,7 @@ function percent(value: number | null) {
   return value === null ? 'Belum cukup data' : value.toLocaleString('id-ID', { maximumFractionDigits: 1 }) + '%';
 }
 
-export default function StudentAttentionCenter({ role }: { role: string }) {
+export default function StudentAttentionCenter() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [classId, setClassId] = useState('');
   const [report, setReport] = useState<ClassReport | null>(null);
