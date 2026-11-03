@@ -7,10 +7,11 @@ function requiredLocalDatabase(): void {
   const raw = process.env.DATABASE_URL;
   if (!raw) throw new Error('DATABASE_URL belum diatur.');
   const url = new URL(raw);
-  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-  if (!isLocal || url.port !== '5433' || url.pathname !== '/kelasplus_dev') {
+  const isHostLocal = ['localhost', '127.0.0.1', '::1'].includes(url.hostname) && url.port === '5433';
+  const isComposeLocal = url.hostname === 'postgres' && url.port === '5432';
+  if ((!isHostLocal && !isComposeLocal) || url.pathname !== '/kelasplus_dev') {
     throw new Error(
-      'Seed demo ditolak: hanya boleh berjalan pada localhost:5433/kelasplus_dev. Database lain tidak akan disentuh.',
+      'Seed demo ditolak: hanya boleh berjalan pada localhost:5433 atau service Docker postgres:5432 untuk database kelasplus_dev. Database lain tidak akan disentuh.',
     );
   }
   if (process.env.NODE_ENV === 'production') {
