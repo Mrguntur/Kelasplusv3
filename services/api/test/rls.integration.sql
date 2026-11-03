@@ -337,7 +337,7 @@ INSERT INTO "ai_usage_events"
   ("id","school_id","user_id","capability","model","status","created_at")
 VALUES
   ('cccccccc-cccc-4ccc-8ccc-cccccccccc81','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01','teacher_assistant','gemini-test','SUCCEEDED',now());
-DO $
+DO $ai_usage$
 DECLARE visible_usage integer;
 BEGIN
   SELECT count(*) INTO visible_usage FROM "ai_usage_events";
@@ -353,7 +353,7 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-END $;
+END $ai_usage$;
 ROLLBACK;
 RESET ROLE;
 
