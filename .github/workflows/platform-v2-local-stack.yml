@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - feat/platform-v2-foundation
+      - feat/platform-v2-docker-local-stack
     paths:
       - "infra/local/**"
       - ".github/workflows/platform-v2-local-stack.yml"
