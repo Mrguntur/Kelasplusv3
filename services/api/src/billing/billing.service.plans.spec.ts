@@ -40,6 +40,7 @@ describe('BillingService plan visibility', () => {
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
-    expect(tx.plan.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: undefined }));
+    expect(tx.plan.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.plan.findMany.mock.calls[0][0]).not.toHaveProperty('where');
   });
 });
