@@ -22,6 +22,7 @@ The product rule is enforced by the API: only plan codes `GROWTH` (Berkembang) a
 
 ## API routes
 
+- `GET /ai/capabilities` returns the active member's role- and plan-specific AI capabilities and monthly limits for dashboard discovery.
 - `POST /ai/teacher/assistant`
 - `POST /ai/leadership/insights`
 
