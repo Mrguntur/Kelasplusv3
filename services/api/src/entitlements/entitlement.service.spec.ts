@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, SchoolRole } from '@prisma/client';
 import { EntitlementService } from './entitlement.service';
 
 describe('EntitlementService', () => {
@@ -105,7 +105,7 @@ describe('EntitlementService', () => {
         }),
       },
     });
-    expect(await service.getAiCapabilities(tx, schoolId, 'TEACHER')).toEqual({
+    expect(await service.getAiCapabilities(tx, schoolId, SchoolRole.TEACHER)).toEqual({
       teacher_assistant: true,
       leadership_insights: false,
     });
@@ -126,14 +126,14 @@ describe('EntitlementService', () => {
         }),
       },
     });
-    expect((await service.getAiCapabilities(tx, schoolId, 'SCHOOL_LEADER')).leadership_insights).toBe(true);
-    await expect(service.assertAiCapability(tx, schoolId, 'TEACHER', 'leadership_insights'))
+    expect((await service.getAiCapabilities(tx, schoolId, SchoolRole.SCHOOL_LEADER)).leadership_insights).toBe(true);
+    await expect(service.assertAiCapability(tx, schoolId, SchoolRole.TEACHER, 'leadership_insights'))
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('denies all AI capabilities when flags are missing or subscription is inactive', async () => {
     const noFlags = transaction();
-    expect(await service.getAiCapabilities(noFlags, schoolId, 'SCHOOL_ADMIN')).toEqual({
+    expect(await service.getAiCapabilities(noFlags, schoolId, SchoolRole.SCHOOL_ADMIN)).toEqual({
       teacher_assistant: false,
       leadership_insights: false,
     });
@@ -151,7 +151,7 @@ describe('EntitlementService', () => {
         }),
       },
     });
-    await expect(service.assertAiCapability(inactive, schoolId, 'SCHOOL_ADMIN', 'teacher_assistant'))
+    await expect(service.assertAiCapability(inactive, schoolId, SchoolRole.SCHOOL_ADMIN, 'teacher_assistant'))
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -170,7 +170,7 @@ describe('EntitlementService', () => {
         }),
       },
     });
-    await expect(service.assertAiCapability(tx, schoolId, 'SCHOOL_OPERATOR', 'teacher_assistant'))
+    await expect(service.assertAiCapability(tx, schoolId, SchoolRole.SCHOOL_OPERATOR, 'teacher_assistant'))
       .rejects.toBeInstanceOf(ForbiddenException);
   });
 
