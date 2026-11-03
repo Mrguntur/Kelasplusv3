@@ -73,7 +73,7 @@ describe('SchoolsService manual onboarding', () => {
     }));
     expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
       actorUserId: adminUserId,
-      schoolId,
+      schoolId: result.school.id,
       eventType: 'school.created_manually',
       outcome: 'SUCCESS',
     }), expect.anything());
