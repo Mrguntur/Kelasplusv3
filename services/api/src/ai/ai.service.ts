@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SchoolRole } from '@prisma/client';
+import { Prisma, SchoolRole } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
@@ -124,7 +124,7 @@ export class AiService {
   }
 
   private async getAggregateContext(
-    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    tx: Prisma.TransactionClient,
     schoolId: string,
     userId: string,
     role: SchoolRole,
@@ -132,6 +132,7 @@ export class AiService {
     const since = new Date();
     since.setDate(since.getDate() - 30);
     let classIds: string[] | null = null;
+    let teacherStaffProfileId: string | null = null;
 
     if (role === SchoolRole.TEACHER) {
       const staff = await tx.staffProfile.findUnique({
@@ -139,6 +140,7 @@ export class AiService {
         select: { id: true },
       });
       if (!staff) return { scope: 'kelas yang ditugaskan', activeStudents: 0, activeClasses: 0, attendanceLast30Days: {}, averagePublishedScore: null };
+      teacherStaffProfileId = staff.id;
       const assignments = await tx.teachingAssignment.findMany({
         where: { schoolId, staffProfileId: staff.id, archivedAt: null },
         select: { classId: true },
@@ -146,16 +148,34 @@ export class AiService {
       classIds = [...new Set(assignments.map((item) => item.classId))];
     }
 
-    const classFilter = classIds ? { id: { in: classIds } } : {};
-    const studentFilter = classIds
-      ? { schoolId, status: 'ACTIVE' as const, archivedAt: null, enrollments: { some: { schoolId, classId: { in: classIds }, status: 'ACTIVE' as const } } }
-      : { schoolId, status: 'ACTIVE' as const, archivedAt: null };
-    const attendanceWhere = classIds
-      ? { schoolId, attendanceSession: { classId: { in: classIds }, date: { gte: since } } }
+    const classFilter: Prisma.SchoolClassWhereInput = classIds
+      ? { id: { in: classIds } }
+      : {};
+    const studentFilter: Prisma.StudentWhereInput = classIds
+      ? {
+          schoolId,
+          status: 'ACTIVE',
+          archivedAt: null,
+          enrollments: {
+            some: { schoolId, classId: { in: classIds }, status: 'ACTIVE' },
+          },
+        }
+      : { schoolId, status: 'ACTIVE', archivedAt: null };
+    const attendanceWhere: Prisma.AttendanceRecordWhereInput = classIds
+      ? {
+          schoolId,
+          attendanceSession: { classId: { in: classIds }, date: { gte: since } },
+        }
       : { schoolId, attendanceSession: { date: { gte: since } } };
-    const scoreWhere = classIds
-      ? { schoolId, assessment: { status: 'PUBLISHED' as const, teachingAssignment: { staffProfileId: { in: (await tx.teachingAssignment.findMany({ where: { schoolId, classId: { in: classIds }, archivedAt: null }, select: { staffProfileId: true } })).map(x => x.staffProfileId) } } } }
-      : { schoolId, assessment: { status: 'PUBLISHED' as const } };
+    const scoreWhere: Prisma.AssessmentScoreWhereInput = teacherStaffProfileId
+      ? {
+          schoolId,
+          assessment: {
+            status: 'PUBLISHED',
+            teachingAssignment: { staffProfileId: teacherStaffProfileId },
+          },
+        }
+      : { schoolId, assessment: { status: 'PUBLISHED' } };
 
     const [activeStudents, activeClasses, attendance, scores] = await Promise.all([
       tx.student.count({ where: studentFilter }),
