@@ -1,0 +1,34 @@
+name: KELAS+ Platform V2 Local Docker Config
+
+on:
+  pull_request:
+    paths:
+      - "infra/local/**"
+      - ".github/workflows/platform-v2-local-stack.yml"
+  push:
+    branches:
+      - feat/platform-v2-foundation
+      - feat/platform-v2-docker-local-stack
+      - preview/platform-v2-local-complete
+    paths:
+      - "infra/local/**"
+      - ".github/workflows/platform-v2-local-stack.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate Docker Compose configuration
+        run: docker compose --env-file infra/local/.env.example -f infra/local/docker-compose.full.yml config --quiet
+      - name: Verify non-superuser RLS runtime role initialization
+        run: |
+          docker compose --env-file infra/local/.env.example -f infra/local/docker-compose.full.yml up -d postgres db-init
+          docker compose --env-file infra/local/.env.example -f infra/local/docker-compose.full.yml exec -T postgres psql -U kelasplus_dev -d kelasplus_dev -Atc "SELECT (rolsuper = false AND rolbypassrls = false) FROM pg_roles WHERE rolname = 'kelasplus_runtime'" | grep -qx t
+      - name: Stop local database services
+        if: always()
+        run: docker compose --env-file infra/local/.env.example -f infra/local/docker-compose.full.yml down -v

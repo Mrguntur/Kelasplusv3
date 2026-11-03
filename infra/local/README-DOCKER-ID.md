@@ -1,0 +1,105 @@
+# KELAS+ Platform V2 — Docker Local Stack
+
+Panduan ini menjalankan database, API, authenticated web workspace, dan public landing page V2 secara lokal menggunakan Docker Desktop. Stack ini terpisah dari aplikasi legacy Firebase di root repository dan tidak mengubah YoHost maupun data produksi.
+
+## Persyaratan
+
+- Windows 10/11 dengan WSL2
+- Docker Desktop dengan Linux containers aktif
+- Git
+- RAM disarankan minimal 8 GB pada PC agar Docker, browser, dan editor dapat berjalan bersamaan
+- Node.js lokal tidak wajib untuk menjalankan stack ini; dependency Node dipasang di container
+
+## 1. Ambil branch pengembangan
+
+Dari PowerShell:
+
+```powershell
+git fetch origin
+git switch feat/platform-v2-docker-local-stack
+git pull
+```
+
+Jika branch belum ada di PC, clone repository lalu checkout branch tersebut.
+
+## 2. Siapkan environment lokal
+
+Dari root repository:
+
+```powershell
+Copy-Item infra/local/.env.example infra/local/.env
+```
+
+File `infra/local/.env` diabaikan Git. Biarkan `GEMINI_API_KEY` kosong jika belum ingin menguji AI. Untuk pengujian AI, isi dengan key khusus development/staging, bukan key produksi. Jangan kirim key melalui chat atau commit ke Git.
+
+## 3. Jalankan seluruh stack
+
+Dari root repository:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml up -d
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml ps
+```
+
+Pada startup pertama, service `db-init` menyiapkan role runtime PostgreSQL non-superuser. Container API memasang dependency, membuat Prisma Client, menjalankan migrasi sebagai database owner, lalu menjalankan NestJS menggunakan role `kelasplus_runtime` yang tidak memiliki hak superuser atau bypass RLS. Container web dan landing memasang dependency masing-masing lalu menjalankan Vite.
+
+## 4. Buat akun demo lokal
+
+Migrasi database otomatis dijalankan saat API container pertama kali aktif. Untuk membuat sekolah demo dan akun administrator lokal, jalankan seed yang dibatasi hanya untuk database `kelasplus_dev` lokal:
+
+```powershell
+$env:KELASPLUS_SEED_ADMIN_PASSWORD = "GantiDenganPasswordLokalMinimal12Karakter"
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml exec -e "DATABASE_URL=postgresql://kelasplus_dev:local_dev_password_only@postgres:5432/kelasplus_dev?schema=public" -e "KELASPLUS_SEED_ADMIN_PASSWORD=$env:KELASPLUS_SEED_ADMIN_PASSWORD" api npm run db:seed
+Remove-Item Env:KELASPLUS_SEED_ADMIN_PASSWORD
+```
+
+Akun demo:
+- Email: `admin@kelasplus.local`
+- Password: gunakan password lokal yang baru kamu tetapkan di atas.
+
+Akun demo memiliki role Admin Sekolah dan termasuk allowlist Super Admin khusus lingkungan lokal. Seed memakai koneksi database owner hanya untuk data demo; aplikasi yang berjalan tetap menggunakan role runtime non-superuser agar kebijakan RLS benar-benar diuji. Ganti password demo jika diperlukan; jangan gunakan akun atau password ini di produksi.
+
+## 5. Buka aplikasi
+
+| Komponen | Alamat lokal |
+| --- | --- |
+| Public landing page | http://localhost:5174/ |
+| KELAS+ V2 workspace | http://localhost:5173/app/ |
+| Admin invitation acceptance | http://localhost:5173/app/invite/accept?token=... |
+| API health check | http://localhost:3000/api/v1/health |
+| PostgreSQL dari PC | localhost:5433 |
+
+Database hanya dipublikasikan pada loopback PC. API, web, dan landing juga hanya dipublikasikan pada loopback PC, bukan ke jaringan publik.
+
+## 6. Lihat log dan status
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml ps
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml logs -f api
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml logs -f web
+```
+
+Untuk memulai ulang layanan setelah mengubah environment:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml up -d --force-recreate api
+```
+
+## 7. Hentikan stack
+
+Perintah ini menghentikan container tetapi mempertahankan volume database:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/docker-compose.full.yml down
+```
+
+**Jangan gunakan `down -v` kecuali memang ingin menghapus seluruh database dan data uji lokal.** Penghapusan volume bersifat permanen.
+
+## Catatan penting
+
+- Compose ini adalah lingkungan development, bukan konfigurasi produksi.
+- Jangan gunakan data siswa sungguhan atau salinan database produksi.
+- Jangan expose port database/API ke internet.
+- Gemini, Midtrans, dan Resend tidak diperlukan untuk menyalakan stack. Untuk menguji AI, pembayaran, atau pengiriman undangan email, isi secret khusus development pada `infra/local/.env`. Email undangan membutuhkan `RESEND_API_KEY` dan `INVITATION_EMAIL_FROM`.
+- Pengiriman undangan email tetap memerlukan konfigurasi provider email yang sesuai. Jangan menganggap email benar-benar terkirim hanya karena endpoint berhasil dijalankan.
+- Docker tidak menggantikan pengujian browser lintas perangkat, pengujian keamanan, atau staging publik. Setelah UI dan API stabil, kita tetap perlu staging sebelum rilis.
