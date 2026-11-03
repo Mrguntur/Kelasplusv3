@@ -18,7 +18,7 @@ AI access is fail-closed. Both a boolean capability and a positive monthly reque
 | Teacher assistant | `aiAssistant: true` | `aiTeacherMonthlyRequests: <integer>` | TEACHER, SCHOOL_ADMIN |
 | Leadership insights | `aiLeadershipInsights: true` | `aiLeadershipMonthlyRequests: <integer>` | SCHOOL_LEADER, SCHOOL_ADMIN |
 
-The product rule is that only Berkembang and Unggulan may set these flags and quotas. Rintisan must leave them disabled/omitted. Existing plan records are not changed by this migration; Super Admin must configure them deliberately after review.
+The product rule is enforced by the API: only plan codes `GROWTH` (Berkembang) and `UNGGULAN` may use these capabilities, even if a lower-tier plan is accidentally configured with AI flags. Rintisan must leave them disabled/omitted. Existing plan records are not changed by this migration; Super Admin must configure them deliberately after review.
 
 ## API routes
 
@@ -29,11 +29,11 @@ Both routes require an authenticated session, active school membership, an activ
 
 ## Privacy and cost controls
 
-- The API constructs school context from aggregate counts; it does not query or send student names, NISN, email, addresses, or individual score rows.
+- The API constructs school context from aggregate counts; it does not query or send student names, NISN, email, addresses, or individual score rows. Attendance aggregates include only `FINALIZED` sessions.
 - Common email, Indonesian mobile-number, and 10-digit identifier patterns are redacted from the submitted question. Name detection is not reliable, so users must not include student names or other identifying details in prompts; the V2 dashboard displays this warning before requests are submitted.
 - Teacher context is restricted to the teacher's assigned classes.
 - Leadership context uses school-level aggregates.
-- Each accepted request reserves one monthly request before calling Gemini. Failed provider calls are recorded and still consume one request to prevent retries from bypassing quotas.
+- Monthly quota boundaries use UTC calendar months. Each accepted request reserves one monthly request before calling Gemini. Failed provider calls are recorded and still consume one request to prevent retries from bypassing quotas.
 - Provider output is capped at 900 tokens and requests time out after 30 seconds.
 - Usage events record capability, model, status, token counts, tenant, actor, and timestamp under tenant RLS.
 
