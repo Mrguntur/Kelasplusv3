@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql://kelasplus_dev:local_dev_password_only@postgres:5432/kelasplus_dev?schema=public
       CORS_ORIGINS: http://localhost:5173,http://localhost:5174
       PASSWORD_MIN_LENGTH: 12
-      PUBLIC_APP_URL: http://localhost:5173
+      PUBLIC_APP_URL: http://localhost:5173/app/
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
