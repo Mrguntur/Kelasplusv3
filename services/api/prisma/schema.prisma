@@ -105,6 +105,7 @@ model User {
   teachingJournals TeachingJournal[]
   assessments Assessment[]
   assessmentScores AssessmentScore[]
+  aiUsageEvents AiUsageEvent[]
 
   @@map("users")
 }
