@@ -198,6 +198,13 @@ export class AiService {
     };
   }
 
+  private redactSensitiveText(value: string): string {
+    return value
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL DIHAPUS]')
+      .replace(/(?:\+?62|0)\s?8[\d\s-]{7,13}/g, '[NOMOR TELEPON DIHAPUS]')
+      .replace(/\b\d{10}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
+  }
+
   private buildPrompt(capability: AiCapability, context: Record<string, unknown>, question: string): string {
     const roleInstruction = capability === 'teacher_assistant'
       ? 'Bertindak sebagai asisten pedagogis guru SMP. Berikan strategi pembelajaran, tindak lanjut kelas, dan asesmen formatif yang realistis.'
