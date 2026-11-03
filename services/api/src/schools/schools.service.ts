@@ -10,6 +10,16 @@ import { InvitationEmailService } from './invitation-email.service';
 import { AcceptSchoolAdminInvitationDto } from './accept-school-admin-invitation.dto';
 import { EntitlementService } from '../entitlements/entitlement.service';
 
+export function buildSchoolAdminInvitationUrl(publicAppUrl: string, rawToken: string): string {
+  const baseUrl = publicAppUrl.endsWith('/') ? publicAppUrl : `${publicAppUrl}/`;
+  const url = new URL('invite/accept', baseUrl);
+  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
+    throw new Error('HTTPS required');
+  }
+  url.searchParams.set('token', rawToken);
+  return url.toString();
+}
+
 @Injectable()
 export class SchoolsService {
   constructor(
@@ -277,13 +287,7 @@ export class SchoolsService {
 
     let invitationUrl: string;
     try {
-      const baseUrl = publicAppUrl.endsWith('/') ? publicAppUrl : `${publicAppUrl}/`;
-      const url = new URL('invite/accept', baseUrl);
-      if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
-        throw new Error('HTTPS required');
-      }
-      url.searchParams.set('token', rawToken);
-      invitationUrl = url.toString();
+      invitationUrl = buildSchoolAdminInvitationUrl(publicAppUrl, rawToken);
     } catch {
       throw new ServiceUnavailableException('Alamat aplikasi publik tidak valid atau tidak aman.');
     }
