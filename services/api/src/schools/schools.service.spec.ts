@@ -1,7 +1,26 @@
 import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { SchoolsService } from './schools.service';
+import { buildSchoolAdminInvitationUrl, SchoolsService } from './schools.service';
 import { PrismaService } from '../database/prisma.service';
+
+describe('School administrator invitation URL', () => {
+  it('preserves the frontend base path and uses the route handled by the web app', () => {
+    const invitationUrl = new URL(buildSchoolAdminInvitationUrl(
+      'https://kelasplus.my.id/app/',
+      'token-with-special+chars',
+    ));
+    expect(invitationUrl.pathname).toBe('/app/invite/accept');
+    expect(invitationUrl.searchParams.get('token')).toBe('token-with-special+chars');
+  });
+
+  it('adds a trailing slash to a frontend base URL without one', () => {
+    const invitationUrl = new URL(buildSchoolAdminInvitationUrl(
+      'http://localhost:5173/app',
+      'local-token',
+    ));
+    expect(invitationUrl.pathname).toBe('/app/invite/accept');
+  });
+});
 
 describe('SchoolsService manual onboarding', () => {
   const adminUserId = '11111111-1111-4111-8111-111111111111';
