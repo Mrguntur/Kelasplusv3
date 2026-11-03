@@ -7,6 +7,7 @@ import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './auth.dto';
 import { ChangePasswordDto } from './change-password.dto';
 import { AuditService } from '../audit/audit.service';
+import { EntitlementService } from '../entitlements/entitlement.service';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 8;
@@ -20,6 +21,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly entitlements: EntitlementService,
   ) {
     this.dummyHash = argon2.hash(randomBytes(32).toString('hex'), { type: argon2.argon2id });
   }
@@ -337,6 +339,10 @@ export class AuthService {
       await tx.schoolMembership.create({
         data: { userId: user.id, schoolId: invitation.schoolId, role: 'SCHOOL_ADMIN' },
       });
+      await tx.school.update({
+        where: { id: invitation.schoolId },
+        data: { memberCount: { increment: 1 } },
+      });
       await this.audit.record({
         actorUserId: user.id,
         schoolId: invitation.schoolId,
@@ -377,6 +383,7 @@ export class AuthService {
         select: { id: true },
       });
       if (!school) throw new ForbiddenException('Sekolah tidak aktif.');
+      await this.entitlements.assertCanCreate(tx, activeSchoolId, 'users');
       const existingUser = await tx.user.findUnique({ where: { email }, select: { id: true } });
       if (existingUser) throw new ConflictException('Email sudah terdaftar. Gunakan proses penautan akun yang terverifikasi.');
       const pending = await tx.teacherInvitation.findFirst({
@@ -448,8 +455,13 @@ export class AuthService {
       });
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
       await tx.$executeRaw`SELECT set_config('app.current_school_id', ${invitation.schoolId}, true)`;
+      await this.entitlements.assertCanCreate(tx, invitation.schoolId, 'users');
       await tx.schoolMembership.create({
         data: { userId: user.id, schoolId: invitation.schoolId, role: SchoolRole.TEACHER },
+      });
+      await tx.school.update({
+        where: { id: invitation.schoolId },
+        data: { memberCount: { increment: 1 } },
       });
       await tx.staffProfile.create({
         data: { schoolId: invitation.schoolId, userId: user.id, displayName: invitation.displayName, status: 'ACTIVE' },
