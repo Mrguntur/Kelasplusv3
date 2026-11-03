@@ -34,6 +34,7 @@ Both routes require an authenticated session, active school membership, an activ
 - Teacher context is restricted to the teacher's assigned classes.
 - Leadership context uses school-level aggregates.
 - Monthly quota boundaries use UTC calendar months. Each accepted request reserves one monthly request before calling Gemini. Failed provider calls are recorded and still consume one request to prevent retries from bypassing quotas.
+- Trusted safety instructions and aggregate context are sent separately from the user's question using Gemini's system-instruction field to reduce prompt-injection risk.
 - Provider output is capped at 900 tokens and requests time out after 30 seconds.
 - Usage events record capability, model, status, token counts, tenant, actor, and timestamp under tenant RLS.
 
