@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: kelasplus_dev
       POSTGRES_PASSWORD: local_dev_password_only
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - kelasplus_v2_pgdata:/var/lib/postgresql/data
     healthcheck:
