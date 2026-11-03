@@ -194,9 +194,8 @@ export class EntitlementService {
       allowed = true;
     } else {
       if (
-        subscription &&
-        (subscription.status === 'ACTIVE' || subscription.status === 'TRIALING') &&
-        subscription.currentPeriodEnd <= now
+        (subscription?.status === 'ACTIVE' && subscription.currentPeriodEnd <= now) ||
+        (subscription?.status === 'TRIALING' && (!subscription.trialEndsAt || subscription.trialEndsAt <= now))
       ) effectiveStatus = 'EXPIRED';
       reason = subscription?.status === 'PAST_DUE'
         ? 'Langganan menunggak. Selesaikan pembayaran untuk memulihkan akses.'
