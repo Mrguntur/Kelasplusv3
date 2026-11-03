@@ -387,3 +387,80 @@
 .school-onboarding-complete{display:flex;align-items:center;gap:7px;margin:12px 0 0;padding-top:12px;border-top:1px solid #edf1f6;color:#178153;font-size:11px}
 @media(max-width:680px){.school-onboarding-form-grid{grid-template-columns:1fr}.school-onboarding-next-step{align-items:stretch;flex-direction:column}.school-onboarding-trial-controls{max-width:none}.school-onboarding-next-step>.primary-button{width:100%;justify-content:center}.school-onboarding-card-head{align-items:flex-start;flex-wrap:wrap}.school-onboarding-card-head>.status-badge{margin-left:50px}}
 @media(max-width:480px){.school-onboarding-trial-controls{grid-template-columns:1fr}.school-onboarding-actions{width:100%}.school-onboarding-actions button{flex:1}}
+
+
+/* KELAS+ V2 design system — visual foundation inspired by the approved teacher UI */
+:root{
+  --navy:#0d2238;
+  --blue:#155eef;
+  --muted:#718096;
+  --line:#e3e8ef;
+  --paper:#fff;
+  --surface:#f2f4f8;
+  --text-strong:#1c2938;
+  --text-muted:#718096;
+}
+body{background:var(--surface);color:var(--text-strong)}
+.app-shell{background:var(--surface)}
+.sidebar{
+  width:280px;
+  padding:27px 18px 17px;
+  background:linear-gradient(180deg,#102a43 0%,#0a1d30 100%);
+  box-shadow:5px 0 24px #0b203012;
+}
+.sidebar .brand-lockup{padding:0 8px 38px}
+.sidebar .brand-lockup strong{font-size:22px;letter-spacing:-.5px}
+.sidebar .brand-lockup span{font-size:10px;letter-spacing:1.4px;color:#9aadc0}
+.sidebar .brand-mark{width:0;height:0;display:none}
+.workspace-label{padding:0 12px 12px;color:#788da3;font-size:9px;letter-spacing:1.7px}
+.nav-item{min-height:43px;padding:11px 13px;margin:3px 0;border-radius:10px;color:#c1cfdd;font-size:13px}
+.nav-item.active{
+  background:#155eef;color:#fff;
+  box-shadow:0 8px 18px #155eef38,inset 3px 0 #f6c94a;
+}
+.nav-item.active svg{color:#fff}
+.nav-item:not(.active):not(.disabled-nav):hover{background:#ffffff12;color:#fff}
+.sidebar-bottom{border-color:#ffffff1c;padding-top:17px}
+.school-avatar{background:#f5cb57;color:#102a43;border-radius:10px}
+.main-content{
+  margin-left:280px;
+  max-width:none;
+  padding:0 27px 24px;
+}
+.topbar{
+  position:sticky;top:0;z-index:20;
+  height:66px;margin:0 -27px 0;
+  padding:0 27px;
+  background:#ffffffed;
+  border-bottom:1px solid #e5e9ef;
+  backdrop-filter:blur(14px);
+}
+.topbar-label{color:#8b98a8}
+.topbar-school{color:#344256}
+.page-heading{padding-top:26px;margin-bottom:22px}
+.page-heading h1,.academic-page-heading h1{
+  color:#1b2938;letter-spacing:-.9px;
+  font-family:Manrope,sans-serif;
+}
+.panel,.metric-card,.academic-banner,.role-overview,.quick-access-card{
+  border-color:#e2e7ee;border-radius:15px;background:#fff;
+  box-shadow:0 1px 2px #15263b0a,0 5px 16px #15263b06;
+}
+.metric-card{padding:19px}
+.metric-value{color:#1d2b3a;font-family:Manrope,sans-serif}
+.primary-button{background:#155eef;border-radius:10px;box-shadow:0 5px 13px #155eef25}
+.primary-button:hover{background:#0e4fd2}
+.secondary-button{border-radius:10px}
+.quick-access-card{padding:16px}
+.quick-access-card:hover{border-color:#a9c5f5}
+.academic-panel{overflow:hidden}
+.academic-toolbar{background:#fff}
+.academic-table th{background:#f8fafc;color:#8291a4}
+.academic-table td{border-color:#edf0f4}
+.academic-table tbody tr:hover{background:#fbfcfe}
+@media(max-width:760px){
+  .sidebar{width:min(280px,86vw)}
+  .main-content{margin-left:0;padding:0 16px 20px}
+  .topbar{margin:0 -16px;padding:0 16px;height:62px}
+  .page-heading{padding-top:22px}
+}
