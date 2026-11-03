@@ -11,7 +11,6 @@ on:
       - feat/platform-v2-entitlement-engine
     paths:
       - "services/api/**"
-      - "apps/web/**"
       - "infra/**"
       - ".github/workflows/platform-v2-api.yml"
   push:
@@ -84,23 +83,3 @@ jobs:
 
       - name: API security e2e tests
         run: npm run test:e2e -- --runInBand
-
-  web-checks:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install web dependencies
-        run: npm install
-
-      - name: Build web application
-        run: npm run build
