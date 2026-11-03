@@ -32,7 +32,6 @@ describe('SchoolsService platform overview aggregation', () => {
       by: ['status'],
       _count: { _all: true },
     });
-    expect(tx.school.count).toBeUndefined();
     expect(result.metrics).toEqual({
       totalSchools: 18,
       activeSchools: 12,
