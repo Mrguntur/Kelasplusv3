@@ -203,4 +203,33 @@ describe('EntitlementService', () => {
     expect(await service.getAiMonthlyLimit(transaction(), schoolId, SchoolRole.TEACHER, 'teacher_assistant')).toBe(0);
   });
 
+
+  it('keeps AI disabled on Rintisan even if AI flags are mistakenly configured', async () => {
+    const tx = transaction({
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          status: 'ACTIVE',
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          trialEndsAt: null,
+          plan: {
+            id: 'plan-starter', code: 'RINTISAN', name: 'Rintisan',
+            maxUsers: 5, maxStudents: 100, maxClasses: 5,
+            features: {
+              aiAssistant: true,
+              aiLeadershipInsights: true,
+              aiTeacherMonthlyRequests: 100,
+              aiLeadershipMonthlyRequests: 20,
+            },
+          },
+        }),
+      },
+    });
+    expect(await service.getAiCapabilities(tx, schoolId, SchoolRole.SCHOOL_ADMIN)).toEqual({
+      teacher_assistant: false,
+      leadership_insights: false,
+    });
+    expect(await service.getAiMonthlyLimit(tx, schoolId, SchoolRole.SCHOOL_ADMIN, 'teacher_assistant')).toBe(0);
+  });
+
+
 });
