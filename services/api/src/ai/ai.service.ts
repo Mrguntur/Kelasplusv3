@@ -229,6 +229,7 @@ export class AiService {
       tx.schoolClass.count({ where: { schoolId, status: 'ACTIVE', ...classFilter } }),
       tx.attendanceSession.findMany({
         where: sessionWhere,
+        orderBy: { date: 'desc' },
         select: {
           classId: true,
           schoolClass: { select: { name: true } },
@@ -238,6 +239,7 @@ export class AiService {
       }),
       tx.assessment.findMany({
         where: assessmentWhere,
+        orderBy: { createdAt: 'desc' },
         select: {
           maxScore: true,
           assignment: {
