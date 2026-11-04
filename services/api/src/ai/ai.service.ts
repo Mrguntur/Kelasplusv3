@@ -288,7 +288,7 @@ export class AiService {
       const maxScore = Number(assessment.maxScore);
       const validScores = assessment.scores
         .map((entry) => entry.score === null ? null : Number(entry.score))
-        .filter((score): score is number => score !== null && Number.isFinite(score));
+        .filter((score): score is number => score !== null && Number.isFinite(score) && score >= 0 && score <= maxScore);
       const normalizedAverage = maxScore > 0 && validScores.length
         ? validScores.reduce((sum, score) => sum + (score / maxScore) * 100, 0) / validScores.length
         : null;
@@ -367,7 +367,9 @@ export class AiService {
       },
       dataLimitations: [
         'Analisis kehadiran menggunakan catatan dari sesi yang sudah difinalisasi dalam 30 hari terakhir.',
-        'Analisis penilaian menggunakan asesmen yang sudah dipublikasikan; nilai kosong tidak dihitung.',
+        'Analisis penilaian menggunakan asesmen yang sudah dipublikasikan; nilai kosong dan nilai di luar rentang 0 sampai skor maksimum tidak dihitung.',
+        ...(sessions.length >= 1200 ? ['Jumlah sesi kehadiran mencapai batas pengambilan 1.200 sesi; hasil dapat belum mencakup seluruh data periode.'] : []),
+        ...(assessments.length >= 500 ? ['Jumlah asesmen mencapai batas pengambilan 500 asesmen; hasil dapat belum mencakup seluruh data periode.'] : []),
         'Ringkasan ini bersifat agregat dan tidak dapat menjelaskan penyebab perilaku atau hasil belajar individu.',
       ],
     };
