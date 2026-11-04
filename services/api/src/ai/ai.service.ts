@@ -246,7 +246,7 @@ export class AiService {
             select: {
               classId: true,
               schoolClass: { select: { name: true } },
-              subject: { select: { name: true } },
+              subject: { select: { id: true, name: true } },
             },
           },
           scores: { select: { score: true } },
