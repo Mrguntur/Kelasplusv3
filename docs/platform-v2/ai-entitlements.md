@@ -30,7 +30,7 @@ Both routes require an authenticated session, active school membership, an activ
 
 ## Privacy and cost controls
 
-- The API constructs school context from aggregates; it does not send student names, NISN, email, addresses, or individual score rows. Attendance uses only `FINALIZED` sessions from the last 30 days and reports a rate only when the denominator (record count) is non-zero. Published assessment scores are normalized to percentages using each assessment's maximum score, then summarized by subject and class. Empty scores are excluded.
+- The API constructs school context from aggregates; it does not send student names, NISN, email, addresses, or individual score rows. Attendance uses only `FINALIZED` sessions from the last 30 days and reports a rate only when the denominator (record count) is non-zero. Published assessment scores are normalized to percentages using each assessment's maximum score, then summarized by subject and class. Empty, non-finite, negative, and above-maximum scores are excluded. Aggregate reads are capped at 1,200 attendance sessions and 500 assessments; the AI context reports when either cap is reached.
 - Teacher context is limited to classes where the teacher has an active teaching assignment or is the assigned homeroom teacher. Leadership context is school-wide. Aggregates sent to Gemini contain no student-level identifiers or individual score rows.
 - Common email, Indonesian mobile-number, and 10-digit identifier patterns are redacted from the submitted question. Name detection is not reliable, so users must not include student names or other identifying details in prompts; the V2 dashboard displays this warning before requests are submitted.
 - Leadership context uses school-level aggregates.
