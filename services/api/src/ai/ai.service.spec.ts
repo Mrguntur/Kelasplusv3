@@ -13,7 +13,21 @@ describe('AiService privacy safeguards', () => {
   const internals = service as unknown as {
     redactSensitiveText(value: string): string;
     buildPrompt(capability: 'teacher_assistant' | 'leadership_insights', context: Record<string, unknown>): string;
+    normalizeAssessmentScore(score: unknown, maxScore: number): number | null;
   };
+
+
+  it('normalizes only finite scores within the assessment maximum', () => {
+    expect(internals.normalizeAssessmentScore(8, 10)).toBe(80);
+    expect(internals.normalizeAssessmentScore(0, 10)).toBe(0);
+    expect(internals.normalizeAssessmentScore(10, 10)).toBe(100);
+    expect(internals.normalizeAssessmentScore(null, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(-1, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(11, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(Number.NaN, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(5, 0)).toBeNull();
+    expect(internals.normalizeAssessmentScore(5, Number.POSITIVE_INFINITY)).toBeNull();
+  });
 
   it('redacts common email, Indonesian mobile and 10-digit identifier patterns', () => {
     const redacted = internals.redactSensitiveText(
