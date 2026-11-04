@@ -37,6 +37,9 @@ describe('AiService privacy safeguards', () => {
     expect(prompt).toContain('asisten pedagogis guru SMP');
     expect(prompt).toContain('ringkasan statistik agregat');
     expect(prompt).toContain('Jangan mendiagnosis siswa');
+    expect(prompt).toContain('tidak dibuktikan oleh statistik');
+    expect(prompt).toContain('keputusan akhir tetap pada manusia');
+    expect(prompt).toContain('ringkasan statistik agregat');
     expect(prompt).toContain('activeStudents');
     expect(prompt).not.toContain('Pertanyaan pengguna:');
   });
@@ -50,6 +53,8 @@ describe('AiService privacy safeguards', () => {
     expect(prompt).toContain('analis pendidikan untuk pimpinan sekolah');
     expect(prompt).toContain('agregat seluruh sekolah');
     expect(prompt).toContain('verifikasi manusia');
+    expect(prompt).toContain('tidak membuat kesimpulan');
+    expect(prompt).toContain('persentase kehadiran hanya jika total catatan tersedia');
     expect(prompt).not.toContain('nama siswa');
   });
 });
