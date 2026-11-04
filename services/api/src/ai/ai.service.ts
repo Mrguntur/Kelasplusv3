@@ -288,18 +288,16 @@ export class AiService {
     for (const assessment of assessments) {
       assessmentCount += 1;
       const maxScore = Number(assessment.maxScore);
-      const validScores = Number.isFinite(maxScore) && maxScore > 0
-        ? assessment.scores
-          .map((entry) => entry.score === null ? null : Number(entry.score))
-          .filter((score): score is number => score !== null && Number.isFinite(score) && score >= 0 && score <= maxScore)
-        : [];
-      const normalizedAverage = validScores.length
-        ? validScores.reduce((sum, score) => sum + (score / maxScore) * 100, 0) / validScores.length
+      const normalizedScores = assessment.scores
+        .map((entry) => this.normalizeAssessmentScore(entry.score, maxScore))
+        .filter((score): score is number => score !== null);
+      const normalizedAverage = normalizedScores.length
+        ? normalizedScores.reduce((sum, score) => sum + score, 0) / normalizedScores.length
         : null;
 
       if (normalizedAverage !== null) {
-        scoredCount += validScores.length;
-        normalizedTotal += normalizedAverage * validScores.length;
+        scoredCount += normalizedScores.length;
+        normalizedTotal += normalizedAverage * normalizedScores.length;
       }
 
       const subjectId = assessment.assignment.subject.id;
@@ -309,8 +307,8 @@ export class AiService {
       };
       subjectSummary.assessmentCount += 1;
       if (normalizedAverage !== null) {
-        subjectSummary.scoredCount += validScores.length;
-        subjectSummary.normalizedTotal += normalizedAverage * validScores.length;
+        subjectSummary.scoredCount += normalizedScores.length;
+        subjectSummary.normalizedTotal += normalizedAverage * normalizedScores.length;
       }
       assessmentBySubject.set(subjectId, subjectSummary);
 
@@ -321,8 +319,8 @@ export class AiService {
       };
       classSummary.assessmentCount += 1;
       if (normalizedAverage !== null) {
-        classSummary.scoredCount += validScores.length;
-        classSummary.normalizedTotal += normalizedAverage * validScores.length;
+        classSummary.scoredCount += normalizedScores.length;
+        classSummary.normalizedTotal += normalizedAverage * normalizedScores.length;
       }
       assessmentByClass.set(classId, classSummary);
     }
@@ -379,6 +377,21 @@ export class AiService {
         'Ringkasan ini bersifat agregat dan tidak dapat menjelaskan penyebab perilaku atau hasil belajar individu.',
       ],
     };
+  }
+
+  private normalizeAssessmentScore(score: unknown, maxScore: number): number | null {
+    const numericScore = score === null ? null : Number(score);
+    if (
+      numericScore === null ||
+      !Number.isFinite(numericScore) ||
+      !Number.isFinite(maxScore) ||
+      maxScore <= 0 ||
+      numericScore < 0 ||
+      numericScore > maxScore
+    ) {
+      return null;
+    }
+    return (numericScore / maxScore) * 100;
   }
 
   private redactSensitiveText(value: string): string {
