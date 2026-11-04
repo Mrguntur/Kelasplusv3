@@ -167,19 +167,38 @@ export class AiService {
         where: { schoolId_userId: { schoolId, userId } },
         select: { id: true },
       });
-      if (!staff) return { scope: 'kelas yang ditugaskan', activeStudents: 0, activeClasses: 0, attendanceLast30Days: {}, averagePublishedScore: null };
+      if (!staff) {
+        return {
+          scope: 'kelas yang ditugaskan atau menjadi wali kelas',
+          periodDays: 30,
+          activeStudents: 0,
+          activeClasses: 0,
+          attendance: { presentOrLate: 0, sick: 0, excused: 0, absent: 0, totalRecords: 0, ratePercent: null },
+          assessment: { publishedCount: 0, averagePercent: null, bySubject: [], byClass: [] },
+          dataLimitations: ['Profil guru aktif tidak ditemukan.'],
+        };
+      }
       teacherStaffProfileId = staff.id;
-      const assignments = await tx.teachingAssignment.findMany({
-        where: { schoolId, staffProfileId: staff.id, archivedAt: null },
-        select: { classId: true },
-      });
-      classIds = [...new Set(assignments.map((item) => item.classId))];
+      const [assignments, homeroomClasses] = await Promise.all([
+        tx.teachingAssignment.findMany({
+          where: { schoolId, staffProfileId: staff.id, archivedAt: null },
+          select: { classId: true },
+        }),
+        tx.schoolClass.findMany({
+          where: { schoolId, homeroomStaffProfileId: staff.id, status: 'ACTIVE' },
+          select: { id: true },
+        }),
+      ]);
+      classIds = [...new Set([
+        ...assignments.map((item) => item.classId),
+        ...homeroomClasses.map((item) => item.id),
+      ])];
     }
 
-    const classFilter: Prisma.SchoolClassWhereInput = classIds
+    const classFilter: Prisma.SchoolClassWhereInput = classIds !== null
       ? { id: { in: classIds } }
       : {};
-    const studentFilter: Prisma.StudentWhereInput = classIds
+    const studentFilter: Prisma.StudentWhereInput = classIds !== null
       ? {
           schoolId,
           status: 'ACTIVE',
@@ -189,39 +208,168 @@ export class AiService {
           },
         }
       : { schoolId, status: 'ACTIVE', archivedAt: null };
-    const attendanceWhere: Prisma.AttendanceRecordWhereInput = classIds
-      ? {
-          schoolId,
-          attendanceSession: { classId: { in: classIds }, date: { gte: since, lte: until }, status: 'FINALIZED' },
-        }
-      : { schoolId, attendanceSession: { date: { gte: since }, status: 'FINALIZED' } };
-    const scoreWhere: Prisma.AssessmentScoreWhereInput = teacherStaffProfileId
-      ? {
-          schoolId,
-          assessment: {
-            status: 'PUBLISHED',
-            assignment: { staffProfileId: teacherStaffProfileId },
-          },
-        }
-      : { schoolId, assessment: { status: 'PUBLISHED' } };
+    const sessionWhere: Prisma.AttendanceSessionWhereInput = {
+      schoolId,
+      status: 'FINALIZED',
+      date: { gte: since, lte: until },
+      ...(classIds !== null ? { classId: { in: classIds } } : {}),
+    };
+    const assessmentWhere: Prisma.AssessmentWhereInput = {
+      schoolId,
+      status: 'PUBLISHED',
+      assignment: {
+        archivedAt: null,
+        ...(classIds !== null ? { classId: { in: classIds } } : {}),
+        ...(teacherStaffProfileId ? { staffProfileId: teacherStaffProfileId } : {}),
+      },
+    };
 
-    const [activeStudents, activeClasses, attendance, scores] = await Promise.all([
+    const [activeStudents, activeClasses, sessions, assessments] = await Promise.all([
       tx.student.count({ where: studentFilter }),
       tx.schoolClass.count({ where: { schoolId, status: 'ACTIVE', ...classFilter } }),
-      tx.attendanceRecord.groupBy({
-        by: ['status'],
-        where: attendanceWhere,
-        _count: { _all: true },
+      tx.attendanceSession.findMany({
+        where: sessionWhere,
+        select: {
+          classId: true,
+          schoolClass: { select: { name: true } },
+          records: { select: { status: true } },
+        },
+        take: 1200,
       }),
-      tx.assessmentScore.aggregate({ where: scoreWhere, _avg: { score: true } }),
+      tx.assessment.findMany({
+        where: assessmentWhere,
+        select: {
+          maxScore: true,
+          assignment: {
+            select: {
+              classId: true,
+              schoolClass: { select: { name: true } },
+              subject: { select: { name: true } },
+            },
+          },
+          scores: { select: { score: true } },
+        },
+        take: 500,
+      }),
     ]);
 
+    const attendanceTotals = {
+      PRESENT: 0,
+      LATE: 0,
+      SICK: 0,
+      EXCUSED: 0,
+      ABSENT: 0,
+    };
+    const attendanceByClass = new Map<string, { className: string; presentOrLate: number; totalRecords: number }>();
+    for (const session of sessions) {
+      const classSummary = attendanceByClass.get(session.classId) ?? {
+        className: session.schoolClass.name,
+        presentOrLate: 0,
+        totalRecords: 0,
+      };
+      for (const record of session.records) {
+        attendanceTotals[record.status] += 1;
+        classSummary.totalRecords += 1;
+        if (record.status === 'PRESENT' || record.status === 'LATE') classSummary.presentOrLate += 1;
+      }
+      attendanceByClass.set(session.classId, classSummary);
+    }
+
+    const totalAttendanceRecords = Object.values(attendanceTotals).reduce((sum, count) => sum + count, 0);
+    const presentOrLate = attendanceTotals.PRESENT + attendanceTotals.LATE;
+    const assessmentBySubject = new Map<string, { assessmentCount: number; scoredCount: number; normalizedTotal: number }>();
+    const assessmentByClass = new Map<string, { assessmentCount: number; scoredCount: number; normalizedTotal: number }>();
+    let assessmentCount = 0;
+    let scoredCount = 0;
+    let normalizedTotal = 0;
+
+    for (const assessment of assessments) {
+      assessmentCount += 1;
+      const maxScore = Number(assessment.maxScore);
+      const validScores = assessment.scores
+        .map((entry) => entry.score === null ? null : Number(entry.score))
+        .filter((score): score is number => score !== null && Number.isFinite(score));
+      const normalizedAverage = maxScore > 0 && validScores.length
+        ? validScores.reduce((sum, score) => sum + (score / maxScore) * 100, 0) / validScores.length
+        : null;
+
+      if (normalizedAverage !== null) {
+        scoredCount += validScores.length;
+        normalizedTotal += normalizedAverage * validScores.length;
+      }
+
+      const subjectName = assessment.assignment.subject.name;
+      const subjectSummary = assessmentBySubject.get(subjectName) ?? {
+        assessmentCount: 0, scoredCount: 0, normalizedTotal: 0,
+      };
+      subjectSummary.assessmentCount += 1;
+      if (normalizedAverage !== null) {
+        subjectSummary.scoredCount += validScores.length;
+        subjectSummary.normalizedTotal += normalizedAverage * validScores.length;
+      }
+      assessmentBySubject.set(subjectName, subjectSummary);
+
+      const className = assessment.assignment.schoolClass.name;
+      const classSummary = assessmentByClass.get(className) ?? {
+        assessmentCount: 0, scoredCount: 0, normalizedTotal: 0,
+      };
+      classSummary.assessmentCount += 1;
+      if (normalizedAverage !== null) {
+        classSummary.scoredCount += validScores.length;
+        classSummary.normalizedTotal += normalizedAverage * validScores.length;
+      }
+      assessmentByClass.set(className, classSummary);
+    }
+
+    const summarizeAssessmentGroup = (items: Map<string, { assessmentCount: number; scoredCount: number; normalizedTotal: number }>) =>
+      [...items.entries()].map(([name, value]) => ({
+        name,
+        publishedAssessments: value.assessmentCount,
+        scoredRecords: value.scoredCount,
+        averagePercent: value.scoredCount
+          ? Math.round((value.normalizedTotal / value.scoredCount) * 100) / 100
+          : null,
+      })).sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
     return {
-      scope: classIds ? 'kelas yang ditugaskan kepada guru' : 'agregat seluruh sekolah',
+      scope: classIds !== null
+        ? 'kelas yang ditugaskan kepada guru atau menjadi wali kelas'
+        : 'agregat seluruh sekolah',
+      periodDays: 30,
       activeStudents,
       activeClasses,
-      attendanceLast30Days: Object.fromEntries(attendance.map((item) => [item.status, item._count._all])),
-      averagePublishedScore: scores._avg.score === null ? null : Number(scores._avg.score),
+      attendance: {
+        presentOrLate,
+        sick: attendanceTotals.SICK,
+        excused: attendanceTotals.EXCUSED,
+        absent: attendanceTotals.ABSENT,
+        totalRecords: totalAttendanceRecords,
+        ratePercent: totalAttendanceRecords
+          ? Math.round((presentOrLate / totalAttendanceRecords) * 10000) / 100
+          : null,
+        byClass: [...attendanceByClass.values()].map((item) => ({
+          className: item.className,
+          presentOrLate: item.presentOrLate,
+          totalRecords: item.totalRecords,
+          ratePercent: item.totalRecords
+            ? Math.round((item.presentOrLate / item.totalRecords) * 10000) / 100
+            : null,
+        })).sort((a, b) => a.className.localeCompare(b.className, 'id')),
+      },
+      assessment: {
+        publishedCount: assessmentCount,
+        scoredRecords: scoredCount,
+        averagePercent: scoredCount
+          ? Math.round((normalizedTotal / scoredCount) * 100) / 100
+          : null,
+        bySubject: summarizeAssessmentGroup(assessmentBySubject),
+        byClass: summarizeAssessmentGroup(assessmentByClass),
+      },
+      dataLimitations: [
+        'Analisis kehadiran menggunakan catatan dari sesi yang sudah difinalisasi dalam 30 hari terakhir.',
+        'Analisis penilaian menggunakan asesmen yang sudah dipublikasikan; nilai kosong tidak dihitung.',
+        'Ringkasan ini bersifat agregat dan tidak dapat menjelaskan penyebab perilaku atau hasil belajar individu.',
+      ],
     };
   }
 
