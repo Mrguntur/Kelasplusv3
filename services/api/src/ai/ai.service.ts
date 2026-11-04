@@ -277,8 +277,8 @@ export class AiService {
 
     const totalAttendanceRecords = Object.values(attendanceTotals).reduce((sum, count) => sum + count, 0);
     const presentOrLate = attendanceTotals.PRESENT + attendanceTotals.LATE;
-    const assessmentBySubject = new Map<string, { assessmentCount: number; scoredCount: number; normalizedTotal: number }>();
-    const assessmentByClass = new Map<string, { assessmentCount: number; scoredCount: number; normalizedTotal: number }>();
+    const assessmentBySubject = new Map<string, { name: string; assessmentCount: number; scoredCount: number; normalizedTotal: number }>();
+    const assessmentByClass = new Map<string, { name: string; assessmentCount: number; scoredCount: number; normalizedTotal: number }>();
     let assessmentCount = 0;
     let scoredCount = 0;
     let normalizedTotal = 0;
@@ -286,10 +286,12 @@ export class AiService {
     for (const assessment of assessments) {
       assessmentCount += 1;
       const maxScore = Number(assessment.maxScore);
-      const validScores = assessment.scores
-        .map((entry) => entry.score === null ? null : Number(entry.score))
-        .filter((score): score is number => score !== null && Number.isFinite(score) && score >= 0 && score <= maxScore);
-      const normalizedAverage = maxScore > 0 && validScores.length
+      const validScores = Number.isFinite(maxScore) && maxScore > 0
+        ? assessment.scores
+          .map((entry) => entry.score === null ? null : Number(entry.score))
+          .filter((score): score is number => score !== null && Number.isFinite(score) && score >= 0 && score <= maxScore)
+        : [];
+      const normalizedAverage = validScores.length
         ? validScores.reduce((sum, score) => sum + (score / maxScore) * 100, 0) / validScores.length
         : null;
 
@@ -298,8 +300,9 @@ export class AiService {
         normalizedTotal += normalizedAverage * validScores.length;
       }
 
-      const subjectName = assessment.assignment.subject.name;
-      const subjectSummary = assessmentBySubject.get(subjectName) ?? {
+      const subjectId = assessment.assignment.subject.id;
+      const subjectSummary = assessmentBySubject.get(subjectId) ?? {
+        name: assessment.assignment.subject.name,
         assessmentCount: 0, scoredCount: 0, normalizedTotal: 0,
       };
       subjectSummary.assessmentCount += 1;
@@ -307,10 +310,11 @@ export class AiService {
         subjectSummary.scoredCount += validScores.length;
         subjectSummary.normalizedTotal += normalizedAverage * validScores.length;
       }
-      assessmentBySubject.set(subjectName, subjectSummary);
+      assessmentBySubject.set(subjectId, subjectSummary);
 
-      const className = assessment.assignment.schoolClass.name;
-      const classSummary = assessmentByClass.get(className) ?? {
+      const classId = assessment.assignment.classId;
+      const classSummary = assessmentByClass.get(classId) ?? {
+        name: assessment.assignment.schoolClass.name,
         assessmentCount: 0, scoredCount: 0, normalizedTotal: 0,
       };
       classSummary.assessmentCount += 1;
@@ -318,12 +322,12 @@ export class AiService {
         classSummary.scoredCount += validScores.length;
         classSummary.normalizedTotal += normalizedAverage * validScores.length;
       }
-      assessmentByClass.set(className, classSummary);
+      assessmentByClass.set(classId, classSummary);
     }
 
-    const summarizeAssessmentGroup = (items: Map<string, { assessmentCount: number; scoredCount: number; normalizedTotal: number }>) =>
-      [...items.entries()].map(([name, value]) => ({
-        name,
+    const summarizeAssessmentGroup = (items: Map<string, { name: string; assessmentCount: number; scoredCount: number; normalizedTotal: number }>) =>
+      [...items.values()].map((value) => ({
+        name: value.name,
         publishedAssessments: value.assessmentCount,
         scoredRecords: value.scoredCount,
         averagePercent: value.scoredCount
