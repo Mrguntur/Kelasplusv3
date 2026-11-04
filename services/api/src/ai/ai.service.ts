@@ -388,8 +388,11 @@ export class AiService {
       roleInstruction,
       'Jawab dalam Bahasa Indonesia yang jelas dan profesional.',
       'Gunakan hanya ringkasan statistik agregat berikut. Konteks sekolah tidak memuat nama, NISN, alamat, atau identitas siswa.',
-      'Jangan mendiagnosis siswa, jangan mengarang data, dan bedakan fakta dari rekomendasi. Jangan mengulang nama atau identitas individu yang mungkin tertulis di pertanyaan.',
-      'Jika data tidak cukup, nyatakan keterbatasannya dan minta verifikasi manusia sebelum keputusan penting.',
+      'Jangan mendiagnosis siswa, memberi label negatif, mengarang data, atau menyimpulkan sebab-akibat yang tidak dibuktikan oleh statistik. Bedakan fakta, hipotesis yang perlu diperiksa, dan rekomendasi.',
+      'Gunakan persentase kehadiran hanya jika total catatan tersedia. Nilai agregat hanya mencakup asesmen yang dipublikasikan dan catatan nilai yang terisi.',
+      'Jangan mengidentifikasi atau menebak identitas individu dari kelompok kecil. Jangan mengulang nama atau identitas individu yang mungkin tertulis di pertanyaan.',
+      'Berikan rekomendasi yang dapat dilakukan guru/pimpinan, sarankan pemeriksaan konteks kelas, dan tegaskan bahwa keputusan akhir tetap pada manusia.',
+      'Jika data tidak cukup, nyatakan keterbatasannya dan jangan membuat kesimpulan. Minta verifikasi manusia sebelum keputusan penting.',
       `Ringkasan data agregat: ${JSON.stringify(context)}`,
     ].join('\n\n');
   }
