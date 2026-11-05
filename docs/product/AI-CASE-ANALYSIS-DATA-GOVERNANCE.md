@@ -111,8 +111,9 @@ Do not represent acceptance of general platform terms as a substitute for any se
 ## 8. Current implementation status
 
 - Stage 1: authorization and subject-scope hardening, service tests, and Web/API CI completed on the feature PR.
-- Stage 2 in progress: audit events are now recorded for authorized case-analysis requests and generation completion/failure. Audit metadata uses a random case reference and policy/data-category metadata; it does not include the prompt or student ID.
-- The free-text question redaction now covers common email/phone patterns and numeric identity-like sequences of 8–18 digits, in addition to the selected student's full/preferred name. This is a defense-in-depth filter, not proof of complete anonymization or detection of every person's name.
-- Provider-payload fixture tests, end-to-end audit assertions, staging verification, retention/deletion controls, agreement acceptance, and provider/legal review remain release gates.
+- Stage 2 in progress: audit events are recorded for authorized case-analysis requests and generation completion/failure. Audit metadata uses a random case reference and policy/data-category metadata; it does not include the prompt or student ID.
+- Unit tests now exercise the service audit lifecycle for both successful and provider-failed generation paths, including event order, outcome/status metadata, and the absence of direct student identity values in audit metadata. These tests are pending CI confirmation on the current Stage 2 branch.
+- The free-text question redaction covers common email/phone patterns and numeric identity-like sequences of 8–18 digits, in addition to the selected student's full/preferred name. This is a defense-in-depth filter, not proof of complete anonymization or detection of every person's name.
+- Provider-payload fixture tests, service-level audit lifecycle tests, staging verification, retention/deletion controls, agreement acceptance, and provider/legal review remain release gates until all checks and reviews are complete.
 
 This specification records the agreed product direction. It does not claim that the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
