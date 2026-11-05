@@ -119,3 +119,14 @@ Do not represent acceptance of general platform terms as a substitute for any se
 - Provider-payload fixture tests and service-level audit lifecycle tests have passed CI. Staging verification, approval and implementation of retention/deletion controls, agreement acceptance, and provider/legal review remain release gates until all checks and reviews are complete.
 
 This specification records the agreed product direction. It does not claim that the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
+
+## Draft dokumen privasi dan perjanjian pengguna
+
+Dua rancangan berbahasa Indonesia ditambahkan untuk review internal:
+
+- `docs/legal/USER-DATA-AGREEMENT-DRAFT-ID.md` — rancangan perjanjian penggunaan data antara penyelenggara dan sekolah.
+- `docs/legal/AI-PRIVACY-NOTICE-DRAFT-ID.md` — rancangan pemberitahuan privasi dan penggunaan AI untuk pengguna.
+
+Keduanya berstatus **DRAFT INTERNAL**, bukan dokumen yang telah disahkan atau siap diberlakukan. Dokumen menggunakan placeholder untuk identitas penyelenggara, kontak privasi, daftar penyedia, lokasi pemrosesan, dasar pemrosesan, retensi, dan prosedur hak subjek data. Semua klaim wajib dicocokkan dengan implementasi dan kontrak penyedia serta ditinjau penasihat hukum sebelum publikasi.
+
+CI dokumentasi sebelumnya (#648 dan #649) telah lulus pada commit sebelumnya. Perubahan dokumen privasi ini memicu validasi CI baru; hasilnya harus diperiksa sebelum tahap ini dinyatakan selesai.
