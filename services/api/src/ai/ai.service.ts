@@ -354,19 +354,22 @@ export class AiService {
       const payload = await response.json() as AiProviderResponse;
       const answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim();
       if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
-      await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
-        payload.usageMetadata?.promptTokenCount ?? 0, payload.usageMetadata?.candidatesTokenCount ?? 0);
-      await this.audit.record({
-        actorUserId: user.id,
-        schoolId,
-        eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
-        outcome: 'SUCCESS',
-        metadata: buildStudentCaseAuditMetadata({
-          caseReference: reservation.caseReference,
-          model,
-          generationStatus: 'SUCCEEDED',
-        }),
-      });
+      await this.updateStudentCaseUsageWithAudit(
+        user, schoolId, reservation.eventId, 'SUCCEEDED',
+        payload.usageMetadata?.promptTokenCount ?? 0,
+        payload.usageMetadata?.candidatesTokenCount ?? 0,
+        {
+          actorUserId: user.id,
+          schoolId,
+          eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
+          outcome: 'SUCCESS',
+          metadata: buildStudentCaseAuditMetadata({
+            caseReference: reservation.caseReference,
+            model,
+            generationStatus: 'SUCCEEDED',
+          }),
+        },
+      );
       return {
         answer,
         caseReference: reservation.caseReference,
@@ -375,18 +378,20 @@ export class AiService {
         privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
       };
     } catch (error) {
-      await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
-      await this.audit.record({
-        actorUserId: user.id,
-        schoolId,
-        eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
-        outcome: 'FAILURE',
-        metadata: buildStudentCaseAuditMetadata({
-          caseReference: reservation.caseReference,
-          model,
-          generationStatus: 'FAILED',
-        }),
-      });
+      await this.updateStudentCaseUsageWithAudit(
+        user, schoolId, reservation.eventId, 'FAILED', 0, 0,
+        {
+          actorUserId: user.id,
+          schoolId,
+          eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
+          outcome: 'FAILURE',
+          metadata: buildStudentCaseAuditMetadata({
+            caseReference: reservation.caseReference,
+            model,
+            generationStatus: 'FAILED',
+          }),
+        },
+      );
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
@@ -694,6 +699,30 @@ export class AiService {
         where: { id: eventId },
         data: { status, promptTokens, completionTokens },
       });
+    });
+  }
+
+  /**
+   * Keeps the student-case usage outcome and its audit event atomic.
+   * Either both records commit, or neither record is persisted.
+   */
+  private async updateStudentCaseUsageWithAudit(
+    user: AuthenticatedUser,
+    schoolId: string,
+    eventId: string,
+    status: 'SUCCEEDED' | 'FAILED',
+    promptTokens: number,
+    completionTokens: number,
+    auditInput: Parameters<AuditService['record']>[0],
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      await tx.aiUsageEvent.update({
+        where: { id: eventId },
+        data: { status, promptTokens, completionTokens },
+      });
+      await this.audit.record(auditInput, tx);
     });
   }
 }
