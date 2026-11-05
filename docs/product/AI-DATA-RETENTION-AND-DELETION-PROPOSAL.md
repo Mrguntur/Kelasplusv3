@@ -88,3 +88,49 @@ Do not enable production AI case analysis until the platform has:
 - Published the user-facing data-use agreement and AI privacy notice.
 - Verified tenant-scoped access and synthetic-data deletion in staging.
 - Completed security and legal/privacy review.
+
+
+## 8. Decision register — Stage 2 approval worksheet
+
+This register separates engineering readiness from policy approval. A checked engineering item does not mean that a legal, school, or provider decision has been approved.
+
+| ID | Decision / evidence required | Proposed accountable party | Status | Evidence to record |
+|---|---|---|---|---|
+| RET-01 | Approve the purpose and duration for AI usage-event retention | KELAS+ platform owner, with privacy/legal reviewer | Pending | Approved duration, purpose, effective date, reviewer |
+| RET-02 | Approve the purpose and duration for AI audit-event retention | KELAS+ platform owner, with privacy/legal reviewer | Pending | Approved duration, minimum audit fields, review date |
+| RET-03 | Decide whether schools may request early deletion of AI operational metadata | Platform owner and participating school authority | Pending | Requester authority, verification, exceptions, response workflow |
+| RET-04 | Decide whether persistent AI case history is necessary and proportionate | Product owner and school representatives | Pending | Documented use case, necessity assessment, access model |
+| RET-05 | Approve backup, replica, export, and disaster-recovery expiry behavior | Infrastructure owner | Pending | Backup schedule, expiry, restore behavior, deletion propagation |
+| RET-06 | Verify provider retention, processing region, subprocessors, training use, and deletion controls | Platform owner and provider/legal reviewer | Pending | Current contract/DPA, provider settings, official documentation, verification date |
+| RET-07 | Define legal-hold authority, scope, review cadence, and release process | Legal/privacy reviewer and platform owner | Pending | Written procedure and authorized roles |
+| RET-08 | Approve the user-facing agreement and privacy notice, including school authorization and child-data handling | School authority and qualified Indonesian legal/privacy reviewer | Pending | Approved version, approver, effective date, acceptance evidence |
+| RET-09 | Approve who may authorize and execute deletion operations | Platform security owner | Pending | Role matrix, separation of duties, emergency procedure |
+| RET-10 | Approve production release after synthetic-data staging and security review | Product owner, security reviewer, and school pilot authority | Pending | Staging report, test evidence, sign-offs |
+
+### Decision record template
+
+For every decision above, record:
+
+- Decision ID:
+- Decision:
+- Approved value or policy:
+- Rationale and purpose:
+- Approver name/role:
+- Evidence or source document:
+- Effective date:
+- Review date:
+- Exceptions and owner:
+
+Do not fill an approval field with an assumed value. If the evidence is unavailable, retain the Pending status and document the dependency.
+
+### Engineering sequence after approvals
+
+1. Freeze an approved, versioned retention policy.
+2. Map each approved category to exact database tables/fields and any external copy.
+3. Implement dry-run reporting only; review counts and tenant scope.
+4. Add automated tests for expiry boundaries, legal holds, idempotency, retries, and tenant isolation.
+5. Verify backup and provider deletion separately from primary-database deletion.
+6. Run synthetic-data staging and obtain explicit release approval.
+7. Enable production deletion only after all sign-offs are recorded.
+
+No destructive job, expiry field, or default duration is introduced by this worksheet.
