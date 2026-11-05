@@ -2,7 +2,7 @@
 
 Status: implementation specification and agreement outline (not a final legal agreement).
 Owner: KELAS+ Platform
-Target branch: `feat/ai-case-analysis-data-governance`
+Target branch: `feat/ai-privacy-audit-stage-2`
 
 ## 1. Product decision
 
@@ -111,9 +111,11 @@ Do not represent acceptance of general platform terms as a substitute for any se
 ## 8. Current implementation status
 
 - Stage 1: authorization and subject-scope hardening, service tests, and Web/API CI completed on the feature PR.
-- Stage 2 in progress: audit events are recorded for authorized case-analysis requests and generation completion/failure. Audit metadata uses a random case reference and policy/data-category metadata; it does not include the prompt or student ID.
-- Unit tests now exercise the service audit lifecycle for both successful and provider-failed generation paths, including event order, outcome/status metadata, and the absence of direct student identity values in audit metadata. These tests are pending CI confirmation on the current Stage 2 branch.
+- Stage 2 implementation: audit events are recorded for authorized case-analysis requests and generation completion/failure. Audit metadata uses a random case reference and policy/data-category metadata; it does not include the prompt or student ID.
+- Student-case usage status and completion/failure audit event are persisted in the same database transaction. If audit persistence fails, the API does not report a successful result; it attempts a safe failure transition and returns a generic unavailable response if audit persistence remains unavailable.
+- Unit tests cover successful and provider-failed generation, event ordering, outcome/status metadata, identity exclusion, and audit persistence failure paths. CI runs #642–#647 passed on the Stage 2 branch.
+- A separate AI retention/deletion proposal now documents data categories, required policy decisions, deletion workflow, and release gates. It is a design proposal only: no retention duration or automatic purge is active.
 - The free-text question redaction covers common email/phone patterns and numeric identity-like sequences of 8–18 digits, in addition to the selected student's full/preferred name. This is a defense-in-depth filter, not proof of complete anonymization or detection of every person's name.
-- Provider-payload fixture tests, service-level audit lifecycle tests, staging verification, retention/deletion controls, agreement acceptance, and provider/legal review remain release gates until all checks and reviews are complete.
+- Provider-payload fixture tests and service-level audit lifecycle tests have passed CI. Staging verification, approval and implementation of retention/deletion controls, agreement acceptance, and provider/legal review remain release gates until all checks and reviews are complete.
 
 This specification records the agreed product direction. It does not claim that the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
