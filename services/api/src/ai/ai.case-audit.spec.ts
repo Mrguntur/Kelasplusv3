@@ -35,6 +35,7 @@ describe('AiService student-case audit lifecycle', () => {
     getAiMonthlyLimit: jest.fn().mockResolvedValue(20),
   };
   const audit = { record: jest.fn() };
+  const gateway = { assertProviderRouteApproved: jest.fn() };
   const user = { id: 'teacher-user-id', activeSchoolId: 'school-id' } as AuthenticatedUser;
 
   let service: AiService;
@@ -64,6 +65,7 @@ describe('AiService student-case audit lifecycle', () => {
       config as unknown as ConfigService,
       entitlements as unknown as EntitlementService,
       audit as unknown as AuditService,
+      gateway as never,
     );
     fetchSpy = jest.spyOn(globalThis, 'fetch');
   });
