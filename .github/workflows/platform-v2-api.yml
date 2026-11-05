@@ -11,6 +11,7 @@ on:
       - fix/platform-v2-entitlement-rebased
       - feat/platform-v2-entitlement-engine
       - preview/platform-v2-local-complete
+      - feat/ai-case-analysis-data-governance
     paths:
       - "services/api/**"
       - "infra/**"
@@ -18,6 +19,7 @@ on:
   push:
     branches:
       - feat/ai-case-analysis-data-governance
+      - feat/ai-privacy-audit-stage-2
       - feat/platform-v2-foundation
       - feat/platform-v2-school-onboarding
     paths:
