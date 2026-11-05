@@ -64,7 +64,7 @@ The platform keeps the mapping between the student record and the case session i
 ## 5. Security, audit, and retention requirements
 
 - Use tenant-scoped database transactions and existing row-level security context.
-- Record an audit event for case-analysis access and generation, including actor, school, internal case reference, timestamp, capability, outcome, and policy version. Do not store raw prompt or student identity in the AI usage event.
+- Record audit events for authorized case-analysis requests and generation completion/failure, including actor, school, random case reference, timestamp, capability, outcome, assessment scope, data-category allowlist/exclusion list, and policy version. Do not store raw prompt, student ID, or student identity in audit metadata.
 - Define retention and deletion behavior for AI case history before release; make retention configurable only through an explicit product policy.
 - Protect case history with the same tenant and role authorization as the underlying student record.
 - Do not use school/student records to train provider models unless a separate, explicit, informed agreement and legally reviewed basis exists.
@@ -110,4 +110,9 @@ Do not represent acceptance of general platform terms as a substitute for any se
 
 ## 8. Current implementation status
 
-This specification records the agreed product direction. It does not claim that student case analysis, the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
+- Stage 1: authorization and subject-scope hardening, service tests, and Web/API CI completed on the feature PR.
+- Stage 2 in progress: audit events are now recorded for authorized case-analysis requests and generation completion/failure. Audit metadata uses a random case reference and policy/data-category metadata; it does not include the prompt or student ID.
+- The free-text question redaction now covers common email/phone patterns and numeric identity-like sequences of 8–18 digits, in addition to the selected student's full/preferred name. This is a defense-in-depth filter, not proof of complete anonymization or detection of every person's name.
+- Provider-payload fixture tests, end-to-end audit assertions, staging verification, retention/deletion controls, agreement acceptance, and provider/legal review remain release gates.
+
+This specification records the agreed product direction. It does not claim that the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
