@@ -87,10 +87,6 @@ export class AiService {
       await this.entitlements.lockSchool(tx, schoolId);
       await this.entitlements.assertAiCapability(tx, schoolId, membership.role, capability);
       const monthlyLimit = await this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, capability);
-      if (monthlyLimit < 1) {
-        throw new ForbiddenException('Kuota AI belum tersedia pada paket sekolah ini.');
-      }
-
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
@@ -220,7 +216,6 @@ export class AiService {
       await this.entitlements.lockSchool(tx, schoolId);
       await this.entitlements.assertAiCapability(tx, schoolId, membership.role, 'teacher_assistant');
       const monthlyLimit = await this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, 'teacher_assistant');
-      if (monthlyLimit < 1) throw new ForbiddenException('Kuota AI belum tersedia pada paket sekolah ini.');
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
@@ -397,7 +392,7 @@ export class AiService {
       return {
         answer,
         caseReference: reservation.caseReference,
-        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
+        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
         model,
         privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
       };
