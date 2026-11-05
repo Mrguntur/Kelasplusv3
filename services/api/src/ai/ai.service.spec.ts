@@ -3,6 +3,7 @@ import type { PrismaService } from '../database/prisma.service';
 import type { ConfigService } from '@nestjs/config';
 import type { EntitlementService } from '../entitlements/entitlement.service';
 import type { AuditService } from '../audit/audit.service';
+import { buildStudentCaseProviderPayload } from './ai-provider-payload';
 
 describe('AiService privacy safeguards', () => {
   const service = new AiService(
@@ -64,6 +65,41 @@ describe('AiService privacy safeguards', () => {
     expect(sanitized).not.toContain('Ahmad Saputra');
     expect(sanitized).not.toContain('Ahmad');
     expect(sanitized).toContain('[IDENTITAS SISWA DIHAPUS]');
+  });
+
+
+  it('serializes the exact student-case provider payload without fixture identifiers', () => {
+    const selectedStudentName = 'Ahmad Saputra';
+    const studentNumber = '0012345678';
+    const nationalId = '6301021234567890';
+    const email = 'guardian@example.sch.id';
+    const phone = '081234567890';
+
+    const sanitizedQuestion = internals.redactCaseQuestion(
+      `Tolong telaah ${selectedStudentName}, NISN ${studentNumber}, NIK ${nationalId}, email ${email}, telepon ${phone}.`,
+      [selectedStudentName, 'Ahmad'],
+    );
+    const systemPrompt = [
+      'Telaah pedagogis dengan snapshot pseudonim.',
+      JSON.stringify({
+        analysisWindowDays: 90,
+        attendance: { present: 12, absent: 2, total: 14 },
+        publishedAssessmentResults: [{ subject: 'Bahasa Inggris', scorePercent: 78 }],
+      }),
+    ].join('\\n');
+
+    const serialized = JSON.stringify(
+      buildStudentCaseProviderPayload(systemPrompt, sanitizedQuestion),
+    );
+
+    for (const identifier of [selectedStudentName, 'Ahmad', studentNumber, nationalId, email, phone]) {
+      expect(serialized).not.toContain(identifier);
+    }
+    expect(serialized).toContain('[IDENTITAS SISWA DIHAPUS]');
+    expect(serialized).toContain('[NOMOR IDENTITAS DIHAPUS]');
+    expect(serialized).toContain('[EMAIL DIHAPUS]');
+    expect(serialized).toContain('[NOMOR TELEPON DIHAPUS]');
+    expect(serialized).toContain('Bahasa Inggris');
   });
 
   it('keeps the teacher assistant prompt pedagogical and limited to aggregate context', () => {
