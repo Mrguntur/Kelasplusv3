@@ -703,3 +703,39 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 @media(max-width:1100px){.dashboard-welcome{grid-template-columns:minmax(0,1fr) 230px;padding:25px}.admin-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.operator-task-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.dashboard-welcome{grid-template-columns:1fr;padding:23px 20px;margin:18px 0;border-radius:18px}.welcome-visual{min-height:130px}.welcome-orbit{width:135px;height:135px}.orbit-two{width:175px;height:175px}.welcome-visual-card{width:min(100%,230px);padding:14px}.dashboard-welcome h2{font-size:22px}.welcome-actions{gap:12px}.admin-command-panel,.operator-checklist{padding:16px;border-radius:15px}.admin-action-grid{grid-template-columns:1fr 1fr;gap:8px}.admin-action-card{padding:11px 9px;gap:8px}.admin-action-icon{height:32px;width:32px}.admin-action-card strong{font-size:10px}.admin-action-card small{font-size:9px}.teacher-focus-strip{align-items:flex-start;flex-direction:column;padding:16px}.teacher-focus-strip button{width:100%;justify-content:center}.operator-task-grid{grid-template-columns:1fr}.section-heading{margin-top:20px}.section-heading h2{font-size:16px}.live-data-label{font-size:9px;padding:7px 9px}.dashboard-section{margin:18px 0}.dashboard-section>.section-heading{align-items:flex-start}.quick-access-grid{margin:14px 0 18px}}
 @media(max-width:390px){.admin-action-grid{grid-template-columns:1fr}.dashboard-welcome{padding:20px 16px}.welcome-meta{font-size:10px}}
+
+
+/* School AI add-on purchase workspace */
+.ai-addon-store { display: grid; gap: 22px; }
+.ai-addon-hero { display: flex; align-items: center; gap: 18px; padding: 26px; border: 1px solid #dce6f3; border-radius: 20px; background: linear-gradient(120deg, #f7faff, #eef5ff); }
+.ai-addon-hero-icon,.ai-addon-pack-icon,.ai-addon-purchase-icon { display: grid; place-items: center; flex: 0 0 auto; width: 48px; height: 48px; border-radius: 15px; color: #2457a7; background: #e2edff; }
+.ai-addon-hero h1 { margin: 5px 0 7px; color: #142c50; font-size: clamp(1.45rem,3vw,2rem); }
+.ai-addon-hero p,.ai-addon-intro { margin: 0; color: #64748b; line-height: 1.65; }
+.ai-addon-balance { display: grid; gap: 3px; margin-left: auto; min-width: 150px; padding: 14px 18px; border: 1px solid #dce6f3; border-radius: 15px; background: #fff; }
+.ai-addon-balance span,.ai-addon-balance small,.ai-addon-expiry { color: #64748b; font-size: .78rem; }
+.ai-addon-balance strong { color: #173d75; font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+.ai-addon-intro { margin: -5px 0 18px; }
+.ai-addon-pack-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(225px,1fr)); gap: 16px; }
+.ai-addon-pack-card { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 21px; border: 1px solid #e2e8f0; border-radius: 17px; background: #fff; }
+.ai-addon-pack-card h3 { margin: 0; color: #172f52; font-size: 1.12rem; }
+.ai-addon-pack-card p { min-height: 42px; margin: 0; color: #64748b; font-size: .88rem; line-height: 1.5; }
+.ai-addon-price { margin-top: 5px; color: #163d75; font-size: 1.45rem; }
+.ai-addon-unit-count { color: #172f52; font-size: 1.15rem; font-weight: 750; }
+.ai-addon-unit-count span { color: #64748b; font-size: .82rem; font-weight: 500; }
+.ai-addon-expiry { min-height: 18px; }
+.ai-addon-pack-card .primary-button { width: 100%; justify-content: center; margin-top: 7px; }
+.ai-addon-history { min-width: 0; }
+.ai-addon-purchase-list { display: grid; }
+.ai-addon-purchase-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 15px 0; border-bottom: 1px solid #edf1f6; }
+.ai-addon-purchase-row:last-child { border-bottom: 0; }
+.ai-addon-purchase-copy { display: grid; flex: 1 1 220px; gap: 4px; min-width: 0; }
+.ai-addon-purchase-copy strong { color: #1e3555; }
+.ai-addon-purchase-copy span { color: #64748b; font-size: .82rem; }
+.ai-addon-purchase-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-left: auto; }
+@media (max-width: 680px) {
+  .ai-addon-hero { align-items: flex-start; flex-wrap: wrap; padding: 19px; }
+  .ai-addon-balance { width: 100%; margin: 0; }
+  .ai-addon-purchase-row { align-items: flex-start; }
+  .ai-addon-purchase-row > .status-badge { margin-left: 60px; }
+  .ai-addon-purchase-actions { width: 100%; margin-left: 60px; }
+}
