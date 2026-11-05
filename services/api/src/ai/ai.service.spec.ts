@@ -2,12 +2,14 @@ import { AiService } from './ai.service';
 import type { PrismaService } from '../database/prisma.service';
 import type { ConfigService } from '@nestjs/config';
 import type { EntitlementService } from '../entitlements/entitlement.service';
+import type { AuditService } from '../audit/audit.service';
 
 describe('AiService privacy safeguards', () => {
   const service = new AiService(
     {} as unknown as PrismaService,
     {} as unknown as ConfigService,
     {} as unknown as EntitlementService,
+    {} as unknown as AuditService,
   );
 
   const internals = service as unknown as {
@@ -41,6 +43,16 @@ describe('AiService privacy safeguards', () => {
     expect(redacted).toContain('[EMAIL DIHAPUS]');
     expect(redacted).toContain('[NOMOR TELEPON DIHAPUS]');
     expect(redacted).toContain('[NOMOR IDENTITAS DIHAPUS]');
+  });
+
+  it('redacts long student and national identity number patterns from free text', () => {
+    const redacted = internals.redactSensitiveText(
+      'NISN 0012345678 dan NIK 6301021234567890 tercantum pada pertanyaan.',
+    );
+
+    expect(redacted).not.toContain('0012345678');
+    expect(redacted).not.toContain('6301021234567890');
+    expect(redacted.match(/\\[NOMOR IDENTITAS DIHAPUS\\]/g)).toHaveLength(2);
   });
 
   it('removes the selected student name from the free-text question before provider submission', () => {
