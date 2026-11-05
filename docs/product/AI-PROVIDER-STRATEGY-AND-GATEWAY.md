@@ -232,3 +232,22 @@ Public website statements and a local-currency payment method are not substitute
 6. Keep individual student-case analysis blocked until it has a separate data-category approval.
 
 The current runtime remains fail-closed. Selecting MindRouter as the first integration candidate does not automatically enable outbound traffic.
+
+
+## 14. Superseding owner decision — MindRouter candidate (5 Nov 2026)
+
+**This section supersedes the earlier OpenRouter-first-candidate wording in Section 10 and any earlier governance note naming OpenRouter as the current candidate.** The owner has since selected MindRouter as the first aggregator candidate to evaluate. OpenRouter remains only a historical alternative considered; it is not the active candidate in the current plan.
+
+MindRouter is a candidate for a controlled engineering integration and synthetic-data evaluation only. It is **not** an approved production provider/subprocessor, and this selection does not authorize sending school or student personal data.
+
+Required gates remain:
+- Verify the legal contracting entity, executed DPA/processor terms, upstream provider/subprocessor chain for each exact model route, retention and abuse/security logging, no-training terms, deletion, processing region and international transfers, incident notification, and education/minor-access suitability.
+- Verify exact API endpoint/compatibility, model identifiers, route stability, provider-reported token accounting, current pricing, billing currency, rate limits, and account controls.
+- Keep the approved-route registry empty until written evidence is reviewed and approval is recorded.
+- Use only synthetic fixtures and a separately authorized test account/key for integration tests. Store secrets only in backend secret configuration; never commit or expose them to browser/mobile clients.
+- Implement per-school monetary caps and atomic budget reservation/settlement before any route can be activated. No numeric cap is approved yet.
+- Keep student-case analysis blocked from external providers until it receives separate data-category, legal/privacy, provider, and school approval.
+
+The model-price snapshot supplied by the owner is informational and must be rechecked against current contractual pricing before budgeting. Do not treat the snapshot as a quote or guarantee.
+
+Current runtime boundary is unchanged: AiGatewayService fails closed, the route registry is empty, and no provider traffic is authorized. MindRouter adapter work, if started, must remain disabled by default and synthetic-data-only.
