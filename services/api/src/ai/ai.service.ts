@@ -281,10 +281,7 @@ export class AiService {
             attendanceRatePercent: attendanceSummary.total
               ? Math.round(((attendanceSummary.present + attendanceSummary.late) / attendanceSummary.total) * 10000) / 100
               : null,
-            recentTrend: attendance.slice(-30).map((record) => ({
-              date: record.attendanceSession.date.toISOString().slice(0, 10),
-              status: record.status,
-            })),
+            recentStatusSequence: attendance.slice(-30).map((record) => record.status),
           },
           publishedAssessmentResults: validScores,
           dataLimitations: [
