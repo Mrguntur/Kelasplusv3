@@ -37,11 +37,14 @@ export class AiAddonPurchaseService {
         select: { purchaseId: true, unitsDelta: true, expiresAt: true, createdAt: true },
       });
       const now = new Date();
+      const eligiblePurchases = new Map(purchases
+        .filter((purchase) => purchase.status === 'PAID' && (!purchase.expiresAt || purchase.expiresAt > now))
+        .map((purchase) => [purchase.id, true]));
       const balances = new Map<string, number>();
       for (const entry of entries) {
         if (entry.expiresAt && entry.expiresAt <= now) continue;
         const id = entry.purchaseId;
-        if (id) balances.set(id, (balances.get(id) ?? 0) + entry.unitsDelta);
+        if (id && eligiblePurchases.has(id)) balances.set(id, (balances.get(id) ?? 0) + entry.unitsDelta);
       }
       const totalAvailable = [...balances.values()].reduce((sum, units) => sum + Math.max(0, units), 0);
       return { totalAvailable, purchases };
@@ -82,6 +85,7 @@ export class AiAddonPurchaseService {
             id: randomUUID(), schoolId, packId: pack.id,
             requestUnits: pack.requestUnits, priceAmount: pack.priceAmount,
             currency: pack.currency, status: 'PENDING', idempotencyKey,
+            expiresAfterDays: pack.expiresAfterDays,
           },
           select: {
             id: true, schoolId: true, packId: true, requestUnits: true, priceAmount: true,
@@ -97,7 +101,12 @@ export class AiAddonPurchaseService {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const existing = await this.prisma.aiAddonPurchase.findUnique({ where: { idempotencyKey } });
+        // The failed transaction is aborted; re-read only in a fresh transaction
+        // after restoring tenant context so RLS remains effective.
+        const existing = await this.prisma.$transaction(async (tx) => {
+          await this.setSchoolContext(tx, userId, schoolId);
+          return tx.aiAddonPurchase.findUnique({ where: { idempotencyKey } });
+        });
         if (existing?.schoolId === schoolId && existing.packId === packId) {
           return { purchase: existing, reused: true, paymentRequired: true };
         }
