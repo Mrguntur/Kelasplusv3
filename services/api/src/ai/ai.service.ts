@@ -13,6 +13,7 @@ import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
 import { AuditService } from '../audit/audit.service';
+import { buildStudentCaseProviderPayload } from './ai-provider-payload';
 
 type AiProviderResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -349,11 +350,7 @@ export class AiService {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: prompt }] },
-            contents: [{ role: 'user', parts: [{ text: safeQuestion }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1100 },
-          }),
+          body: JSON.stringify(buildStudentCaseProviderPayload(prompt, safeQuestion)),
           signal: AbortSignal.timeout(30_000),
         },
       );
