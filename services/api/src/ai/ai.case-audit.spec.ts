@@ -5,6 +5,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { EntitlementService } from '../entitlements/entitlement.service';
 import type { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
+import type { AiGatewayService } from './ai-gateway.service';
 
 describe('AiService student-case audit lifecycle', () => {
   const tx = {
@@ -65,7 +66,7 @@ describe('AiService student-case audit lifecycle', () => {
       config as unknown as ConfigService,
       entitlements as unknown as EntitlementService,
       audit as unknown as AuditService,
-      gateway as never,
+      gateway as unknown as AiGatewayService,
     );
     fetchSpy = jest.spyOn(globalThis, 'fetch');
   });
