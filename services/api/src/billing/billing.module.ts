@@ -6,10 +6,11 @@ import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { MidtransService } from './midtrans.service';
 import { AiAddonPackService } from './ai-addon-pack.service';
+import { AiAddonPurchaseService } from './ai-addon-purchase.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [BillingController],
-  providers: [BillingService, MidtransService, AiAddonPackService, SessionAuthGuard, PlatformAdminGuard],
+  providers: [BillingService, MidtransService, AiAddonPackService, AiAddonPurchaseService, SessionAuthGuard, PlatformAdminGuard],
 })
 export class BillingModule {}
