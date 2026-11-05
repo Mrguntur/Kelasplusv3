@@ -490,6 +490,59 @@ describe('MidtransService notification verification', () => {
     expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
   });
 
+  it('reconciles a valid Midtrans settlement and grants add-on quota once', async () => {
+    const purchase = {
+      id: 'purchase-reconcile', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PENDING',
+      expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx1 = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'SCHOOL_ADMIN' }) },
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: purchase.id, status: 'PENDING', paymentProvider: 'MIDTRANS',
+          providerReference: 'KLS-AI-purchase-reconcile',
+        }),
+      },
+    };
+    const tx2 = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    (prisma.$transaction as jest.Mock)
+      .mockImplementationOnce(async (callback: (client: typeof tx1) => unknown) => callback(tx1))
+      .mockImplementationOnce(async (callback: (client: typeof tx2) => unknown) => callback(tx2));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-reconcile', gross_amount: '50000.00',
+      transaction_status: 'settlement', transaction_id: 'midtrans-reconcile-1',
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 200, json: async () => body,
+    } as Response);
+    (audit.record as jest.Mock).mockResolvedValue(undefined);
+
+    const result = await service.reconcileAiAddonPurchase('admin-1', 'school-1', purchase.id);
+
+    expect(result).toEqual(expect.objectContaining({
+      purchaseId: purchase.id, received: true, purchaseStatus: 'PAID',
+      grantedUnits: 250, reconciled: true, source: 'MIDTRANS_GET_STATUS',
+    }));
+    expect(tx2.aiAddonPurchase.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: purchase.id }, data: expect.objectContaining({ status: 'PAID' }),
+    }));
+    expect(tx2.aiQuotaLedgerEntry.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ entryType: 'GRANT', unitsDelta: 250 })],
+      skipDuplicates: true,
+    }));
+    fetchSpy.mockRestore();
+  });
+
   it('rejects AI add-on reconciliation for a non-school-admin before calling Midtrans', async () => {
     const tx = {
       $executeRaw: jest.fn(),
