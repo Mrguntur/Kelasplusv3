@@ -538,3 +538,113 @@ body{background:var(--surface);color:var(--text-strong)}
 .attention-tags span{border-radius:999px;padding:4px 7px;background:#fff4e6;color:#94601d;font-size:9px;font-weight:700}
 .student-attention-footnote{margin:12px 0 0}
 @media(max-width:760px){.student-attention-panel{padding:16px}.student-attention-controls{align-items:stretch;flex-direction:column}.student-attention-controls label{min-width:0}.student-attention-filters{align-self:flex-start}}
+
+
+/* KELAS+ UI refinement pass — calmer hierarchy, clearer actions, and softer surfaces */
+:root{
+  --surface:#f5f7fb;
+  --text-strong:#17283d;
+  --text-muted:#718096;
+  --line:#e6ebf2;
+  --brand:#2563eb;
+  --brand-soft:#eff5ff;
+  --success:#16845b;
+  --radius-card:18px;
+}
+body{background:var(--surface);color:var(--text-strong)}
+button{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:3px solid #3b82f64a;outline-offset:2px
+}
+.app-shell{background:radial-gradient(ellipse at 85% 0%,#eaf1ff70 0,transparent 34%),var(--surface)}
+.sidebar{background:linear-gradient(180deg,#102b46 0%,#0b1e32 100%);padding-top:25px}
+.sidebar .brand-lockup{padding-bottom:42px}
+.sidebar .brand-lockup strong{letter-spacing:-.7px}
+.nav-item{min-height:46px;border-radius:12px;font-weight:600}
+.nav-item.active{background:linear-gradient(100deg,#2563eb,#1d55c5);box-shadow:0 8px 20px #155eef35,inset 3px 0 #f6ce62}
+.main-content{padding-bottom:34px}
+.topbar{height:72px;background:#ffffffed;box-shadow:0 1px 0 #e6ebf2}
+.topbar-school{font-size:13px}
+.user-chip strong{font-size:12px;color:#273b54}
+.user-chip span{font-size:10px}
+.icon-button{height:39px;width:39px;border-radius:12px}
+.icon-button:hover,.mobile-nav-toggle:hover{background:#f1f6ff;border-color:#cbdcf8;color:#1d55c5}
+.page-heading{padding-top:32px;padding-bottom:24px}
+.page-heading h1,.academic-page-heading h1{font-size:clamp(23px,2vw,29px);letter-spacing:-1.1px}
+.page-heading p{font-size:13px;line-height:1.65;color:#7b899b}
+.eyebrow{letter-spacing:1.25px}
+.period-pill{border-radius:12px;background:#fff;box-shadow:0 2px 8px #1b355008}
+.academic-banner{border-radius:16px;padding:17px 19px;background:linear-gradient(105deg,#edf4ff 0%,#f8faff 75%)}
+.metrics-grid{gap:16px}
+.metric-card{position:relative;overflow:hidden;border-radius:17px;padding:19px 20px;min-height:140px;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.metric-card:after{content:'';position:absolute;width:105px;height:105px;right:-42px;bottom:-55px;border-radius:50%;background:#eff5ff;pointer-events:none}
+.metric-card:hover{transform:translateY(-2px);border-color:#cbdaf0;box-shadow:0 10px 26px #1d35530d}
+.metric-top{position:relative;z-index:1;font-size:12px}
+.metric-icon{width:38px;height:38px;border-radius:12px;background:#edf4ff;color:#2563c9}
+.metric-value{position:relative;z-index:1;font-size:30px;margin:13px 0 4px}
+.metric-foot{position:relative;z-index:1;font-size:11px}
+.panel,.role-overview,.quick-access-card,.teacher-priority-panel,.student-attention-panel,.data-quality-panel{
+  border-radius:var(--radius-card);box-shadow:0 2px 5px #182b4307,0 10px 28px #182b4306
+}
+.panel{padding:22px}
+.panel-heading{margin-bottom:19px}
+.panel-heading h2{font-size:17px;letter-spacing:-.45px;color:#20344d}
+.content-grid{gap:18px;margin-top:20px}
+.journal-row{padding:15px 0}
+.journal-date{width:45px;height:45px;border-radius:13px;background:#f1f5fb}
+.empty-state{padding:32px 14px}
+.primary-button{min-height:44px;border-radius:11px;font-size:12px;font-weight:700}
+.primary-button:disabled{transform:none;box-shadow:none}
+.secondary-button,.table-action{border-radius:10px}
+.secondary-button:hover{background:#f6f9ff;border-color:#c8d8ef;color:#2458a8}
+.quick-access-card{border-radius:15px;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.quick-access-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px #1d35530d}
+.academic-workspace{padding-bottom:22px}
+.academic-page-heading{padding-top:30px}
+.academic-stats{gap:15px}
+.academic-stat{border-radius:16px;padding:18px 20px}
+.academic-panel{border-radius:17px}
+.academic-toolbar{padding:17px 20px;gap:14px}
+.academic-tabs{border-radius:11px}
+.academic-tabs button{padding:10px 14px;border-radius:8px}
+.academic-tabs button.selected{color:#174ea6;box-shadow:0 2px 7px #172b4d12}
+.academic-search{height:42px;border-radius:11px;background:#fff}
+.academic-search:focus-within{border-color:#91b4ed;box-shadow:0 0 0 3px #2563eb12}
+.academic-table{min-width:520px}
+.academic-table th{padding-top:15px;padding-bottom:15px;font-size:10px;letter-spacing:.07em}
+.academic-table td{padding-top:16px;padding-bottom:16px;font-size:12px}
+.academic-table td strong{font-size:13px}
+.academic-table tbody tr{transition:background-color .15s ease}
+.table-action{padding:8px 12px;background:#f5f8fe}
+.academic-form{border-radius:15px;background:#f8faff;padding:20px}
+.academic-form input,.academic-form select{min-height:42px;border-radius:10px}
+.data-quality-panel,.teacher-priority-panel,.student-attention-panel{padding:21px 22px}
+.data-quality-item,.teacher-priority-item{border-radius:12px;padding:14px;background:#fbfcff}
+.data-quality-item:hover,.teacher-priority-item:hover{transform:translateY(-1px);box-shadow:0 5px 14px #1d35530b}
+.student-attention-controls select{min-height:42px;border-radius:11px}
+.student-attention-filters{border-radius:11px}
+.student-attention-filters button{padding:9px 13px;border-radius:8px}
+.footer{padding-top:30px}
+@media(max-width:1100px){
+  .main-content{padding-left:22px;padding-right:22px}
+  .metrics-grid{gap:12px}
+  .metric-card{padding:16px}
+}
+@media(max-width:760px){
+  .main-content{padding-left:16px;padding-right:16px}
+  .topbar{height:64px}
+  .page-heading{padding-top:25px;padding-bottom:18px}
+  .page-heading h1,.academic-page-heading h1{font-size:23px}
+  .metrics-grid{gap:10px}
+  .metric-card{min-height:126px;padding:14px;border-radius:15px}
+  .metric-value{font-size:25px;margin-top:10px}
+  .panel{padding:16px;border-radius:15px}
+  .academic-toolbar{padding:13px}
+  .academic-tabs{max-width:100%;overflow-x:auto;scrollbar-width:thin}
+  .academic-tabs button{white-space:nowrap}
+  .academic-table{min-width:500px}
+  .data-quality-panel,.teacher-priority-panel,.student-attention-panel{padding:16px;border-radius:15px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
