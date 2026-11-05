@@ -15,6 +15,7 @@ import { EntitlementService, type AiCapability } from '../entitlements/entitleme
 import { AuditService } from '../audit/audit.service';
 import { buildStudentCaseAuditMetadata, buildStudentCaseProviderPayload } from './ai-provider-payload';
 import { AiGatewayService } from './ai-gateway.service';
+import { AiQuotaService } from './ai-quota.service';
 
 type AiProviderResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -29,6 +30,7 @@ export class AiService {
     private readonly entitlements: EntitlementService,
     private readonly audit: AuditService,
     private readonly gateway: AiGatewayService,
+    private readonly aiQuota: AiQuotaService,
   ) {}
 
 
@@ -92,25 +94,33 @@ export class AiService {
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
-        where: { schoolId, capability, createdAt: { gte: monthStart } },
+        where: { schoolId, capability, quotaSource: 'PLAN', createdAt: { gte: monthStart } },
       });
-      if (used >= monthlyLimit) {
-        throw new ForbiddenException(`Kuota AI bulanan telah tercapai (${used}/${monthlyLimit}).`);
-      }
 
       const context = await this.getAggregateContext(tx, schoolId, user.id, membership.role);
-      const event = await tx.aiUsageEvent.create({
+      const eventId = randomUUID();
+      const quotaSource = used < monthlyLimit
+        ? 'PLAN'
+        : (await this.aiQuota.reserveAddonUnit(tx, schoolId, eventId) ? 'ADDON' : null);
+      if (!quotaSource) {
+        throw new ForbiddenException(`Kuota AI paket dan add-on telah habis (${used}/${monthlyLimit}).`);
+      }
+      await tx.aiUsageEvent.create({
         data: {
-          id: randomUUID(),
+          id: eventId,
           schoolId,
           userId: user.id,
           capability,
           model,
           status: 'PENDING',
+          quotaSource,
         },
         select: { id: true },
       });
-      return { eventId: event.id, context, used: used + 1, monthlyLimit };
+      return {
+        eventId, context, used: used + (quotaSource === 'PLAN' ? 1 : 0),
+        monthlyLimit, quotaSource,
+      };
     });
 
     try {
@@ -147,7 +157,7 @@ export class AiService {
 
       return {
         answer,
-        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
+        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
         model,
       };
     } catch (error) {
@@ -214,9 +224,8 @@ export class AiService {
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
-        where: { schoolId, capability: 'teacher_assistant', createdAt: { gte: monthStart } },
+        where: { schoolId, capability: 'teacher_assistant', quotaSource: 'PLAN', createdAt: { gte: monthStart } },
       });
-      if (used >= monthlyLimit) throw new ForbiddenException(`Kuota AI bulanan telah tercapai (${used}/${monthlyLimit}).`);
 
       const isHomeroom = await tx.schoolClass.findFirst({
         where: { id: enrollment.classId, schoolId, homeroomStaffProfileId: staff.id, status: 'ACTIVE' },
@@ -291,8 +300,18 @@ export class AiService {
         };
       }).filter((entry): entry is { subject: string; assessmentType: string; scorePercent: number } => entry !== null);
 
-      const event = await tx.aiUsageEvent.create({
-        data: { id: randomUUID(), schoolId, userId: user.id, capability: 'teacher_assistant', model, status: 'PENDING' },
+      const eventId = randomUUID();
+      const quotaSource = used < monthlyLimit
+        ? 'PLAN'
+        : (await this.aiQuota.reserveAddonUnit(tx, schoolId, eventId) ? 'ADDON' : null);
+      if (!quotaSource) {
+        throw new ForbiddenException(`Kuota AI paket dan add-on telah habis (${used}/${monthlyLimit}).`);
+      }
+      await tx.aiUsageEvent.create({
+        data: {
+          id: eventId, schoolId, userId: user.id,
+          capability: 'teacher_assistant', model, status: 'PENDING', quotaSource,
+        },
         select: { id: true },
       });
       const caseReference = `CASE-${randomUUID().slice(0, 8).toUpperCase()}`;
@@ -310,8 +329,9 @@ export class AiService {
       }, tx);
       return {
         eventId: event.id,
-        used: used + 1,
+        used: used + (quotaSource === 'PLAN' ? 1 : 0),
         monthlyLimit,
+        quotaSource,
         caseReference,
         safeQuestion: this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]),
         context: {
@@ -706,10 +726,17 @@ export class AiService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
       await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      const event = await tx.aiUsageEvent.findUnique({
+        where: { id: eventId },
+        select: { quotaSource: true },
+      });
       await tx.aiUsageEvent.update({
         where: { id: eventId },
         data: { status, promptTokens, completionTokens },
       });
+      if (status === 'FAILED' && event?.quotaSource === 'ADDON') {
+        await this.aiQuota.releaseAddonReservation(tx, schoolId, eventId);
+      }
     });
   }
 
@@ -729,10 +756,17 @@ export class AiService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
       await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      const event = await tx.aiUsageEvent.findUnique({
+        where: { id: eventId },
+        select: { quotaSource: true },
+      });
       await tx.aiUsageEvent.update({
         where: { id: eventId },
         data: { status, promptTokens, completionTokens },
       });
+      if (status === 'FAILED' && event?.quotaSource === 'ADDON') {
+        await this.aiQuota.releaseAddonReservation(tx, schoolId, eventId);
+      }
       await this.audit.record(auditInput, tx);
     });
   }
