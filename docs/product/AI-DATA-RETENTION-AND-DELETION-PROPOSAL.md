@@ -134,3 +134,27 @@ Do not fill an approval field with an assumed value. If the evidence is unavaila
 7. Enable production deletion only after all sign-offs are recorded.
 
 No destructive job, expiry field, or default duration is introduced by this worksheet.
+
+
+## 9. Provider due-diligence finding — Gemini API (official terms reviewed 5 Nov 2026)
+
+The current KELAS+ AI service configuration has been described in the engineering work as using the Gemini API. The exact Google product, project, billing status, region, and contract attached to the deployed API key have **not** been verified from the repository. Do not assume the key is on Paid Services.
+
+Google's official Gemini API Additional Terms distinguish Unpaid Services from Paid Services:
+- For Unpaid Services, Google states submitted prompts and generated responses may be used to provide, improve, and develop Google products and machine-learning technologies; human reviewers may review and process inputs/outputs. Google says not to submit sensitive, confidential, or personal information to Unpaid Services.
+- For Paid Services accessed through a Gemini API project with an active billing account, Google states prompts/responses are not used to improve products and are processed under the applicable Data Processing Addendum. The terms still describe limited prompt/response logging for abuse monitoring, service safety, and legal/regulatory disclosures, with possible transient storage in countries where Google or its agents operate.
+- The same Additional Terms include an age restriction: the API must not be used as part of an application or other service directed to or likely to be accessed by individuals under 18. KELAS+ is an education platform and may be accessed by minors; this is a material provider-eligibility issue requiring written provider/legal review before student-data processing. Do not assume teacher-only AI accounts automatically resolve the restriction.
+
+Official references (reviewed 5 Nov 2026):
+- Gemini API Additional Terms: https://ai.google.dev/gemini-api/terms
+- Zero data retention guidance: https://ai.google.dev/gemini-api/docs/zdr
+- Gemini API logging and sharing policy: https://ai.google.dev/gemini-api/docs/logs-policy
+
+Required actions:
+1. Identify whether the configured production/staging key belongs to Gemini Developer API or a Google Cloud/Vertex AI product; do not infer this from the model name alone.
+2. Verify project billing status and the exact terms/DPA attached to that project.
+3. Obtain written confirmation from Google or qualified counsel that the selected product and intended KELAS+ education/minor-access scenario are permitted. If not, select a contractually suitable provider/product before enabling the feature.
+4. Verify abuse-monitoring retention, logging settings, region/transfer, subprocessors, deletion controls, and whether any optional logging/dataset sharing is enabled.
+5. Until these checks pass, do not send real student personal data to the Gemini Developer API. Use synthetic data for development and staging.
+
+This is a due-diligence finding, not legal advice or a conclusion about the account's actual configuration. It must remain a release blocker until verified.
