@@ -413,6 +413,19 @@ export class MidtransService {
         // Acknowledge without mutating the append-only quota ledger.
         return { received: true, reviewRequired: true, purchaseStatus: purchase.status };
       }
+      if (transactionStatus === 'refund') {
+        // Midtrans sends an initial refund notification and a later bank-confirmed
+        // notification. Do not revoke paid quota until confirmation is present.
+        const refundRows = Array.isArray(notification.refunds) ? notification.refunds : [];
+        const hasBankConfirmation =
+          (typeof notification.bank_confirmed_at === 'string' && notification.bank_confirmed_at.length > 0) ||
+          refundRows.some((item) => item !== null && typeof item === 'object' &&
+            typeof (item as Record<string, unknown>).bank_confirmed_at === 'string' &&
+            ((item as Record<string, unknown>).bank_confirmed_at as string).length > 0);
+        if (!hasBankConfirmation) {
+          return { received: true, reviewRequired: true, awaitingBankConfirmation: true, purchaseStatus: purchase.status };
+        }
+      }
       if (successful) {
         if (purchase.status === 'PAID') return { received: true, duplicate: true, purchaseStatus: 'PAID' };
         // A verified settlement is authoritative even if a delayed deny/expire notification arrived first.
