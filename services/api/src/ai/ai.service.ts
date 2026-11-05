@@ -594,8 +594,16 @@ export class AiService {
     for (const name of names) {
       const normalizedName = name?.trim();
       if (!normalizedName || normalizedName.length < 2) continue;
-      const escaped = normalizedName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\  private buildPrompt(capability: AiCapability, context: Record<string, unknown>): string {');
-      sanitized = sanitized.replace(new RegExp(escaped, 'gi'), '[IDENTITAS SISWA DIHAPUS]');
+      const needle = normalizedName.toLocaleLowerCase('id-ID');
+      let cursor = 0;
+      let result = '';
+      let match = sanitized.toLocaleLowerCase('id-ID').indexOf(needle, cursor);
+      while (match !== -1) {
+        result += sanitized.slice(cursor, match) + '[IDENTITAS SISWA DIHAPUS]';
+        cursor = match + normalizedName.length;
+        match = sanitized.toLocaleLowerCase('id-ID').indexOf(needle, cursor);
+      }
+      sanitized = result + sanitized.slice(cursor);
     }
     return sanitized;
   }
