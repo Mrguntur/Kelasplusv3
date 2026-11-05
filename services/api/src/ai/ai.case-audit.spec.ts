@@ -6,6 +6,7 @@ import type { EntitlementService } from '../entitlements/entitlement.service';
 import type { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import type { AiGatewayService } from './ai-gateway.service';
+import type { AiQuotaService } from './ai-quota.service';
 
 describe('AiService student-case audit lifecycle', () => {
   const tx = {
@@ -16,6 +17,7 @@ describe('AiService student-case audit lifecycle', () => {
     aiUsageEvent: {
       count: jest.fn(),
       create: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({ quotaSource: 'PLAN' }),
       update: jest.fn(),
     },
     schoolClass: { findFirst: jest.fn() },
@@ -67,6 +69,7 @@ describe('AiService student-case audit lifecycle', () => {
       entitlements as unknown as EntitlementService,
       audit as unknown as AuditService,
       gateway as unknown as AiGatewayService,
+      { reserveAddonUnit: jest.fn().mockResolvedValue(false), releaseAddonReservation: jest.fn() } as unknown as AiQuotaService,
     );
     fetchSpy = jest.spyOn(globalThis, 'fetch');
   });
