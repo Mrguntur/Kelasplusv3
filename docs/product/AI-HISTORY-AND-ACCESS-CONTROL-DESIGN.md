@@ -2,7 +2,7 @@
 
 > **Status:** Design proposal only. No database migration, API endpoint, response persistence, retention job, or production behavior is changed by this document.
 >
-> **Version:** 0.1  
+> **Version:** 0.2  
 > **Date:** 5 November 2026  
 > **Target branch:** `feat/ai-privacy-audit-stage-2`
 
@@ -72,7 +72,7 @@ A teacher may access a case history only when:
 - the student remains actively enrolled in the relevant active class; and
 - the teacher currently has an active teaching assignment for that class, or is its current homeroom teacher.
 
-The initial product proposal is to show histories for cases the teacher initiated, subject to current assignment/homeroom authorization. Whether other currently authorized teachers should see one another's histories is a separate product decision; default to **not visible** until explicitly approved.
+The approved initial product decision is: **only the teacher who initiated an analysis may view that analysis history**. No other teacher, even one who currently teaches the same class or is its current homeroom teacher, may view that history. The initiating teacher must still pass all current authorization checks on every read: active membership, active staff profile, active student enrollment/class, and a current teaching assignment or homeroom relationship for that class. Creator identity alone does not preserve access after assignment or role revocation. No sharing or transfer of history is included in the first release.
 
 ### School Leader and School Admin
 - May continue to access aggregate school insights according to existing entitlements.
@@ -84,7 +84,9 @@ The initial product proposal is to show histories for cases the teacher initiate
 - Exceptional support access, if ever required, must be time-bound, purpose-limited, approved, visible to the school where appropriate, and audited. This is not part of the initial scope.
 
 ### Revocation and changed assignments
-- Removing a teacher's assignment or homeroom relationship revokes access to that student's case history for that class.
+- Removing the initiating teacher's assignment or homeroom relationship revokes that teacher's access to the history for that class.
+- A different teacher who later receives the class or homeroom assignment does not inherit access to histories created by the previous teacher.
+- Another teacher's current assignment does not grant access to a history created by someone else.
 - Disabling membership, staff profile, student, enrollment, or class blocks access.
 - Changing the active school must never permit cross-tenant lookup.
 - A history record's original class reference is traceability only; it cannot override current authorization.
@@ -198,8 +200,8 @@ Also test SQL/RLS tenant isolation, authorization race conditions, audit metadat
 
 ## 11. Decisions required before implementation
 
-- [ ] Should only the initiating teacher see a history, or may other teachers with current assignment access see it?
-- [ ] Should a current homeroom teacher inherit access to histories created by a previous homeroom teacher?
+- [x] **Access is limited to the initiating teacher only**, subject to current authorization checks. Other teachers cannot view the history, even if they currently teach the class.
+- [x] **A new homeroom teacher does not inherit prior histories.**
 - [ ] What is the approved retention duration for AI case history?
 - [ ] Can a school administrator request deletion, and what authorization is required?
 - [ ] Is the AI answer stored as plain text protected by database/storage encryption, or is application-level encryption required?
