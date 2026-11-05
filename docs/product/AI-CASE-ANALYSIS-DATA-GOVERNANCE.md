@@ -136,3 +136,25 @@ CI dokumentasi sebelumnya (#648 dan #649) telah lulus pada commit sebelumnya. Pe
 A separate design proposal has been added at `docs/product/AI-HISTORY-AND-ACCESS-CONTROL-DESIGN.md`.
 
 The proposal documents the current implementation boundary (no persisted AI answer/history table or history endpoints), the proposed tenant-scoped history model, current-assignment authorization, role restrictions, audit events, UI behavior, security test matrix, and release gates. It intentionally does not introduce a migration, persist AI response content, or activate retention/deletion behavior. Product decisions and approved retention/provider/legal terms are required before implementation.
+
+## Roadmap boundary and current stage
+
+KELAS+ AI governance work remains in **Stage 2 — AI Privacy, Audit & Data Governance**.
+
+- **Stage 1 — AI Security Hardening:** authorization, subject-scope controls, data minimization, and provider-payload safeguards. The corresponding feature-branch CI checks passed.
+- **Stage 2 — AI Privacy, Audit & Data Governance:** audit lifecycle and failure handling, Indonesian user-data agreement draft, AI privacy notice draft, retention/deletion proposal, and AI History access-control design. CI runs #648–#654 passed for the documented changes up to the current feature-branch head.
+- **Stage 3 — AI History Implementation:** a separate implementation phase for schema, tenant-scoped API, audit-on-read, and teacher UI. This phase has **not started**. No history table, history endpoint, or persisted AI answer exists in the current implementation.
+
+### Approved Stage 2 product decision
+
+The initial AI case-history access policy is **creator-only**: only the teacher who initiated an analysis may view it, and only while that teacher retains active membership, active staff profile, active enrollment/class, and current teaching or homeroom authorization. Other teachers, including a newly assigned teacher or homeroom teacher, do not inherit access.
+
+### Remaining Stage 2 release gates
+
+- [ ] Complete legal/privacy review and fill all placeholders in the user agreement and AI privacy notice.
+- [ ] Verify provider/subprocessor contracts, processing locations, retention, model-training terms, and deletion commitments.
+- [ ] Approve retention periods and deletion authority with school/product/legal stakeholders.
+- [ ] Define and test the user agreement/privacy notice presentation and acceptance evidence.
+- [ ] Complete synthetic-data staging, RLS/tenant-isolation, and desktop/mobile verification.
+
+A green CI confirms automated checks only; it does not complete legal approval, provider due diligence, staging, or manual verification. Do not start Stage 3 persistence or enable production history until the required Stage 2 gates are approved.
