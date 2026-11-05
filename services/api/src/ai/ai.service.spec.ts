@@ -119,9 +119,15 @@ describe('AiService privacy safeguards', () => {
       generationStatus: 'PENDING',
       policyVersion: '2026-11-05-v1',
     });
+    // Assert the metadata schema itself, not serialized values: the
+    // excludedCategories list intentionally documents "raw_prompt".
+    const metadataKeys = Object.keys(metadata);
     for (const forbiddenField of ['studentId', 'studentName', 'prompt', 'rawPrompt', 'nisn', 'nik', 'email', 'phone']) {
-      expect(serialized.toLowerCase()).not.toContain(forbiddenField.toLowerCase());
+      expect(metadataKeys).not.toContain(forbiddenField);
     }
+    expect(metadata).not.toHaveProperty('rawPrompt');
+    expect(metadata).not.toHaveProperty('prompt');
+    expect(metadata.excludedCategories).toContain('raw_prompt');
   });
 
   it('keeps the teacher assistant prompt pedagogical and limited to aggregate context', () => {
