@@ -185,3 +185,50 @@ This is a safety boundary, not an active provider integration. No OpenRouter key
 - [ ] Complete legal, provider, school and child-data approvals.
 
 The monetary ceiling, currency, and period configuration remain a product/finance input. Until supplied and implemented, the current monthly request-count quota is not represented as a monetary spend cap.
+
+
+## 13. Owner-selected Indonesian aggregator candidate — MindRouter
+
+The owner selected MindRouter as the first candidate for a controlled integration and synthetic-data evaluation. This is a candidate selection for engineering work, not approval to process school/student personal data and not evidence that its upstream routes satisfy KELAS+ requirements.
+
+### Observed price snapshot supplied by the owner (5 Nov 2026)
+
+The supplied MindRouter model table shows the following route and displayed prices:
+
+| Display name | Model identifier | Input / 1M tokens | Output / 1M tokens |
+|---|---|---:|---:|
+| DeepSeek v4.1 Flash 1017 [ID] | `mindrouter/deepseek-v4.1-flash` | USD 0.22 (approx. Rp4,029) | USD 0.90 (approx. Rp16,484) |
+| DeepSeek v4.1 Flash 1017 [Research] [ID] | `mindrouter/deepseek-v4.1-flash-research` | USD 0.25 (approx. Rp4,579) | USD 0.80 (approx. Rp14,653) |
+
+These values are a dated screenshot snapshot, not a live price feed or a contractual quote. Confirm current prices, billing currency, FX conversion, markup, taxes, minimum top-up, and any provider-side fees before setting budgets.
+
+Illustrative request estimate for the first route:
+- 2,000 input tokens: about Rp8.06.
+- 1,000 output tokens: about Rp16.48.
+- Total: about Rp24.54 per request, before FX/rounding, fees, taxes, and any hidden upstream pricing adjustments.
+
+Actual usage must use the provider's returned token counts and the exact approved route's effective price. Do not estimate production spend from request count alone.
+
+### Candidate due-diligence gate
+
+Before any MindRouter request may contain school or student data, obtain written evidence for:
+- MindRouter's legal contracting entity, registration, invoice/tax details, and support contact.
+- Executed DPA/processor terms and the complete upstream model-provider/subprocessor chain for the exact model ID.
+- Prompt/response retention at MindRouter and each upstream provider, including abuse/security logging and deletion windows.
+- No-training/no-improvement commitments and any human review exceptions.
+- Processing locations, international transfers, support access, and deletion/incident-notification commitments.
+- Education/minor-access suitability and contractual permission for a multi-tenant school SaaS.
+- Exact endpoint, API compatibility, route stability, rate limits, token accounting, price schedule, and billing controls.
+
+Public website statements and a local-currency payment method are not substitutes for this evidence. Until reviewed and approved, MindRouter is not an approved production subprocessor.
+
+### Engineering rollout
+
+1. Implement the provider-neutral gateway and an OpenAI-compatible MindRouter adapter behind a disabled-by-default route switch.
+2. Keep the approved-route registry empty until evidence and owner approval are recorded.
+3. Run integration tests only with synthetic fixtures and a separately authorized test key/account; do not put keys in Git.
+4. Validate response parsing, provider-reported token usage, timeout/error handling, per-school attribution, and no prompt/identity logging.
+5. Implement per-school monetary budget reservation/settlement before any production route can be enabled.
+6. Keep individual student-case analysis blocked until it has a separate data-category approval.
+
+The current runtime remains fail-closed. Selecting MindRouter as the first integration candidate does not automatically enable outbound traffic.
