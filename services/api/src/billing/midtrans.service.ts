@@ -361,16 +361,13 @@ export class MidtransService {
         (notification.fraud_status === undefined || notification.fraud_status === 'accept');
       if (purchase.status === 'REFUNDED') return { received: true, duplicate: true, purchaseStatus: 'REFUNDED' };
       if (transactionStatus === 'partial_refund') {
-        await this.audit.record({
-          actorUserId: null, schoolId: purchase.schoolId,
-          eventType: 'billing.ai_addon_partial_refund_review_required', outcome: 'SUCCESS',
-          metadata: { purchaseId: purchase.id, orderId },
-        }, tx);
+        // Partial refunds require a finance decision about proportional unit reversal.
+        // Acknowledge without mutating the append-only quota ledger.
         return { received: true, reviewRequired: true, purchaseStatus: purchase.status };
       }
       if (successful) {
         if (purchase.status === 'PAID') return { received: true, duplicate: true, purchaseStatus: 'PAID' };
-        if (purchase.status !== 'PENDING') throw new ConflictException('Pesanan add-on tidak berada pada status yang dapat dibayar.');
+        // A verified settlement is authoritative even if a delayed deny/expire notification arrived first.
         const expiresAt = purchase.expiresAfterDays ? new Date(Date.now() + purchase.expiresAfterDays * 86400000) : null;
         await tx.aiAddonPurchase.update({
           where: { id: purchase.id },
@@ -410,6 +407,8 @@ export class MidtransService {
               }], skipDuplicates: true,
             });
           }
+        } else if (purchase.status === 'PENDING' || purchase.status === 'FAILED' || purchase.status === 'CANCELED' || purchase.status === 'EXPIRED') {
+          await tx.aiAddonPurchase.update({ where: { id: purchase.id }, data: { status: 'REFUNDED' } });
         }
         return { received: true, purchaseStatus: 'REFUNDED' };
       }
