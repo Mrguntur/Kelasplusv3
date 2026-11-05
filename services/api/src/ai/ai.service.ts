@@ -13,7 +13,7 @@ import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
 import { AuditService } from '../audit/audit.service';
-import { buildStudentCaseProviderPayload } from './ai-provider-payload';
+import { buildStudentCaseAuditMetadata, buildStudentCaseProviderPayload } from './ai-provider-payload';
 
 type AiProviderResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -297,16 +297,12 @@ export class AiService {
         schoolId,
         eventType: 'AI_STUDENT_CASE_REQUESTED',
         outcome: 'SUCCESS',
-        metadata: {
+        metadata: buildStudentCaseAuditMetadata({
           caseReference,
-          capability: 'teacher_assistant',
           model,
-          policyVersion: '2026-11-05-v1',
           generationStatus: 'PENDING',
           assessmentScope: isHomeroom ? 'ALL_CLASS_SUBJECTS' : 'ASSIGNED_SUBJECTS_ONLY',
-          dataCategories: ['attendance_summary_90d', 'published_assessment_scores'],
-          excludedCategories: ['student_name', 'student_number', 'contact_details', 'address', 'date_of_birth', 'family_profile', 'free_text_notes'],
-        },
+        }),
       }, tx);
       return {
         eventId: event.id,
@@ -365,7 +361,11 @@ export class AiService {
         schoolId,
         eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
         outcome: 'SUCCESS',
-        metadata: { caseReference: reservation.caseReference, capability: 'teacher_assistant', model, policyVersion: '2026-11-05-v1' },
+        metadata: buildStudentCaseAuditMetadata({
+          caseReference: reservation.caseReference,
+          model,
+          generationStatus: 'SUCCEEDED',
+        }),
       });
       return {
         answer,
@@ -381,7 +381,11 @@ export class AiService {
         schoolId,
         eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
         outcome: 'FAILURE',
-        metadata: { caseReference: reservation.caseReference, capability: 'teacher_assistant', model, policyVersion: '2026-11-05-v1' },
+        metadata: buildStudentCaseAuditMetadata({
+          caseReference: reservation.caseReference,
+          model,
+          generationStatus: 'FAILED',
+        }),
       });
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
