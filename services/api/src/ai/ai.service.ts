@@ -107,7 +107,7 @@ export class AiService {
     });
 
     try {
-      const safeQuestion = this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]);
+      const safeQuestion = this.redactSensitiveText(normalizedQuestion);
       const prompt = this.buildPrompt(capability, reservation.context);
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -273,6 +273,7 @@ export class AiService {
         used: used + 1,
         monthlyLimit,
         caseReference: `CASE-${randomUUID().slice(0, 8).toUpperCase()}`,
+        safeQuestion: this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]),
         context: {
           analysisWindowDays: 90,
           attendance: {
@@ -304,7 +305,7 @@ export class AiService {
         'Jaga martabat dan kerahasiaan siswa. Keputusan akhir selalu pada guru dan harus mempertimbangkan konteks langsung.',
         `Snapshot kasus: ${JSON.stringify(reservation.context)}`,
       ].join('\\n\\n');
-      const safeQuestion = this.redactSensitiveText(normalizedQuestion);
+      const safeQuestion = reservation.safeQuestion;
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
