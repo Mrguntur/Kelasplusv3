@@ -45,7 +45,7 @@ describe('AiAddonPurchaseService', () => {
     expect(tx.aiAddonPurchase.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         schoolId: 'school-1', packId: 'pack-1', requestUnits: 100,
-        priceAmount: 25000, currency: 'IDR', status: 'PENDING',
+        priceAmount: 25000, currency: 'IDR', status: 'PENDING', expiresAfterDays: 30,
       }),
     }));
     expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
