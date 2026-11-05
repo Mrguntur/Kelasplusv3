@@ -130,3 +130,9 @@ Dua rancangan berbahasa Indonesia ditambahkan untuk review internal:
 Keduanya berstatus **DRAFT INTERNAL**, bukan dokumen yang telah disahkan atau siap diberlakukan. Dokumen menggunakan placeholder untuk identitas penyelenggara, kontak privasi, daftar penyedia, lokasi pemrosesan, dasar pemrosesan, retensi, dan prosedur hak subjek data. Semua klaim wajib dicocokkan dengan implementasi dan kontrak penyedia serta ditinjau penasihat hukum sebelum publikasi.
 
 CI dokumentasi sebelumnya (#648 dan #649) telah lulus pada commit sebelumnya. Perubahan dokumen privasi ini memicu validasi CI baru; hasilnya harus diperiksa sebelum tahap ini dinyatakan selesai.
+
+## AI History & Access Control
+
+A separate design proposal has been added at `docs/product/AI-HISTORY-AND-ACCESS-CONTROL-DESIGN.md`.
+
+The proposal documents the current implementation boundary (no persisted AI answer/history table or history endpoints), the proposed tenant-scoped history model, current-assignment authorization, role restrictions, audit events, UI behavior, security test matrix, and release gates. It intentionally does not introduce a migration, persist AI response content, or activate retention/deletion behavior. Product decisions and approved retention/provider/legal terms are required before implementation.
