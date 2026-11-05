@@ -30,9 +30,9 @@ Both routes require an authenticated session, active school membership, an activ
 
 ## Privacy and cost controls
 
-- The API constructs school context from aggregate counts; it does not query or send student names, NISN, email, addresses, or individual score rows. Attendance aggregates include only `FINALIZED` sessions.
+- The API constructs school context from aggregates; it does not send student names, NISN, email, addresses, or individual score rows. Attendance uses only `FINALIZED` sessions from the last 30 days and reports a rate only when the denominator (record count) is non-zero. Published assessment scores are normalized to percentages using each assessment's maximum score, then summarized by subject and class. Empty, non-finite, negative, and above-maximum scores are excluded. Aggregate reads are capped at 1,200 attendance sessions and 500 assessments; the AI context reports when either cap is reached.
+- Teacher context is limited to classes where the teacher has an active teaching assignment or is the assigned homeroom teacher. Leadership context is school-wide. Aggregates sent to Gemini contain no student-level identifiers or individual score rows.
 - Common email, Indonesian mobile-number, and 10-digit identifier patterns are redacted from the submitted question. Name detection is not reliable, so users must not include student names or other identifying details in prompts; the V2 dashboard displays this warning before requests are submitted.
-- Teacher context is restricted to the teacher's assigned classes.
 - Leadership context uses school-level aggregates.
 - Monthly quota boundaries use UTC calendar months. Each accepted request reserves one monthly request before calling Gemini. Failed provider calls are recorded and still consume one request to prevent retries from bypassing quotas.
 - Trusted safety instructions and aggregate context are sent separately from the user's question using Gemini's system-instruction field to reduce prompt-injection risk.
@@ -46,4 +46,5 @@ Both routes require an authenticated session, active school membership, an activ
 3. Configure AI flags and monthly limits only on Berkembang and Unggulan.
 4. Validate tenant RLS and quota behavior in staging with runtime credentials.
 5. Confirm privacy notice and school data-processing approval before enabling AI for customer schools.
-6. Monitor actual Gemini billing; token usage in the event table is telemetry, not a guaranteed currency-cost calculation.
+6. Review that small-group aggregates do not permit re-identification before enabling customer-wide access.
+7. Monitor actual Gemini billing; token usage in the event table is telemetry, not a guaranteed currency-cost calculation.

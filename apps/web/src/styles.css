@@ -387,3 +387,319 @@
 .school-onboarding-complete{display:flex;align-items:center;gap:7px;margin:12px 0 0;padding-top:12px;border-top:1px solid #edf1f6;color:#178153;font-size:11px}
 @media(max-width:680px){.school-onboarding-form-grid{grid-template-columns:1fr}.school-onboarding-next-step{align-items:stretch;flex-direction:column}.school-onboarding-trial-controls{max-width:none}.school-onboarding-next-step>.primary-button{width:100%;justify-content:center}.school-onboarding-card-head{align-items:flex-start;flex-wrap:wrap}.school-onboarding-card-head>.status-badge{margin-left:50px}}
 @media(max-width:480px){.school-onboarding-trial-controls{grid-template-columns:1fr}.school-onboarding-actions{width:100%}.school-onboarding-actions button{flex:1}}
+
+
+/* KELAS+ V2 design system — visual foundation inspired by the approved teacher UI */
+:root{
+  --navy:#0d2238;
+  --blue:#155eef;
+  --muted:#718096;
+  --line:#e3e8ef;
+  --paper:#fff;
+  --surface:#f2f4f8;
+  --text-strong:#1c2938;
+  --text-muted:#718096;
+}
+body{background:var(--surface);color:var(--text-strong)}
+.app-shell{background:var(--surface)}
+.sidebar{
+  width:280px;
+  padding:27px 18px 17px;
+  background:linear-gradient(180deg,#102a43 0%,#0a1d30 100%);
+  box-shadow:5px 0 24px #0b203012;
+}
+.sidebar .brand-lockup{padding:0 8px 38px}
+.sidebar .brand-lockup strong{font-size:22px;letter-spacing:-.5px}
+.sidebar .brand-lockup span{font-size:10px;letter-spacing:1.4px;color:#9aadc0}
+.sidebar .brand-mark{width:0;height:0;display:none}
+.workspace-label{padding:0 12px 12px;color:#788da3;font-size:9px;letter-spacing:1.7px}
+.nav-item{min-height:43px;padding:11px 13px;margin:3px 0;border-radius:10px;color:#c1cfdd;font-size:13px}
+.nav-item.active{
+  background:#155eef;color:#fff;
+  box-shadow:0 8px 18px #155eef38,inset 3px 0 #f6c94a;
+}
+.nav-item.active svg{color:#fff}
+.nav-item:not(.active):not(.disabled-nav):hover{background:#ffffff12;color:#fff}
+.sidebar-bottom{border-color:#ffffff1c;padding-top:17px}
+.school-avatar{background:#f5cb57;color:#102a43;border-radius:10px}
+.main-content{
+  margin-left:280px;
+  max-width:none;
+  padding:0 27px 24px;
+}
+.topbar{
+  position:sticky;top:0;z-index:20;
+  height:66px;margin:0 -27px 0;
+  padding:0 27px;
+  background:#ffffffed;
+  border-bottom:1px solid #e5e9ef;
+  backdrop-filter:blur(14px);
+}
+.topbar-label{color:#8b98a8}
+.topbar-school{color:#344256}
+.page-heading{padding-top:26px;margin-bottom:22px}
+.page-heading h1,.academic-page-heading h1{
+  color:#1b2938;letter-spacing:-.9px;
+  font-family:Manrope,sans-serif;
+}
+.panel,.metric-card,.academic-banner,.role-overview,.quick-access-card{
+  border-color:#e2e7ee;border-radius:15px;background:#fff;
+  box-shadow:0 1px 2px #15263b0a,0 5px 16px #15263b06;
+}
+.metric-card{padding:19px}
+.metric-value{color:#1d2b3a;font-family:Manrope,sans-serif}
+.primary-button{background:#155eef;border-radius:10px;box-shadow:0 5px 13px #155eef25}
+.primary-button:hover{background:#0e4fd2}
+.secondary-button{border-radius:10px}
+.quick-access-card{padding:16px}
+.quick-access-card:hover{border-color:#a9c5f5}
+.academic-panel{overflow:hidden}
+.academic-toolbar{background:#fff}
+.academic-table th{background:#f8fafc;color:#8291a4}
+.academic-table td{border-color:#edf0f4}
+.academic-table tbody tr:hover{background:#fbfcfe}
+@media(max-width:760px){
+  .sidebar{width:min(280px,86vw)}
+  .main-content{margin-left:0;padding:0 16px 20px}
+  .topbar{margin:0 -16px;padding:0 16px;height:62px}
+  .page-heading{padding-top:22px}
+}
+
+
+/* Responsive workspace navigation: real mobile drawer, not hidden navigation */
+.mobile-nav-toggle{display:none;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid #e1e8f1;border-radius:10px;background:#fff;color:#435a76;cursor:pointer}
+.sidebar-backdrop{display:none}
+@media(max-width:760px){
+  .mobile-nav-toggle{display:inline-flex}
+  .sidebar{
+    position:fixed;inset:0 auto 0 0;width:min(290px,86vw);height:100dvh;
+    padding:23px 18px 17px;display:flex;flex-direction:column;align-items:stretch;
+    transform:translateX(-105%);transition:transform .22s ease;
+    z-index:41;box-shadow:12px 0 34px #0b203033;overflow-y:auto
+  }
+  .sidebar.mobile-open{transform:translateX(0)}
+  .sidebar .brand-lockup{display:flex;padding:0 8px 34px}
+  .sidebar .brand-lockup strong{font-size:21px}
+  .sidebar .brand-lockup span{display:block}
+  .sidebar .brand-mark{display:grid;width:38px;height:38px}
+  .workspace-label{display:block}
+  .sidebar .nav-item{display:flex;width:100%;min-height:44px}
+  .sidebar-bottom{display:flex;margin-top:auto}
+  .sidebar-backdrop{display:block;position:fixed;inset:0;border:0;padding:0;background:#09182780;opacity:0;visibility:hidden;transition:opacity .2s ease,visibility .2s ease;z-index:40}
+  .sidebar-backdrop.visible{opacity:1;visibility:visible}
+}
+@media(prefers-reduced-motion:reduce){
+  .sidebar,.sidebar-backdrop{transition:none}
+}
+
+
+.data-quality-panel{background:#fff;border:1px solid #e7edf5;border-radius:15px;padding:19px 21px;margin:0 0 18px;box-shadow:0 4px 16px #203b5c08}
+.data-quality-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+.data-quality-heading h2{margin:5px 0 4px;color:#243b5b;font:750 17px Manrope,sans-serif}
+.data-quality-heading p{margin:0;color:#8290a3;font-size:11px}
+.quality-count{flex:none;border-radius:999px;padding:7px 11px;background:#edf7f1;color:#28744a;font-size:11px;font-weight:700}
+.quality-count.needs-review{background:#fff5e8;color:#98621e}
+.data-quality-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.data-quality-item{display:grid;grid-template-columns:1fr auto;align-items:center;gap:9px;text-align:left;border:1px solid #e9eef5;border-radius:10px;background:#fbfcfe;padding:12px;color:#52647d;font:600 11px 'DM Sans',sans-serif;cursor:pointer}
+.data-quality-item strong{font:800 19px Manrope,sans-serif;color:#263e60}
+.quality-action{grid-column:1/-1;color:#356bb0;font-size:10px}
+.data-quality-item:hover{border-color:#b9cce5;background:#f7faff}
+.data-quality-footnote{margin:12px 0 0;color:#8b98a9;font-size:10px;line-height:1.5}
+@media(max-width:760px){.data-quality-panel{padding:16px}.data-quality-heading{align-items:flex-start}.data-quality-list{grid-template-columns:1fr}.data-quality-item{grid-template-columns:1fr auto}.quality-action{grid-column:1/-1}}
+
+
+.teacher-priority-panel{background:#fff;border:1px solid #e7edf5;border-radius:15px;padding:19px 21px;margin:0 0 20px;box-shadow:0 4px 16px #203b5c08}
+.teacher-priority-panel .panel-heading{margin-bottom:8px}
+.teacher-priority-intro{margin:0 0 12px;color:#8290a3;font-size:11px;line-height:1.55}
+.teacher-priority-list{display:grid;gap:7px}
+.teacher-priority-item{display:flex;align-items:center;gap:11px;width:100%;padding:12px;border:1px solid #e9eef5;border-radius:10px;background:#fbfcfe;text-align:left;color:#53657d;cursor:pointer}
+.teacher-priority-item:hover{border-color:#b9cce5;background:#f7faff}
+.priority-check{display:grid;place-items:center;flex:none;width:25px;height:25px;border-radius:50%;background:#fff4e6;color:#9a681f;font-weight:800}
+.priority-check.complete{background:#eaf6ef;color:#28744a}
+.teacher-priority-copy{display:grid;gap:3px;flex:1;min-width:0}
+.teacher-priority-copy strong{font-size:11px;color:#304864}
+.teacher-priority-copy small{font-size:10px;color:#8795a8}
+.teacher-priority-item>svg{color:#8192a8}
+@media(max-width:760px){.teacher-priority-panel{padding:16px}}
+
+
+.student-attention-panel{background:#fff;border:1px solid #e7edf5;border-radius:15px;padding:20px 21px;margin:0 0 20px;box-shadow:0 4px 16px #203b5c08}
+.student-attention-panel .panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.student-attention-panel .panel-heading h2{display:flex;align-items:center;gap:8px}
+.student-attention-panel .panel-heading h2 svg{color:#b47a2b}
+.student-attention-intro,.student-attention-footnote{color:#8290a3;font-size:10px;line-height:1.55}
+.student-attention-controls{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:14px 0}
+.student-attention-controls label{display:grid;gap:6px;min-width:180px;color:#65768e;font-size:11px;font-weight:600}
+.student-attention-controls select{border:1px solid #dfe6ef;background:#fff;border-radius:9px;padding:10px 12px;color:#344a67;font:12px 'DM Sans',sans-serif}
+.student-attention-filters{display:flex;gap:4px;background:#f3f6fa;padding:4px;border-radius:9px}
+.student-attention-filters button{border:0;border-radius:7px;background:transparent;padding:8px 11px;color:#718096;font:600 10px 'DM Sans',sans-serif;cursor:pointer}
+.student-attention-filters button.selected{background:#fff;color:#234b82;box-shadow:0 1px 4px #172b4d12}
+.attention-tags{display:flex;flex-wrap:wrap;gap:5px}
+.attention-tags span{border-radius:999px;padding:4px 7px;background:#fff4e6;color:#94601d;font-size:9px;font-weight:700}
+.student-attention-footnote{margin:12px 0 0}
+@media(max-width:760px){.student-attention-panel{padding:16px}.student-attention-controls{align-items:stretch;flex-direction:column}.student-attention-controls label{min-width:0}.student-attention-filters{align-self:flex-start}}
+
+
+/* KELAS+ UI refinement pass — calmer hierarchy, clearer actions, and softer surfaces */
+:root{
+  --surface:#f5f7fb;
+  --text-strong:#17283d;
+  --text-muted:#718096;
+  --line:#e6ebf2;
+  --brand:#2563eb;
+  --brand-soft:#eff5ff;
+  --success:#16845b;
+  --radius-card:18px;
+}
+body{background:var(--surface);color:var(--text-strong)}
+button{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:3px solid #3b82f64a;outline-offset:2px
+}
+.app-shell{background:radial-gradient(ellipse at 85% 0%,#eaf1ff70 0,transparent 34%),var(--surface)}
+.sidebar{background:linear-gradient(180deg,#102b46 0%,#0b1e32 100%);padding-top:25px}
+.sidebar .brand-lockup{padding-bottom:42px}
+.sidebar .brand-lockup strong{letter-spacing:-.7px}
+.nav-item{min-height:46px;border-radius:12px;font-weight:600}
+.nav-item.active{background:linear-gradient(100deg,#2563eb,#1d55c5);box-shadow:0 8px 20px #155eef35,inset 3px 0 #f6ce62}
+.main-content{padding-bottom:34px}
+.topbar{height:72px;background:#ffffffed;box-shadow:0 1px 0 #e6ebf2}
+.topbar-school{font-size:13px}
+.user-chip strong{font-size:12px;color:#273b54}
+.user-chip span{font-size:10px}
+.icon-button{height:39px;width:39px;border-radius:12px}
+.icon-button:hover,.mobile-nav-toggle:hover{background:#f1f6ff;border-color:#cbdcf8;color:#1d55c5}
+.page-heading{padding-top:32px;padding-bottom:24px}
+.page-heading h1,.academic-page-heading h1{font-size:clamp(23px,2vw,29px);letter-spacing:-1.1px}
+.page-heading p{font-size:13px;line-height:1.65;color:#7b899b}
+.eyebrow{letter-spacing:1.25px}
+.period-pill{border-radius:12px;background:#fff;box-shadow:0 2px 8px #1b355008}
+.academic-banner{border-radius:16px;padding:17px 19px;background:linear-gradient(105deg,#edf4ff 0%,#f8faff 75%)}
+.metrics-grid{gap:16px}
+.metric-card{position:relative;overflow:hidden;border-radius:17px;padding:19px 20px;min-height:140px;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.metric-card:after{content:'';position:absolute;width:105px;height:105px;right:-42px;bottom:-55px;border-radius:50%;background:#eff5ff;pointer-events:none}
+.metric-card:hover{transform:translateY(-2px);border-color:#cbdaf0;box-shadow:0 10px 26px #1d35530d}
+.metric-top{position:relative;z-index:1;font-size:12px}
+.metric-icon{width:38px;height:38px;border-radius:12px;background:#edf4ff;color:#2563c9}
+.metric-value{position:relative;z-index:1;font-size:30px;margin:13px 0 4px}
+.metric-foot{position:relative;z-index:1;font-size:11px}
+.panel,.role-overview,.quick-access-card,.teacher-priority-panel,.student-attention-panel,.data-quality-panel{
+  border-radius:var(--radius-card);box-shadow:0 2px 5px #182b4307,0 10px 28px #182b4306
+}
+.panel{padding:22px}
+.panel-heading{margin-bottom:19px}
+.panel-heading h2{font-size:17px;letter-spacing:-.45px;color:#20344d}
+.content-grid{gap:18px;margin-top:20px}
+.journal-row{padding:15px 0}
+.journal-date{width:45px;height:45px;border-radius:13px;background:#f1f5fb}
+.empty-state{padding:32px 14px}
+.primary-button{min-height:44px;border-radius:11px;font-size:12px;font-weight:700}
+.primary-button:disabled{transform:none;box-shadow:none}
+.secondary-button,.table-action{border-radius:10px}
+.secondary-button:hover{background:#f6f9ff;border-color:#c8d8ef;color:#2458a8}
+.quick-access-card{border-radius:15px;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.quick-access-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px #1d35530d}
+.academic-workspace{padding-bottom:22px}
+.academic-page-heading{padding-top:30px}
+.academic-stats{gap:15px}
+.academic-stat{border-radius:16px;padding:18px 20px}
+.academic-panel{border-radius:17px}
+.academic-toolbar{padding:17px 20px;gap:14px}
+.academic-tabs{border-radius:11px}
+.academic-tabs button{padding:10px 14px;border-radius:8px}
+.academic-tabs button.selected{color:#174ea6;box-shadow:0 2px 7px #172b4d12}
+.academic-search{height:42px;border-radius:11px;background:#fff}
+.academic-search:focus-within{border-color:#91b4ed;box-shadow:0 0 0 3px #2563eb12}
+.academic-table{min-width:520px}
+.academic-table th{padding-top:15px;padding-bottom:15px;font-size:10px;letter-spacing:.07em}
+.academic-table td{padding-top:16px;padding-bottom:16px;font-size:12px}
+.academic-table td strong{font-size:13px}
+.academic-table tbody tr{transition:background-color .15s ease}
+.table-action{padding:8px 12px;background:#f5f8fe}
+.academic-form{border-radius:15px;background:#f8faff;padding:20px}
+.academic-form input,.academic-form select{min-height:42px;border-radius:10px}
+.data-quality-panel,.teacher-priority-panel,.student-attention-panel{padding:21px 22px}
+.data-quality-item,.teacher-priority-item{border-radius:12px;padding:14px;background:#fbfcff}
+.data-quality-item:hover,.teacher-priority-item:hover{transform:translateY(-1px);box-shadow:0 5px 14px #1d35530b}
+.student-attention-controls select{min-height:42px;border-radius:11px}
+.student-attention-filters{border-radius:11px}
+.student-attention-filters button{padding:9px 13px;border-radius:8px}
+.footer{padding-top:30px}
+@media(max-width:1100px){
+  .main-content{padding-left:22px;padding-right:22px}
+  .metrics-grid{gap:12px}
+  .metric-card{padding:16px}
+}
+@media(max-width:760px){
+  .main-content{padding-left:16px;padding-right:16px}
+  .topbar{height:64px}
+  .page-heading{padding-top:25px;padding-bottom:18px}
+  .page-heading h1,.academic-page-heading h1{font-size:23px}
+  .metrics-grid{gap:10px}
+  .metric-card{min-height:126px;padding:14px;border-radius:15px}
+  .metric-value{font-size:25px;margin-top:10px}
+  .panel{padding:16px;border-radius:15px}
+  .academic-toolbar{padding:13px}
+  .academic-tabs{max-width:100%;overflow-x:auto;scrollbar-width:thin}
+  .academic-tabs button{white-space:nowrap}
+  .academic-table{min-width:500px}
+  .data-quality-panel,.teacher-priority-panel,.student-attention-panel{padding:16px;border-radius:15px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
+
+
+/* Role-specific KELAS+ V2 dashboards */
+.dashboard-welcome{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(250px,.65fr);align-items:center;gap:24px;position:relative;overflow:hidden;margin:24px 0 20px;padding:30px 34px;border-radius:22px;background:linear-gradient(112deg,#102b4e 0%,#17477d 62%,#2864a5 100%);color:#fff;box-shadow:0 16px 36px #17395b20}
+.dashboard-welcome:after{content:'';position:absolute;width:380px;height:380px;right:7%;top:-250px;border:1px solid #ffffff1a;border-radius:50%;box-shadow:0 0 0 42px #ffffff08,0 0 0 84px #ffffff06;pointer-events:none}
+.dashboard-welcome .eyebrow{color:#9fc4ff}
+.dashboard-welcome h2{max-width:660px;margin:11px 0 9px;font:800 clamp(22px,2.3vw,30px)/1.25 Manrope,sans-serif;letter-spacing:-.8px}
+.dashboard-welcome p{max-width:620px;margin:0;color:#c6d7eb;font-size:13px;line-height:1.7}
+.welcome-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:22px}
+.welcome-primary{display:inline-flex;align-items:center;gap:9px;padding:11px 15px;border:0;border-radius:10px;background:#fff;color:#17477d;font-weight:800;font-size:12px;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}
+.welcome-primary:hover{transform:translateY(-2px);box-shadow:0 8px 18px #061a3038}
+.welcome-meta{display:flex;align-items:center;gap:7px;color:#c6d7eb;font-size:11px}
+.welcome-visual{min-height:180px;display:grid;place-items:center;position:relative;z-index:1}
+.welcome-orbit{position:absolute;width:185px;height:185px;border:1px solid #ffffff24;border-radius:50%}
+.orbit-two{width:235px;height:235px;border-color:#ffffff12}
+.welcome-visual-card{position:relative;display:grid;gap:8px;width:min(100%,245px);padding:19px;border:1px solid #ffffff30;border-radius:17px;background:#ffffff16;backdrop-filter:blur(10px);box-shadow:0 12px 30px #081c3030}
+.welcome-visual-icon{height:42px;width:42px;display:grid;place-items:center;border-radius:13px;background:#ffffff20;color:#fff}
+.welcome-visual-card strong{font:700 13px Manrope,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.welcome-visual-card>span{font-size:10px;color:#c8d9ec}
+.visual-status{display:flex;align-items:center;gap:7px;margin-top:5px;color:#e2efff;font-size:10px}
+.visual-status i,.live-data-label i{width:7px;height:7px;border-radius:50%;background:#59d49b;box-shadow:0 0 0 4px #59d49b20}
+.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:25px 0 15px}
+.section-heading h2{margin:5px 0;font:800 18px Manrope,sans-serif;letter-spacing:-.4px;color:#203751}
+.section-heading p{margin:5px 0 0;color:#8492a5;font-size:11px;line-height:1.6}
+.section-icon{height:39px;width:39px;display:grid;place-items:center;border-radius:12px;background:#eaf2ff;color:#2d65bd}
+.admin-command-panel,.operator-checklist{padding:21px 22px;border:1px solid #e7edf5;border-radius:18px;background:#fff;box-shadow:0 6px 20px #1c35500a}
+.admin-command-panel .section-heading,.operator-checklist .section-heading{margin:0 0 16px}
+.admin-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
+.admin-action-card{display:flex;align-items:center;gap:11px;min-width:0;padding:14px 12px;border:1px solid #e8eef6;border-radius:13px;background:#fbfcff;text-align:left;color:#50647f;cursor:pointer;transition:all .18s ease}
+.admin-action-card:hover{transform:translateY(-2px);border-color:#c8d9f2;background:#f6f9ff;box-shadow:0 7px 18px #18385b0c}
+.admin-action-icon{height:38px;width:38px;display:grid;place-items:center;flex-shrink:0;border-radius:11px;background:#eaf2ff;color:#2c65c1}
+.admin-action-card>span:nth-child(2){display:grid;gap:5px;flex:1;min-width:0}
+.admin-action-card strong,.operator-task-grid strong{font-size:11px;color:#2c425f}
+.admin-action-card small,.operator-task-grid small{font-size:10px;line-height:1.4;color:#8a98aa}
+.admin-action-card>svg{flex-shrink:0;color:#8da3c2}
+.teacher-focus-strip{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:20px 0;padding:18px 21px;border:1px solid #dce9fa;border-radius:16px;background:linear-gradient(100deg,#f0f6ff,#fbfdff)}
+.teacher-focus-strip strong{display:block;margin:6px 0;color:#284466;font:700 14px Manrope,sans-serif}
+.teacher-focus-strip p{margin:0;color:#8090a5;font-size:11px}
+.teacher-focus-strip button{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border:0;border-radius:10px;background:#245db8;color:#fff;padding:11px 14px;font-size:11px;font-weight:700;cursor:pointer}
+.operator-task-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.operator-task-grid button{display:flex;align-items:center;gap:10px;padding:14px;border:1px solid #e8eef6;border-radius:12px;background:#fbfcff;text-align:left;cursor:pointer}
+.operator-task-grid button>svg:first-child{color:#4a9a75;flex-shrink:0}
+.operator-task-grid button>span{display:grid;gap:4px;flex:1;min-width:0}
+.operator-task-grid button>svg:last-child{color:#8da3c2}
+.quick-access-grid{margin:17px 0 22px}
+.dashboard-section{margin:22px 0}
+.dashboard-section>.section-heading{align-items:center}
+.live-data-label{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid #e3eee8;border-radius:20px;background:#f6fbf8;color:#57836c;font-size:10px;font-weight:700;white-space:nowrap}
+.teacher-priority-panel{margin:18px 0 20px}
+.teacher-priority-intro{margin:-7px 0 12px;color:#8a98aa;font-size:11px}
+.teacher-priority-item{transition:all .16s ease}
+.content-grid{margin-top:22px}
+@media(max-width:1100px){.dashboard-welcome{grid-template-columns:minmax(0,1fr) 230px;padding:25px}.admin-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.operator-task-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.dashboard-welcome{grid-template-columns:1fr;padding:23px 20px;margin:18px 0;border-radius:18px}.welcome-visual{min-height:130px}.welcome-orbit{width:135px;height:135px}.orbit-two{width:175px;height:175px}.welcome-visual-card{width:min(100%,230px);padding:14px}.dashboard-welcome h2{font-size:22px}.welcome-actions{gap:12px}.admin-command-panel,.operator-checklist{padding:16px;border-radius:15px}.admin-action-grid{grid-template-columns:1fr 1fr;gap:8px}.admin-action-card{padding:11px 9px;gap:8px}.admin-action-icon{height:32px;width:32px}.admin-action-card strong{font-size:10px}.admin-action-card small{font-size:9px}.teacher-focus-strip{align-items:flex-start;flex-direction:column;padding:16px}.teacher-focus-strip button{width:100%;justify-content:center}.operator-task-grid{grid-template-columns:1fr}.section-heading{margin-top:20px}.section-heading h2{font-size:16px}.live-data-label{font-size:9px;padding:7px 9px}.dashboard-section{margin:18px 0}.dashboard-section>.section-heading{align-items:flex-start}.quick-access-grid{margin:14px 0 18px}}
+@media(max-width:390px){.admin-action-grid{grid-template-columns:1fr}.dashboard-welcome{padding:20px 16px}.welcome-meta{font-size:10px}}

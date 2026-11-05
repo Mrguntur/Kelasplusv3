@@ -13,7 +13,21 @@ describe('AiService privacy safeguards', () => {
   const internals = service as unknown as {
     redactSensitiveText(value: string): string;
     buildPrompt(capability: 'teacher_assistant' | 'leadership_insights', context: Record<string, unknown>): string;
+    normalizeAssessmentScore(score: unknown, maxScore: number): number | null;
   };
+
+
+  it('normalizes only finite scores within the assessment maximum', () => {
+    expect(internals.normalizeAssessmentScore(8, 10)).toBe(80);
+    expect(internals.normalizeAssessmentScore(0, 10)).toBe(0);
+    expect(internals.normalizeAssessmentScore(10, 10)).toBe(100);
+    expect(internals.normalizeAssessmentScore(null, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(-1, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(11, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(Number.NaN, 10)).toBeNull();
+    expect(internals.normalizeAssessmentScore(5, 0)).toBeNull();
+    expect(internals.normalizeAssessmentScore(5, Number.POSITIVE_INFINITY)).toBeNull();
+  });
 
   it('redacts common email, Indonesian mobile and 10-digit identifier patterns', () => {
     const redacted = internals.redactSensitiveText(
@@ -37,6 +51,8 @@ describe('AiService privacy safeguards', () => {
     expect(prompt).toContain('asisten pedagogis guru SMP');
     expect(prompt).toContain('ringkasan statistik agregat');
     expect(prompt).toContain('Jangan mendiagnosis siswa');
+    expect(prompt).toContain('tidak dibuktikan oleh statistik');
+    expect(prompt).toContain('keputusan akhir tetap pada manusia');
     expect(prompt).toContain('activeStudents');
     expect(prompt).not.toContain('Pertanyaan pengguna:');
   });
@@ -50,6 +66,8 @@ describe('AiService privacy safeguards', () => {
     expect(prompt).toContain('analis pendidikan untuk pimpinan sekolah');
     expect(prompt).toContain('agregat seluruh sekolah');
     expect(prompt).toContain('verifikasi manusia');
+    expect(prompt).toContain('jangan membuat kesimpulan');
+    expect(prompt).toContain('persentase kehadiran hanya jika total catatan tersedia');
     expect(prompt).not.toContain('nama siswa');
   });
 });

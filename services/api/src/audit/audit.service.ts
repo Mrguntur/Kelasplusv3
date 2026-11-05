@@ -17,18 +17,23 @@ export interface AuditEventInput {
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async record(input: AuditEventInput, client: Prisma.TransactionClient | PrismaClient = this.prisma): Promise<void> {
-    await client.auditEvent.create({
-      data: {
-        actorUserId: input.actorUserId ?? null,
-        schoolId: input.schoolId ?? null,
-        eventType: input.eventType,
-        outcome: input.outcome,
-        requestId: input.requestId ?? null,
-        ipAddress: input.ipAddress?.slice(0, 64) ?? null,
-        userAgent: input.userAgent?.slice(0, 200) ?? null,
-        metadata: input.metadata ?? {},
-      },
+  async record(
+    input: AuditEventInput,
+    client: Prisma.TransactionClient | PrismaClient = this.prisma,
+  ): Promise<void> {
+    await client.auditEvent.createMany({
+      data: [
+        {
+          actorUserId: input.actorUserId ?? null,
+          schoolId: input.schoolId ?? null,
+          eventType: input.eventType,
+          outcome: input.outcome,
+          requestId: input.requestId ?? null,
+          ipAddress: input.ipAddress?.slice(0, 64) ?? null,
+          userAgent: input.userAgent?.slice(0, 200) ?? null,
+          metadata: input.metadata ?? {},
+        },
+      ],
     });
   }
 }
