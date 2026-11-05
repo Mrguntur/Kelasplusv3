@@ -5,10 +5,11 @@ import { PlatformAdminGuard } from '../schools/platform-admin.guard';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { MidtransService } from './midtrans.service';
+import { AiAddonPackService } from './ai-addon-pack.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [BillingController],
-  providers: [BillingService, MidtransService, SessionAuthGuard, PlatformAdminGuard],
+  providers: [BillingService, MidtransService, AiAddonPackService, SessionAuthGuard, PlatformAdminGuard],
 })
 export class BillingModule {}
