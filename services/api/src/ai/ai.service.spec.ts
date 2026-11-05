@@ -3,7 +3,7 @@ import type { PrismaService } from '../database/prisma.service';
 import type { ConfigService } from '@nestjs/config';
 import type { EntitlementService } from '../entitlements/entitlement.service';
 import type { AuditService } from '../audit/audit.service';
-import { buildStudentCaseProviderPayload } from './ai-provider-payload';
+import { buildStudentCaseAuditMetadata, buildStudentCaseProviderPayload } from './ai-provider-payload';
 
 describe('AiService privacy safeguards', () => {
   const service = new AiService(
@@ -100,6 +100,28 @@ describe('AiService privacy safeguards', () => {
     expect(serialized).toContain('[EMAIL DIHAPUS]');
     expect(serialized).toContain('[NOMOR TELEPON DIHAPUS]');
     expect(serialized).toContain('Bahasa Inggris');
+  });
+
+
+  it('keeps student-case audit metadata allowlisted and free of raw identity fields', () => {
+    const metadata = buildStudentCaseAuditMetadata({
+      caseReference: 'CASE-AB12CD34',
+      model: 'gemini-2.5-flash',
+      assessmentScope: 'ASSIGNED_SUBJECTS_ONLY',
+      generationStatus: 'PENDING',
+    });
+    const serialized = JSON.stringify(metadata);
+
+    expect(metadata).toMatchObject({
+      caseReference: 'CASE-AB12CD34',
+      capability: 'teacher_assistant',
+      assessmentScope: 'ASSIGNED_SUBJECTS_ONLY',
+      generationStatus: 'PENDING',
+      policyVersion: '2026-11-05-v1',
+    });
+    for (const forbiddenField of ['studentId', 'studentName', 'prompt', 'rawPrompt', 'nisn', 'nik', 'email', 'phone']) {
+      expect(serialized.toLowerCase()).not.toContain(forbiddenField.toLowerCase());
+    }
   });
 
   it('keeps the teacher assistant prompt pedagogical and limited to aggregate context', () => {
