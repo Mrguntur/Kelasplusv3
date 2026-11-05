@@ -124,6 +124,58 @@ describe('AiService student-case audit lifecycle', () => {
     expect(audit.record.mock.calls[0][1]).toBe(tx);
   });
 
+  it('fails closed and records a failed outcome when completion audit persistence fails', async () => {
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: 'Jawaban sementara.' }] } }],
+        usageMetadata: { promptTokenCount: 90, candidatesTokenCount: 40 },
+      }),
+    } as Response);
+    audit.record
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('database connection details'))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(
+      service.analyzeStudentCase(user, 'internal-student-id', 'Mohon telaah kasus ini.'),
+    ).rejects.toThrow('Terjadi gangguan saat menghubungi layanan AI.');
+
+    expect(audit.record.mock.calls.map(([input]) => input.eventType)).toEqual([
+      'AI_STUDENT_CASE_REQUESTED',
+      'AI_STUDENT_CASE_GENERATION_COMPLETED',
+      'AI_STUDENT_CASE_GENERATION_FAILED',
+    ]);
+    expect(tx.aiUsageEvent.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'usage-event-id' },
+      data: { status: 'SUCCEEDED', promptTokens: 90, completionTokens: 40 },
+    });
+    expect(tx.aiUsageEvent.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'usage-event-id' },
+      data: { status: 'FAILED', promptTokens: 0, completionTokens: 0 },
+    });
+    expect(audit.record.mock.calls[2][1]).toBe(tx);
+  });
+
+  it('returns a safe unavailable error when failure audit persistence also fails', async () => {
+    fetchSpy.mockResolvedValue({
+      ok: false,
+      json: async () => ({}),
+    } as Response);
+    audit.record
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('sensitive database connection details'));
+
+    await expect(
+      service.analyzeStudentCase(user, 'internal-student-id', 'Mohon telaah kasus ini.'),
+    ).rejects.toThrow(
+      'Status analisis belum dapat dipastikan karena pencatatan audit terganggu.',
+    );
+    await expect(
+      service.analyzeStudentCase(user, 'internal-student-id', 'Mohon telaah kasus ini.'),
+    ).rejects.not.toThrow('sensitive database connection details');
+  });
+
   it('records a failed generation event when the provider rejects the request', async () => {
     fetchSpy.mockResolvedValue({
       ok: false,
