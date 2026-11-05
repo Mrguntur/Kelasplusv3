@@ -47,6 +47,31 @@ describe('AiQuotaService', () => {
     }));
   });
 
+  it('enforces the purchase expiry even when a ledger grant has no expiry timestamp', async () => {
+    const purchaseExpiry = new Date('2026-12-15T00:00:00.000Z');
+    (tx.aiQuotaLedgerEntry.findMany as jest.Mock).mockResolvedValue([{
+      id: 'grant-expiring-purchase',
+      purchaseId: 'purchase-expiring',
+      entryType: 'GRANT',
+      unitsDelta: 4,
+      expiresAt: null,
+      createdAt: new Date('2026-11-01T00:00:00.000Z'),
+      purchase: { expiresAt: purchaseExpiry },
+    }]);
+    (tx.aiQuotaLedgerEntry.create as jest.Mock).mockResolvedValue({});
+
+    await expect(service.reserveAddonUnit(tx, 'school-1', 'event-expiry')).resolves.toBe(true);
+
+    expect(tx.aiQuotaLedgerEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        purchase: { is: { status: 'PAID', OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }] } },
+      }),
+    }));
+    expect(tx.aiQuotaLedgerEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ expiresAt: purchaseExpiry }),
+    }));
+  });
+
   it('does not reserve a unit when all paid add-on balances are exhausted', async () => {
     (tx.aiQuotaLedgerEntry.findMany as jest.Mock).mockResolvedValue([
       {
