@@ -265,3 +265,7 @@ Safety controls:
 - Automated tests cover production blocking, missing opt-in, request format, normalized token usage, HTTP failure, and empty fixtures.
 
 The explicit flag is a development/test harness, not a legal or provider approval. Do not enable it against real school data. No API key is committed. The main `AiGatewayService` remains fail-closed, and existing Gemini code remains unreachable. No real provider traffic, production activation, schema change, merge, or deployment is authorized by this implementation.
+
+## AI quota add-ons and school cost protection
+
+The product and engineering baseline for school-purchased AI quota add-ons is documented in [AI-QUOTA-ADDON-BUSINESS-RULES.md](./AI-QUOTA-ADDON-BUSINESS-RULES.md). Included plan quota and purchased add-on units are tracked separately; actual provider cost is controlled by an independent per-school monetary ceiling. Add-ons are granted only after verified payment confirmation. Missing cost ceilings or model rate cards keep provider traffic blocked. This specification does not approve a provider route or enable production traffic.
