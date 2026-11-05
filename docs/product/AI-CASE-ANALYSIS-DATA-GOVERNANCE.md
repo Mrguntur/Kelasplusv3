@@ -193,3 +193,19 @@ The platform direction is provider independence through a server-side AI Provide
 No production provider has been selected or approved yet. Gemini Free is restricted to synthetic/non-personal development and test data. Student-case data must not be routed to a paid provider until its exact API product, DPA, retention, training use, processing region, subprocessors, deletion terms, and education/minor-access suitability are verified. Aggregator routing is not automatically approved; each underlying provider/model must be allowlisted.
 
 This is a recorded product direction and architecture proposal, not a provider integration or production activation.
+
+
+## Owner decision — aggregator strategy with balanced budget
+
+The product owner selected an **AI provider aggregator** strategy with a **balanced** cost/quality priority. OpenRouter is the first candidate for evaluation, not an approved production subprocessor. The provider strategy document now records official privacy/provider-routing findings and a provisional KELAS+ allowlist policy.
+
+Key constraints:
+- OpenRouter states it does not train its own models on Inputs/Outputs, but requests are transmitted to underlying model providers whose retention and training policies vary.
+- Provider data-policy filters and no-training settings must be explicitly configured; exact provider/model routes must be allowlisted.
+- ZDR and Safety Retention are distinct. Safety Retention is not to be treated as ZDR.
+- Business/Enterprise EU/US in-region routing does not establish Indonesian data residency.
+- Obtain the executed DPA, verify the underlying provider chain, processing location, retention, deletion, and education/minor-access suitability.
+- No free-model routing for school data; no unknown automatic route for student-case analysis; no unreviewed fallback.
+- Gemini Free remains for synthetic/non-personal development and testing only.
+
+The aggregator architecture and balanced budget priority are approved product direction. OpenRouter account tier, contract, model routes, prices, DPA, and legal/privacy/school approval remain pending. No real student data may be routed until these gates are evidenced.
