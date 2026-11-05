@@ -143,3 +143,45 @@ Official references:
 - No automatic paid overage unless explicitly included in the school's subscription terms.
 
 The aggregator selection is an architectural decision. OpenRouter's actual contract, specific model routes, pricing, account tier, regional processing, and KELAS+ education/minor-access suitability remain unverified. This section is not approval to send personal/student data.
+
+
+## 11. Owner decision — school-level cost control and approved-only fallback
+
+Confirmed by product owner:
+- Cost ownership and hard-stop accounting are **per school**. Each school must have an independent monthly monetary ceiling; one school's usage must never consume another school's budget.
+- Fallback is **approved-only**. A retry/fallback may use only an explicitly approved provider + exact model/endpoint route with equal or stricter data controls. No generic cheapest-model fallback and no free-model routing for school data.
+- If the school's budget is exhausted, the route is unapproved, or all approved routes are unavailable, stop and return a safe unavailable response. No paid overage unless the school's subscription terms expressly authorize it.
+
+The owner has not yet specified the monetary ceiling or currency. Therefore no numeric cap is invented. Until a per-school cap and route pricing are configured, outbound provider traffic must remain disabled.
+
+## 12. Stage 2 gateway implementation boundary
+
+A server-side `AiGatewayService` has been added as the mandatory fail-closed boundary. Both teacher/leadership generation and individual student-case analysis call the guard before context construction, usage reservation, or provider network access. The current approval registry is intentionally empty, so requests return HTTP 503 and no model provider receives data. Existing Gemini direct-call code remains unreachable behind this guard and must be replaced by a gateway adapter before any route can be enabled.
+
+This is a safety boundary, not an active provider integration. No OpenRouter key, provider adapter, external request, or real student-data transfer has been enabled.
+
+### Required gateway contract before activation
+
+1. **Tenant budget:** store one budget policy per school and billing period; reserve estimated cost atomically before sending; settle actual cost from provider usage/pricing after response; release or reconcile reservations on failure. Never use a platform-wide shared pool as a substitute for the school's cap.
+2. **No overspend under concurrency:** lock the school's budget row (or use an atomic conditional update) in the same transaction as reservation. Reject if reserved + settled + estimated request cost exceeds the school ceiling.
+3. **Approved route registry:** exact provider, model, endpoint, capability/data categories, retention tier, training policy, region, effective dates, reviewer and evidence. Unknown or expired routes are denied.
+4. **Approved-only fallback:** iterate only the ordered approved route list; each route must meet the request's data classification. Disable provider-side arbitrary fallback and free-model routes.
+5. **Usage accounting:** record school, capability, provider, model, input/output tokens, estimated/actual cost, currency, latency and status. Never store prompts, student names, student IDs, or provider payloads in usage records.
+6. **Limits:** enforce input/output token ceilings, request timeout, per-school concurrency/rate limits, monthly monetary cap, and capability quota.
+7. **Kill switch:** platform-wide emergency disable plus per-school disable; both fail closed.
+8. **Student-case restriction:** keep individual student-case routing disabled until the specific route and student-data category receive separate written approval. Synthetic tests only before that gate.
+9. **Operational evidence:** test route denial, no-provider/no-network behavior, budget concurrency, exhausted budget, route fallback allowlist, provider failure, timeout, and absence of prompt/identity logging.
+
+### Implementation status (5 Nov 2026)
+
+- [x] Add server-side gateway boundary.
+- [x] Register gateway in the AI module.
+- [x] Guard teacher/leadership and student-case entry points before context reads, quota reservation, and network calls.
+- [x] Add a unit test asserting unapproved routes fail closed.
+- [ ] Replace legacy direct Gemini calls with provider adapters behind the gateway.
+- [ ] Add per-school monetary budget policy and atomic spend reservations.
+- [ ] Add provider/model approval registry and approved-only fallback.
+- [ ] Add synthetic-data integration tests and cost-accounting tests.
+- [ ] Complete legal, provider, school and child-data approvals.
+
+The monetary ceiling, currency, and period configuration remain a product/finance input. Until supplied and implemented, the current monthly request-count quota is not represented as a monetary spend cap.
