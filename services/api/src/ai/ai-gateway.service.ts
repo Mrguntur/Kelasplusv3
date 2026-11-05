@@ -9,7 +9,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
  */
 @Injectable()
 export class AiGatewayService {
-  assertProviderRouteApproved(): never {
+  assertProviderRouteApproved(): void {
     // No provider/model route is approved for KELAS+ school data yet.
     // This guard runs before context construction and before usage reservation.
     throw new ServiceUnavailableException(
