@@ -382,6 +382,40 @@ describe('MidtransService notification verification', () => {
     expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
   });
 
+  it('does not reverse add-on quota before Midtrans confirms the refund with the bank', async () => {
+    const purchase = {
+      id: 'purchase-refund-pending', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PAID',
+      expiresAfterDays: 30, expiresAt: new Date(Date.now() + 86400000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { findMany: jest.fn(), createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-refund-pending', gross_amount: '50000.00',
+      transaction_status: 'refund',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({
+      received: true, reviewRequired: true, awaitingBankConfirmation: true, purchaseStatus: 'PAID',
+    });
+    expect(tx.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.findMany).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
   it('reverses only the remaining quota after a verified full refund', async () => {
     const purchase = {
       id: 'purchase-refund', schoolId: 'school-1', requestUnits: 250,
@@ -404,6 +438,7 @@ describe('MidtransService notification verification', () => {
     const body = signed({
       order_id: 'KLS-AI-purchase-refund', gross_amount: '50000.00',
       transaction_id: 'midtrans-ai-tx-refund', transaction_status: 'refund',
+      refunds: [{ refund_amount: '50000.00', bank_confirmed_at: '2026-11-05 10:30:00' }],
     });
     body.signature_key = createHash('sha512')
       .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
