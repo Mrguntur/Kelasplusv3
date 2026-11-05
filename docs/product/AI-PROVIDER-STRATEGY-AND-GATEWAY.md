@@ -105,3 +105,41 @@ Before Stage 2 can close, the owner must choose the provider strategy and the ex
 - OpenRouter privacy policy: https://openrouter.ai/privacy
 
 These references can change. Re-check the live contract and provider terms at procurement/activation time.
+
+
+## 10. Owner-selected strategy — aggregator, balanced budget
+
+The product owner selected an **aggregator strategy** with a **balanced** cost/quality priority. This is the chosen architecture direction. OpenRouter is the first aggregator candidate to evaluate, not yet an approved production subprocessor or final provider.
+
+### Official OpenRouter findings reviewed 5 Nov 2026
+
+- OpenRouter's Privacy Policy says it does not use Inputs or Outputs for its own model training, but sends Inputs to the selected or automatically routed Model Provider. The underlying provider may retain or use Inputs/Outputs for training or improvement depending on that provider's terms.
+- OpenRouter's provider-logging documentation describes provider-level data policy tiers (including Zero Retention and Safety Retention) and account/request-level filters to restrict routing by data policy. These controls must be explicitly configured and verified; a general “paid” route does not itself establish an acceptable retention policy.
+- OpenRouter states Business/Enterprise plans support EU and US in-region routing. This does not establish Indonesian data residency; the actual route and transfer implications must be reviewed.
+- OpenRouter's privacy policy says a Data Processing Agreement and separate agreements with model providers govern API/Enterprise handling where applicable. Obtain and review the actual executed DPA and provider chain before production.
+
+Official references:
+- https://openrouter.ai/privacy
+- https://openrouter.ai/docs/guides/privacy/provider-logging
+- https://openrouter.ai/enterprise/form
+
+### Provisional KELAS+ aggregator policy
+
+1. Evaluate OpenRouter Business/Enterprise or an equivalent contract-capable aggregator; compare total cost, not just token price.
+2. Disable free-model routing for all school data.
+3. Require provider-level no-training commitment and an approved retention tier for every route. Prefer ZDR; Safety Retention is a separate, explicit approval decision and is not equivalent to ZDR.
+4. Use a static allowlist of exact provider/model/endpoint combinations. Do not use automatic routing across unknown providers for student-case requests.
+5. Review the underlying model provider's DPA, retention, processing location, subprocessors, deletion, and age/education restrictions independently.
+6. If the route cannot prove its approved policy, block the request. Never silently fall back to a different model/provider.
+7. Start with synthetic data and a cost/quality benchmark. No real student data until written provider, legal/privacy, and school approvals are recorded.
+
+### Balanced budget policy proposal
+
+- Route routine drafting/formatting to an approved lower-cost model.
+- Route complex pedagogical reasoning to an approved stronger model only when needed.
+- Apply per-school monthly spend caps and capability quotas, plus platform-wide hard stop.
+- Enforce maximum input/output tokens, request rate, timeout, and concurrency.
+- Track cost and usage by school/capability/provider/model without storing prompts or student identity.
+- No automatic paid overage unless explicitly included in the school's subscription terms.
+
+The aggregator selection is an architectural decision. OpenRouter's actual contract, specific model routes, pricing, account tier, regional processing, and KELAS+ education/minor-access suitability remain unverified. This section is not approval to send personal/student data.
