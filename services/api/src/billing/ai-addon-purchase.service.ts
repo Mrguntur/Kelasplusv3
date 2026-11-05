@@ -99,7 +99,7 @@ export class AiAddonPurchaseService {
           outcome: 'SUCCESS',
           metadata: { purchaseId: purchase.id, packId: pack.id, requestUnits: pack.requestUnits, currency: pack.currency },
         }, tx);
-        return { purchase, reused: false, paymentRequired: true, paymentIntegration: 'PENDING_IMPLEMENTATION' };
+        return { purchase, reused: false, paymentRequired: true, paymentIntegration: 'MIDTRANS' };
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
