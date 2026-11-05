@@ -12,6 +12,7 @@ import { PrismaService } from '../database/prisma.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
+import { AuditService } from '../audit/audit.service';
 
 type AiProviderResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -24,6 +25,7 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly entitlements: EntitlementService,
+    private readonly audit: AuditService,
   ) {}
 
 
@@ -146,6 +148,13 @@ export class AiService {
       };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
+        outcome: 'FAILURE',
+        metadata: { caseReference: reservation.caseReference, capability: 'teacher_assistant', model, policyVersion: '2026-11-05-v1' },
+      });
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
@@ -288,11 +297,28 @@ export class AiService {
         data: { id: randomUUID(), schoolId, userId: user.id, capability: 'teacher_assistant', model, status: 'PENDING' },
         select: { id: true },
       });
+      const caseReference = `CASE-${randomUUID().slice(0, 8).toUpperCase()}`;
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_REQUESTED',
+        outcome: 'SUCCESS',
+        metadata: {
+          caseReference,
+          capability: 'teacher_assistant',
+          model,
+          policyVersion: '2026-11-05-v1',
+          generationStatus: 'PENDING',
+          assessmentScope: isHomeroom ? 'ALL_CLASS_SUBJECTS' : 'ASSIGNED_SUBJECTS_ONLY',
+          dataCategories: ['attendance_summary_90d', 'published_assessment_scores'],
+          excludedCategories: ['student_name', 'student_number', 'contact_details', 'address', 'date_of_birth', 'family_profile', 'free_text_notes'],
+        },
+      }, tx);
       return {
         eventId: event.id,
         used: used + 1,
         monthlyLimit,
-        caseReference: `CASE-${randomUUID().slice(0, 8).toUpperCase()}`,
+        caseReference,
         safeQuestion: this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]),
         context: {
           analysisWindowDays: 90,
@@ -344,6 +370,13 @@ export class AiService {
       if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
       await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
         payload.usageMetadata?.promptTokenCount ?? 0, payload.usageMetadata?.candidatesTokenCount ?? 0);
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
+        outcome: 'SUCCESS',
+        metadata: { caseReference: reservation.caseReference, capability: 'teacher_assistant', model, policyVersion: '2026-11-05-v1' },
+      });
       return {
         answer,
         caseReference: reservation.caseReference,
@@ -606,7 +639,7 @@ export class AiService {
     return value
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL DIHAPUS]')
       .replace(/(?:\+?62|0)\s?8[\d\s-]{7,13}/g, '[NOMOR TELEPON DIHAPUS]')
-      .replace(/\b\d{10}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
+      .replace(/\b\d{8,18}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
   }
 
   private redactCaseQuestion(value: string, names: Array<string | null | undefined>): string {
