@@ -175,3 +175,17 @@ Pemberitahuan ini dapat diperbarui ketika fitur, penyedia, kategori data, tujuan
 - [ ] Publikasikan versi final dan mekanisme bukti penerimaan.
 
 > Dokumen ini adalah rancangan transparansi produk, bukan nasihat hukum dan bukan pernyataan bahwa seluruh kontrol atau prosedur yang disebutkan telah aktif di seluruh lingkungan KELAS+.
+
+
+## Catatan penting verifikasi penyedia Gemini — DRAFT INTERNAL
+
+Persyaratan resmi Gemini API membedakan layanan tidak berbayar dan berbayar. Untuk layanan tidak berbayar, Google menyatakan prompt dan respons dapat digunakan untuk peningkatan/pengembangan produk dan teknologi machine learning serta dapat ditinjau oleh peninjau manusia; Google memperingatkan agar data pribadi, sensitif, atau rahasia tidak dikirim ke layanan tersebut. Untuk layanan berbayar dengan proyek Gemini API yang memiliki billing aktif, Google menyatakan prompt/respons tidak digunakan untuk peningkatan produk dan diproses berdasarkan Data Processing Addendum, tetapi masih terdapat pencatatan terbatas untuk pemantauan penyalahgunaan dan keselamatan layanan.
+
+Persyaratan tambahan Gemini API juga memuat pembatasan usia untuk penggunaan API dalam aplikasi/layanan yang ditujukan kepada atau kemungkinan diakses oleh individu di bawah 18 tahun. Karena KELAS+ merupakan platform pendidikan yang mungkin diakses peserta didik anak, kelayakan penggunaan produk ini harus memperoleh verifikasi tertulis dari penyedia dan review hukum sebelum pemrosesan data peserta didik. Akun AI yang hanya digunakan guru tidak boleh diasumsikan otomatis menyelesaikan pembatasan tersebut.
+
+**Status KELAS+ saat ini: BELUM TERVERIFIKASI.** Belum ada bukti di dokumen ini mengenai jenis produk Google yang dipakai, status billing project, DPA, lokasi pemrosesan, konfigurasi logging, atau persetujuan untuk skenario platform pendidikan. Jangan menyatakan bahwa data tidak digunakan untuk pelatihan atau tidak disimpan sebelum verifikasi selesai. Jangan mengirim data pribadi peserta didik nyata ke Gemini Developer API sampai pemeriksaan ini dituntaskan; gunakan data sintetis.
+
+Referensi resmi untuk pemeriksaan:
+- https://ai.google.dev/gemini-api/terms
+- https://ai.google.dev/gemini-api/docs/zdr
+- https://ai.google.dev/gemini-api/docs/logs-policy
