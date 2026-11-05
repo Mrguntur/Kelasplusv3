@@ -75,6 +75,15 @@ export class BillingController {
     return this.midtrans.createAiAddonCheckout(user.id, user.activeSchoolId, purchaseId);
   }
 
+  @Post('ai-addons/purchases/:id/reconcile')
+  @UseGuards(SessionAuthGuard)
+  reconcileAiAddonPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe()) purchaseId: string,
+  ) {
+    return this.midtrans.reconcileAiAddonPurchase(user.id, user.activeSchoolId, purchaseId);
+  }
+
   @Get('plans')
   listPublishedPlans() {
     return this.billing.listPlans(false);
