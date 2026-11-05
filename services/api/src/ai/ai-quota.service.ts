@@ -21,7 +21,7 @@ export class AiQuotaService {
       where: {
         schoolId,
         purchaseId: { not: null },
-        purchase: { is: { status: 'PAID' } },
+        purchase: { is: { status: 'PAID', OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } },
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -32,6 +32,7 @@ export class AiQuotaService {
         unitsDelta: true,
         expiresAt: true,
         createdAt: true,
+        purchase: { select: { expiresAt: true } },
       },
     });
 
@@ -46,12 +47,12 @@ export class AiQuotaService {
       const current = balances.get(entry.purchaseId) ?? {
         balance: 0,
         firstGrantAt: entry.createdAt,
-        expiresAt: entry.expiresAt,
+        expiresAt: this.earliestExpiry(entry.expiresAt, entry.purchase?.expiresAt ?? null),
       };
       current.balance += entry.unitsDelta;
       if (entry.entryType === 'GRANT' && current.balance === entry.unitsDelta) {
         current.firstGrantAt = entry.createdAt;
-        current.expiresAt = entry.expiresAt;
+        current.expiresAt = this.earliestExpiry(entry.expiresAt, entry.purchase?.expiresAt ?? null);
       }
       balances.set(entry.purchaseId, current);
     }
@@ -81,6 +82,12 @@ export class AiQuotaService {
       },
     });
     return true;
+  }
+
+  private earliestExpiry(ledgerExpiry: Date | null, purchaseExpiry: Date | null): Date | null {
+    if (!ledgerExpiry) return purchaseExpiry;
+    if (!purchaseExpiry) return ledgerExpiry;
+    return ledgerExpiry.getTime() <= purchaseExpiry.getTime() ? ledgerExpiry : purchaseExpiry;
   }
 
   /**
