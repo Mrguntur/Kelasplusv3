@@ -490,6 +490,86 @@ describe('MidtransService notification verification', () => {
     expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
   });
 
+  it('rejects AI add-on reconciliation for a non-school-admin before calling Midtrans', async () => {
+    const tx = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'TEACHER' }) },
+      aiAddonPurchase: { findFirst: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(service.reconcileAiAddonPurchase('teacher-1', 'school-1', 'purchase-1'))
+      .rejects.toThrow('Hanya Admin Sekolah');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects an AI add-on Get Status response with an invalid signature', async () => {
+    const purchase = {
+      id: 'purchase-1', status: 'PENDING', paymentProvider: 'MIDTRANS',
+      providerReference: 'KLS-AI-purchase-1',
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'SCHOOL_ADMIN' }) },
+      aiAddonPurchase: { findFirst: jest.fn().mockResolvedValue(purchase) },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ ...signed({ order_id: purchase.providerReference }), signature_key: 'invalid' }),
+    } as Response);
+
+    await expect(service.reconcileAiAddonPurchase('admin-1', 'school-1', purchase.id))
+      .rejects.toThrow('Signature not valid.');
+    expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/v2/KLS-AI-purchase-1/status'), expect.any(Object));
+    fetchSpy.mockRestore();
+  });
+
+  it('does not settle an AI add-on when Get Status amount differs from the purchase', async () => {
+    const purchase = {
+      id: 'purchase-amount', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PENDING',
+      expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx1 = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'SCHOOL_ADMIN' }) },
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: purchase.id, status: 'PENDING', paymentProvider: 'MIDTRANS',
+          providerReference: 'KLS-AI-purchase-amount',
+        }),
+      },
+    };
+    const tx2 = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock)
+      .mockImplementationOnce(async (callback: (client: typeof tx1) => unknown) => callback(tx1))
+      .mockImplementationOnce(async (callback: (client: typeof tx2) => unknown) => callback(tx2));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-amount', gross_amount: '1.00',
+      transaction_status: 'settlement',
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 200, json: async () => body,
+    } as Response);
+
+    await expect(service.reconcileAiAddonPurchase('admin-1', 'school-1', purchase.id))
+      .rejects.toThrow('Nominal atau mata uang notifikasi tidak cocok');
+    expect(tx2.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx2.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
   it('uses the Sandbox configuration by default', () => {
     expect(config.get('MIDTRANS_IS_PRODUCTION')).toBe('false');
   });
