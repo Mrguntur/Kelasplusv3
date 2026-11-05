@@ -1,5 +1,6 @@
 import { AiService } from './ai.service';
 import type { AiGatewayService } from './ai-gateway.service';
+import type { AiQuotaService } from './ai-quota.service';
 import type { PrismaService } from '../database/prisma.service';
 import type { ConfigService } from '@nestjs/config';
 import type { EntitlementService } from '../entitlements/entitlement.service';
@@ -13,6 +14,7 @@ describe('AiService privacy safeguards', () => {
     {} as unknown as EntitlementService,
     {} as unknown as AuditService,
     {} as unknown as AiGatewayService,
+    { reserveAddonUnit: jest.fn(), releaseAddonReservation: jest.fn() } as unknown as AiQuotaService,
   );
 
   const internals = service as unknown as {
