@@ -251,3 +251,17 @@ Required gates remain:
 The model-price snapshot supplied by the owner is informational and must be rechecked against current contractual pricing before budgeting. Do not treat the snapshot as a quote or guarantee.
 
 Current runtime boundary is unchanged: AiGatewayService fails closed, the route registry is empty, and no provider traffic is authorized. MindRouter adapter work, if started, must remain disabled by default and synthetic-data-only.
+
+
+## 15. MindRouter synthetic adapter implementation status
+
+A provider-neutral request/result contract and `MindRouterSyntheticAdapter` have been added for controlled integration testing. The adapter uses the OpenAI-compatible Chat Completions endpoint and normalizes answer/model/token usage. It is registered in the AI module but is **not injected into `AiService` and is not called by any user-facing endpoint**.
+
+Safety controls:
+- The adapter method is explicitly named `generateSyntheticTest`.
+- It refuses execution in `NODE_ENV=production`.
+- It requires `AI_MINDROUTER_SYNTHETIC_TESTS_ENABLED=true` and backend-only `MINDROUTER_API_KEY` / `MINDROUTER_MODEL` configuration.
+- It uses a fixed HTTPS endpoint, a 20-second timeout, and generic errors that do not expose provider response details.
+- Automated tests cover production blocking, missing opt-in, request format, normalized token usage, HTTP failure, and empty fixtures.
+
+The explicit flag is a development/test harness, not a legal or provider approval. Do not enable it against real school data. No API key is committed. The main `AiGatewayService` remains fail-closed, and existing Gemini code remains unreachable. No real provider traffic, production activation, schema change, merge, or deployment is authorized by this implementation.
