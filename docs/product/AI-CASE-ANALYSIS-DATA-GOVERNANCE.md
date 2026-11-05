@@ -158,3 +158,27 @@ The initial AI case-history access policy is **creator-only**: only the teacher 
 - [ ] Complete synthetic-data staging, RLS/tenant-isolation, and desktop/mobile verification.
 
 A green CI confirms automated checks only; it does not complete legal approval, provider due diligence, staging, or manual verification. Do not start Stage 3 persistence or enable production history until the required Stage 2 gates are approved.
+
+
+## Stage 2 update — versioned agreement acceptance flow
+
+A new design artifact is available at `docs/product/AI-AGREEMENT-ACCEPTANCE-FLOW-DESIGN.md`.
+
+It specifies an immutable document-version registry, separate user acknowledgement/acceptance evidence, school-level authorization, version/content-hash binding, server-side AI capability gates, material-change handling, privacy-minimized audit records, UX safeguards, and required tests. It explicitly distinguishes acknowledgement of a privacy notice, contractual acceptance, school authorization, and consent where legally required.
+
+This remains a design artifact. No acceptance table, endpoint, API guard, consent UI, or production gate has been implemented. The lawful basis, guardian/parent process, school authority, document wording, and retention of acceptance evidence remain subject to qualified Indonesian legal/privacy review and school approval.
+
+### Stage 2 validation snapshot
+
+- [x] CI #655 passed for the roadmap/stage-boundary documentation update.
+- [x] CI #656 passed for the retention/deletion decision register.
+- [x] Retention decision register RET-01–RET-10 added; all policy decisions remain Pending until supported by approvals/evidence.
+- [x] Versioned agreement and privacy-notice acceptance flow design added.
+- [ ] CI for the latest acceptance-flow documentation commit.
+- [ ] Legal/privacy and school-authority approvals.
+- [ ] Provider/subprocessor due diligence and verified contractual terms.
+- [ ] Approved retention schedule and deletion authority.
+- [ ] Implementation and staging verification of the approved acceptance and retention controls.
+- [ ] Manual desktop/mobile, RLS, and tenant-isolation verification.
+
+**Stage 2 is not complete yet.** The remaining items require decisions, evidence, and verification outside documentation-only CI. Do not mark these gates complete or start Stage 3 persistence until they are satisfied.
