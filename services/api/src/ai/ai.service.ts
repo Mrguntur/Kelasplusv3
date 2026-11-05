@@ -148,13 +148,6 @@ export class AiService {
       };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
-      await this.audit.record({
-        actorUserId: user.id,
-        schoolId,
-        eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
-        outcome: 'FAILURE',
-        metadata: { caseReference: reservation.caseReference, capability: 'teacher_assistant', model, policyVersion: '2026-11-05-v1' },
-      });
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
@@ -386,6 +379,13 @@ export class AiService {
       };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
+        outcome: 'FAILURE',
+        metadata: { caseReference: reservation.caseReference, capability: 'teacher_assistant', model, policyVersion: '2026-11-05-v1' },
+      });
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
