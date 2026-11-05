@@ -14,6 +14,7 @@ import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
 import { AuditService } from '../audit/audit.service';
 import { buildStudentCaseAuditMetadata, buildStudentCaseProviderPayload } from './ai-provider-payload';
+import { AiGatewayService } from './ai-gateway.service';
 
 type AiProviderResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -27,6 +28,7 @@ export class AiService {
     private readonly config: ConfigService,
     private readonly entitlements: EntitlementService,
     private readonly audit: AuditService,
+    private readonly gateway: AiGatewayService,
   ) {}
 
 
@@ -57,6 +59,7 @@ export class AiService {
   }
 
   async generate(user: AuthenticatedUser, capability: AiCapability, question: string) {
+    this.gateway.assertProviderRouteApproved();
     const schoolId = user.activeSchoolId;
     if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menggunakan AI.');
 
@@ -160,6 +163,7 @@ export class AiService {
    * Only teachers assigned to the student's active class or its homeroom teacher may call this.
    */
   async analyzeStudentCase(user: AuthenticatedUser, studentId: string, question: string) {
+    this.gateway.assertProviderRouteApproved();
     const schoolId = user.activeSchoolId;
     if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menganalisis kasus siswa.');
 
