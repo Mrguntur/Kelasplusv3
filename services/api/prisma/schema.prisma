@@ -655,6 +655,7 @@ model AiUsageEvent {
   capability       String   @db.VarChar(40)
   model            String   @db.VarChar(80)
   status           String   @default("PENDING") @db.VarChar(20)
+  quotaSource      String   @default("PLAN") @map("quota_source") @db.VarChar(20)
   promptTokens     Int      @default(0) @map("prompt_tokens")
   completionTokens Int      @default(0) @map("completion_tokens")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
