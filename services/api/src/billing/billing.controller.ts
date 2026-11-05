@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PlatformAdminGuard } from '../schools/platform-admin.guard';
@@ -10,7 +10,6 @@ import { CreateAiAddonPackDto, UpdateAiAddonPackDto } from './ai-addon-pack.dto'
 import { AiAddonPurchaseService } from './ai-addon-purchase.service';
 import { CreateAiAddonPurchaseDto } from './create-ai-addon-purchase.dto';
 import { AuthenticatedUser } from '../auth/current-user.decorator';
-import { Headers } from '@nestjs/common';
 
 @Controller('billing')
 export class BillingController {
@@ -62,7 +61,7 @@ export class BillingController {
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     if (!idempotencyKey || !/^[A-Za-z0-9._:-]{16,120}$/.test(idempotencyKey)) {
-      throw new (require('@nestjs/common').BadRequestException)('Header Idempotency-Key wajib diisi (16–120 karakter).');
+      throw new BadRequestException('Header Idempotency-Key wajib diisi (16–120 karakter).');
     }
     return this.aiAddonPurchases.createPurchase(user.id, user.activeSchoolId, body.packId, idempotencyKey);
   }
