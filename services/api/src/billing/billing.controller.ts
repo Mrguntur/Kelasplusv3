@@ -7,6 +7,10 @@ import { MidtransService } from './midtrans.service';
 import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan.dto';
 import { AiAddonPackService } from './ai-addon-pack.service';
 import { CreateAiAddonPackDto, UpdateAiAddonPackDto } from './ai-addon-pack.dto';
+import { AiAddonPurchaseService } from './ai-addon-purchase.service';
+import { CreateAiAddonPurchaseDto } from './create-ai-addon-purchase.dto';
+import { AuthenticatedUser } from '../auth/current-user.decorator';
+import { Headers } from '@nestjs/common';
 
 @Controller('billing')
 export class BillingController {
@@ -14,6 +18,7 @@ export class BillingController {
     private readonly billing: BillingService,
     private readonly midtrans: MidtransService,
     private readonly aiAddonPacks: AiAddonPackService,
+    private readonly aiAddonPurchases: AiAddonPurchaseService,
   ) {}
 
   @Get('ai-addons/packs')
@@ -41,6 +46,25 @@ export class BillingController {
     @Body() body: UpdateAiAddonPackDto,
   ) {
     return this.aiAddonPacks.update(user.id, packId, body);
+  }
+
+  @Get('ai-addons/purchases')
+  @UseGuards(SessionAuthGuard)
+  listMyAiAddonPurchases(@CurrentUser() user: AuthenticatedUser) {
+    return this.aiAddonPurchases.listPurchases(user.id, user.activeSchoolId);
+  }
+
+  @Post('ai-addons/purchases')
+  @UseGuards(SessionAuthGuard)
+  createAiAddonPurchase(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateAiAddonPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    if (!idempotencyKey || !/^[A-Za-z0-9._:-]{16,120}$/.test(idempotencyKey)) {
+      throw new (require('@nestjs/common').BadRequestException)('Header Idempotency-Key wajib diisi (16–120 karakter).');
+    }
+    return this.aiAddonPurchases.createPurchase(user.id, user.activeSchoolId, body.packId, idempotencyKey);
   }
 
   @Get('plans')
