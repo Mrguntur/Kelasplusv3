@@ -378,20 +378,27 @@ export class AiService {
         privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
       };
     } catch (error) {
-      await this.updateStudentCaseUsageWithAudit(
-        user, schoolId, reservation.eventId, 'FAILED', 0, 0,
-        {
-          actorUserId: user.id,
-          schoolId,
-          eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
-          outcome: 'FAILURE',
-          metadata: buildStudentCaseAuditMetadata({
-            caseReference: reservation.caseReference,
-            model,
-            generationStatus: 'FAILED',
-          }),
-        },
-      );
+      try {
+        await this.updateStudentCaseUsageWithAudit(
+          user, schoolId, reservation.eventId, 'FAILED', 0, 0,
+          {
+            actorUserId: user.id,
+            schoolId,
+            eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
+            outcome: 'FAILURE',
+            metadata: buildStudentCaseAuditMetadata({
+              caseReference: reservation.caseReference,
+              model,
+              generationStatus: 'FAILED',
+            }),
+          },
+        );
+      } catch {
+        // Do not expose database details or claim a terminal status when audit persistence failed.
+        throw new ServiceUnavailableException(
+          'Status analisis belum dapat dipastikan karena pencatatan audit terganggu. Silakan hubungi administrator sebelum mencoba kembali.',
+        );
+      }
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
