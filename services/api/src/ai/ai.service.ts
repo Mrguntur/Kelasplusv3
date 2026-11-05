@@ -119,6 +119,8 @@ export class AiService {
       };
     });
 
+    let payload: AiProviderResponse;
+    let answer: string;
     try {
       const safeQuestion = this.redactSensitiveText(normalizedQuestion);
       const prompt = this.buildPrompt(capability, reservation.context);
@@ -135,32 +137,25 @@ export class AiService {
           signal: AbortSignal.timeout(30_000),
         },
       );
-
-      if (!response.ok) {
-        throw new BadGatewayException('Penyedia AI gagal memproses permintaan. Silakan coba kembali nanti.');
-      }
-
-      const payload = await response.json() as AiProviderResponse;
-      const answer = payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text ?? '')
-        .join('')
-        .trim();
+      if (!response.ok) throw new BadGatewayException('Penyedia AI gagal memproses permintaan. Silakan coba kembali nanti.');
+      payload = await response.json() as AiProviderResponse;
+      answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim() ?? '';
       if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
-
-      await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
-        payload.usageMetadata?.promptTokenCount ?? 0,
-        payload.usageMetadata?.candidatesTokenCount ?? 0);
-
-      return {
-        answer,
-        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
-        model,
-      };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
+
+    // Provider succeeded: persistence failure must not release the reserved add-on unit.
+    await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
+      payload.usageMetadata?.promptTokenCount ?? 0,
+      payload.usageMetadata?.candidatesTokenCount ?? 0);
+    return {
+      answer,
+      usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
+      model,
+    };
   }
 
 
@@ -350,6 +345,8 @@ export class AiService {
       };
     });
 
+    let payload: AiProviderResponse;
+    let answer: string;
     try {
       const prompt = [
         'Anda adalah asisten pedagogis untuk membantu guru SMP melakukan telaah kasus pembelajaran secara suportif.',
@@ -358,44 +355,20 @@ export class AiService {
         'Jangan mendiagnosis kondisi medis, psikologis, atau disabilitas. Jangan memberi label negatif, memprediksi masa depan siswa, atau menyimpulkan sebab-akibat tanpa bukti. Jangan menyarankan hukuman atau tindakan otomatis.',
         'Jaga martabat dan kerahasiaan siswa. Keputusan akhir selalu pada guru dan harus mempertimbangkan konteks langsung.',
         `Snapshot kasus: ${JSON.stringify(reservation.context)}`,
-      ].join('\n\n');
-      const safeQuestion = reservation.safeQuestion;
+      ].join('\\n\\n');
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify(buildStudentCaseProviderPayload(prompt, safeQuestion)),
+          body: JSON.stringify(buildStudentCaseProviderPayload(prompt, reservation.safeQuestion)),
           signal: AbortSignal.timeout(30_000),
         },
       );
       if (!response.ok) throw new BadGatewayException('Penyedia AI gagal memproses analisis kasus.');
-      const payload = await response.json() as AiProviderResponse;
-      const answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim();
+      payload = await response.json() as AiProviderResponse;
+      answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim() ?? '';
       if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
-      await this.updateStudentCaseUsageWithAudit(
-        user, schoolId, reservation.eventId, 'SUCCEEDED',
-        payload.usageMetadata?.promptTokenCount ?? 0,
-        payload.usageMetadata?.candidatesTokenCount ?? 0,
-        {
-          actorUserId: user.id,
-          schoolId,
-          eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
-          outcome: 'SUCCESS',
-          metadata: buildStudentCaseAuditMetadata({
-            caseReference: reservation.caseReference,
-            model,
-            generationStatus: 'SUCCEEDED',
-          }),
-        },
-      );
-      return {
-        answer,
-        caseReference: reservation.caseReference,
-        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
-        model,
-        privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
-      };
     } catch (error) {
       try {
         await this.updateStudentCaseUsageWithAudit(
@@ -413,7 +386,6 @@ export class AiService {
           },
         );
       } catch {
-        // Do not expose database details or claim a terminal status when audit persistence failed.
         throw new ServiceUnavailableException(
           'Status analisis belum dapat dipastikan karena pencatatan audit terganggu. Silakan hubungi administrator sebelum mencoba kembali.',
         );
@@ -421,6 +393,31 @@ export class AiService {
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
+
+    // A successful provider response remains charged if completion/audit persistence fails.
+    await this.updateStudentCaseUsageWithAudit(
+      user, schoolId, reservation.eventId, 'SUCCEEDED',
+      payload.usageMetadata?.promptTokenCount ?? 0,
+      payload.usageMetadata?.candidatesTokenCount ?? 0,
+      {
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
+        outcome: 'SUCCESS',
+        metadata: buildStudentCaseAuditMetadata({
+          caseReference: reservation.caseReference,
+          model,
+          generationStatus: 'SUCCEEDED',
+        }),
+      },
+    );
+    return {
+      answer,
+      caseReference: reservation.caseReference,
+      usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
+      model,
+      privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
+    };
   }
 
   private async getAggregateContext(
