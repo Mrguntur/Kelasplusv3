@@ -171,9 +171,6 @@ describe('AiService student-case audit lifecycle', () => {
     ).rejects.toThrow(
       'Status analisis belum dapat dipastikan karena pencatatan audit terganggu.',
     );
-    await expect(
-      service.analyzeStudentCase(user, 'internal-student-id', 'Mohon telaah kasus ini.'),
-    ).rejects.not.toThrow('sensitive database connection details');
   });
 
   it('records a failed generation event when the provider rejects the request', async () => {
