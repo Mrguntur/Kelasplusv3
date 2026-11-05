@@ -107,7 +107,7 @@ export class AiService {
     });
 
     try {
-      const safeQuestion = this.redactSensitiveText(normalizedQuestion);
+      const safeQuestion = this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]);
       const prompt = this.buildPrompt(capability, reservation.context);
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -195,7 +195,7 @@ export class AiService {
             ],
           },
         },
-        select: { classId: true },
+        select: { classId: true, student: { select: { fullName: true, preferredName: true } } },
       });
       if (!enrollment) throw new ForbiddenException('Siswa tidak berada dalam kelas yang ditugaskan kepada Anda atau kelas wali Anda.');
 
@@ -587,6 +587,17 @@ export class AiService {
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL DIHAPUS]')
       .replace(/(?:\+?62|0)\s?8[\d\s-]{7,13}/g, '[NOMOR TELEPON DIHAPUS]')
       .replace(/\b\d{10}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
+  }
+
+  private redactCaseQuestion(value: string, names: Array<string | null | undefined>): string {
+    let sanitized = this.redactSensitiveText(value);
+    for (const name of names) {
+      const normalizedName = name?.trim();
+      if (!normalizedName || normalizedName.length < 2) continue;
+      const escaped = normalizedName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\  private buildPrompt(capability: AiCapability, context: Record<string, unknown>): string {');
+      sanitized = sanitized.replace(new RegExp(escaped, 'gi'), '[IDENTITAS SISWA DIHAPUS]');
+    }
+    return sanitized;
   }
 
   private buildPrompt(capability: AiCapability, context: Record<string, unknown>): string {
