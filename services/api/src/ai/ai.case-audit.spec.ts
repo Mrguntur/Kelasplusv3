@@ -113,7 +113,7 @@ describe('AiService student-case audit lifecycle', () => {
     });
     expect(audit.record.mock.calls[1][1]).toBe(tx);
     expect(tx.aiUsageEvent.update).toHaveBeenCalledWith({
-      where: { id: 'usage-event-id' },
+      where: { id: tx.aiUsageEvent.create.mock.calls[0][0].data.id },
       data: { status: 'SUCCEEDED', promptTokens: 120, completionTokens: 80 },
     });
     expect(tx.aiUsageEvent.update.mock.invocationCallOrder[0])
@@ -153,11 +153,11 @@ describe('AiService student-case audit lifecycle', () => {
       'AI_STUDENT_CASE_GENERATION_FAILED',
     ]);
     expect(tx.aiUsageEvent.update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'usage-event-id' },
+      where: { id: tx.aiUsageEvent.create.mock.calls[0][0].data.id },
       data: { status: 'SUCCEEDED', promptTokens: 90, completionTokens: 40 },
     });
     expect(tx.aiUsageEvent.update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'usage-event-id' },
+      where: { id: tx.aiUsageEvent.create.mock.calls[0][0].data.id },
       data: { status: 'FAILED', promptTokens: 0, completionTokens: 0 },
     });
     expect(audit.record.mock.calls[2][1]).toBe(tx);
@@ -200,7 +200,7 @@ describe('AiService student-case audit lifecycle', () => {
     });
     expect(audit.record.mock.calls[1][1]).toBe(tx);
     expect(tx.aiUsageEvent.update).toHaveBeenCalledWith({
-      where: { id: 'usage-event-id' },
+      where: { id: tx.aiUsageEvent.create.mock.calls[0][0].data.id },
       data: { status: 'FAILED', promptTokens: 0, completionTokens: 0 },
     });
     expect(tx.aiUsageEvent.update.mock.invocationCallOrder[0])
