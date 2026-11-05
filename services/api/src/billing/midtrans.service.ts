@@ -45,6 +45,83 @@ export class MidtransService {
     };
   }
 
+  async createAiAddonCheckout(userId: string, schoolId: string | null | undefined, purchaseId: string) {
+    if (!schoolId) throw new ConflictException('Pilih sekolah aktif terlebih dahulu.');
+    const settings = this.settings();
+    const checkout = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      const membership = await tx.schoolMembership.findUnique({
+        where: { schoolId_userId: { schoolId, userId } }, select: { role: true },
+      });
+      if (!membership || membership.role !== 'SCHOOL_ADMIN') throw new UnauthorizedException('Hanya Admin Sekolah yang dapat membayar pembelian kuota AI.');
+      await tx.$queryRaw`SELECT id FROM ai_addon_purchases WHERE id = ${purchaseId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+      const purchase = await tx.aiAddonPurchase.findFirst({
+        where: { id: purchaseId, schoolId }, include: { school: { select: { name: true, slug: true } } },
+      });
+      if (!purchase) throw new NotFoundException('Pesanan kuota AI tidak ditemukan.');
+      if (purchase.status !== 'PENDING') throw new ConflictException('Pesanan tidak lagi menunggu pembayaran.');
+      if (purchase.currency !== 'IDR' || purchase.priceAmount.lte(0) || purchase.priceAmount.decimalPlaces() > 0) {
+        throw new ConflictException('Pembayaran add-on harus berupa nominal IDR bulat dan lebih besar dari nol.');
+      }
+      if (purchase.paymentUrl && purchase.providerToken && purchase.providerReference) return { purchase, reused: true };
+      const orderId = purchase.providerReference ?? `KLS-AI-${purchase.id}`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      const updated = await tx.aiAddonPurchase.update({
+        where: { id: purchase.id }, data: { paymentProvider: 'MIDTRANS', providerReference: orderId },
+        include: { school: { select: { name: true, slug: true } } },
+      });
+      return { purchase: updated, reused: false };
+    });
+
+    if (checkout.reused) return {
+      purchaseId: checkout.purchase.id, orderId: checkout.purchase.providerReference,
+      token: checkout.purchase.providerToken, redirectUrl: checkout.purchase.paymentUrl,
+      environment: settings.environment, reused: true,
+    };
+
+    const orderId = checkout.purchase.providerReference;
+    if (!orderId) throw new ConflictException('Referensi pembayaran add-on belum tersedia.');
+    try {
+      const response = await fetch(`${settings.baseUrl}/snap/v1/transactions`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json', 'Content-Type': 'application/json',
+          Authorization: `Basic ${Buffer.from(`${settings.serverKey}:`).toString('base64')}`,
+          'Idempotency-Key': checkout.purchase.idempotencyKey,
+        },
+        body: JSON.stringify({
+          transaction_details: { order_id: orderId, gross_amount: Number(checkout.purchase.priceAmount.toFixed(0)) },
+          item_details: [{
+            id: checkout.purchase.packId, price: Number(checkout.purchase.priceAmount.toFixed(0)), quantity: 1,
+            name: `KELAS+ AI ${checkout.purchase.requestUnits} requests`.slice(0, 50),
+          }],
+          customer_details: { first_name: checkout.purchase.school.name.slice(0, 50) },
+          custom_field1: checkout.purchase.id, custom_field2: checkout.purchase.school.slug,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await response.json() as SnapCreateResponse & { error_messages?: string[] };
+      if (!response.ok || !payload.token || !payload.redirect_url) throw new Error(payload.error_messages?.join('; ') || `Midtrans returned HTTP ${response.status}`);
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+        await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+        await tx.aiAddonPurchase.update({
+          where: { id: checkout.purchase.id }, data: { paymentUrl: payload.redirect_url, providerToken: payload.token },
+        });
+        await this.audit.record({
+          actorUserId: userId, schoolId, eventType: 'billing.ai_addon_checkout_created', outcome: 'SUCCESS',
+          metadata: { purchaseId, orderId, environment: settings.environment },
+        }, tx);
+      });
+      return { purchaseId, orderId, token: payload.token, redirectUrl: payload.redirect_url, environment: settings.environment, reused: false };
+    } catch (error) {
+      this.logger.error('Midtrans AI add-on checkout request failed', error instanceof Error ? error.stack : String(error));
+      throw new BadGatewayException('Checkout belum dapat dipastikan. Silakan coba kembali; referensi transaksi yang sama akan digunakan.');
+    }
+  }
+
   async createCheckout(adminUserId: string, invoiceId: string) {
     const settings = this.settings();
     const checkout = await this.prisma.$transaction(async (tx) => {
@@ -261,12 +338,102 @@ export class MidtransService {
     return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
   }
 
+  private async handleAiAddonNotification(notification: MidtransNotification, orderId: string) {
+    const transactionStatus = typeof notification.transaction_status === 'string' ? notification.transaction_status : '';
+    const grossAmount = new Prisma.Decimal(notification.gross_amount as string);
+    if (!grossAmount.isFinite() || grossAmount.lt(0)) throw new ConflictException('Invalid add-on payment amount.');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', '00000000-0000-0000-0000-000000000000', true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+      const candidate = await tx.aiAddonPurchase.findFirst({
+        where: { paymentProvider: 'MIDTRANS', providerReference: orderId }, select: { id: true },
+      });
+      if (!candidate) throw new NotFoundException('AI add-on purchase reference tidak ditemukan.');
+      await tx.$queryRaw`SELECT id FROM ai_addon_purchases WHERE id = ${candidate.id}::uuid FOR UPDATE`;
+      const purchase = await tx.aiAddonPurchase.findUnique({ where: { id: candidate.id } });
+      if (!purchase) throw new NotFoundException('AI add-on purchase tidak ditemukan.');
+      if (!purchase.priceAmount.equals(grossAmount) || purchase.currency !== (notification.currency ?? 'IDR')) {
+        throw new ConflictException('Nominal atau mata uang notifikasi tidak cocok dengan pesanan add-on.');
+      }
+      const successful = (transactionStatus === 'settlement' ||
+        (transactionStatus === 'capture' && notification.fraud_status === 'accept')) &&
+        notification.status_code === '200' &&
+        (notification.fraud_status === undefined || notification.fraud_status === 'accept');
+      if (purchase.status === 'REFUNDED') return { received: true, duplicate: true, purchaseStatus: 'REFUNDED' };
+      if (transactionStatus === 'partial_refund') {
+        await this.audit.record({
+          actorUserId: null, schoolId: purchase.schoolId,
+          eventType: 'billing.ai_addon_partial_refund_review_required', outcome: 'SUCCESS',
+          metadata: { purchaseId: purchase.id, orderId },
+        }, tx);
+        return { received: true, reviewRequired: true, purchaseStatus: purchase.status };
+      }
+      if (successful) {
+        if (purchase.status === 'PAID') return { received: true, duplicate: true, purchaseStatus: 'PAID' };
+        if (purchase.status !== 'PENDING') throw new ConflictException('Pesanan add-on tidak berada pada status yang dapat dibayar.');
+        const expiresAt = purchase.expiresAfterDays ? new Date(Date.now() + purchase.expiresAfterDays * 86400000) : null;
+        await tx.aiAddonPurchase.update({
+          where: { id: purchase.id },
+          data: {
+            status: 'PAID', paidAt: new Date(), expiresAt,
+            providerPaymentId: typeof notification.transaction_id === 'string' ? notification.transaction_id : null,
+          },
+        });
+        await tx.$executeRaw`SELECT set_config('app.is_trusted_ai_quota_writer', 'true', true)`;
+        await tx.aiQuotaLedgerEntry.createMany({
+          data: [{
+            id: randomUUID(), schoolId: purchase.schoolId, purchaseId: purchase.id,
+            entryType: 'GRANT', unitsDelta: purchase.requestUnits,
+            referenceKey: `ai-addon-purchase:${purchase.id}:grant`, expiresAt,
+            metadata: { provider: 'MIDTRANS', orderId },
+          }], skipDuplicates: true,
+        });
+        await this.audit.record({
+          actorUserId: null, schoolId: purchase.schoolId, eventType: 'billing.ai_addon_payment_settled',
+          outcome: 'SUCCESS', metadata: { purchaseId: purchase.id, orderId, requestUnits: purchase.requestUnits },
+        }, tx);
+        return { received: true, purchaseStatus: 'PAID', grantedUnits: purchase.requestUnits };
+      }
+      if (transactionStatus === 'refund') {
+        if (purchase.status === 'PAID') {
+          const entries = await tx.aiQuotaLedgerEntry.findMany({ where: { purchaseId: purchase.id }, select: { unitsDelta: true } });
+          const remaining = Math.max(0, entries.reduce((sum, entry) => sum + entry.unitsDelta, 0));
+          await tx.aiAddonPurchase.update({ where: { id: purchase.id }, data: { status: 'REFUNDED' } });
+          if (remaining > 0) {
+            await tx.$executeRaw`SELECT set_config('app.is_trusted_ai_quota_writer', 'true', true)`;
+            await tx.aiQuotaLedgerEntry.createMany({
+              data: [{
+                id: randomUUID(), schoolId: purchase.schoolId, purchaseId: purchase.id,
+                entryType: 'REVERSAL', unitsDelta: -remaining,
+                referenceKey: `ai-addon-purchase:${purchase.id}:reversal`, expiresAt: purchase.expiresAt,
+                metadata: { provider: 'MIDTRANS', orderId, reason: 'FULL_REFUND' },
+              }], skipDuplicates: true,
+            });
+          }
+        }
+        return { received: true, purchaseStatus: 'REFUNDED' };
+      }
+      let nextStatus: 'FAILED' | 'CANCELED' | 'EXPIRED' | 'PENDING' = 'PENDING';
+      if (transactionStatus === 'deny') nextStatus = 'FAILED';
+      else if (transactionStatus === 'cancel') nextStatus = 'CANCELED';
+      else if (transactionStatus === 'expire') nextStatus = 'EXPIRED';
+      if (purchase.status !== 'PENDING') return { received: true, duplicate: true, purchaseStatus: purchase.status };
+      if (nextStatus !== 'PENDING') await tx.aiAddonPurchase.update({ where: { id: purchase.id }, data: { status: nextStatus } });
+      await this.audit.record({
+        actorUserId: null, schoolId: purchase.schoolId, eventType: 'billing.ai_addon_payment_notification_processed',
+        outcome: 'SUCCESS', metadata: { purchaseId: purchase.id, orderId, transactionStatus, normalizedStatus: nextStatus },
+      }, tx);
+      return { received: true, purchaseStatus: nextStatus };
+    });
+  }
+
   async handleNotification(notification: MidtransNotification) {
     const { serverKey } = this.settings();
     if (!this.verifySignature(notification, serverKey)) {
       throw new UnauthorizedException('Signature not valid.');
     }
     const orderId = notification.order_id as string;
+    if (orderId.startsWith('KLS-AI-')) return this.handleAiAddonNotification(notification, orderId);
     const transactionStatus = typeof notification.transaction_status === 'string' ? notification.transaction_status : '';
     const grossAmount = new Prisma.Decimal(notification.gross_amount as string);
     if (!grossAmount.isFinite() || grossAmount.lt(0)) throw new ConflictException('Invalid payment amount.');
