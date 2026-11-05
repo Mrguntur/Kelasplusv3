@@ -52,7 +52,7 @@ describe('AiService privacy safeguards', () => {
 
     expect(redacted).not.toContain('0012345678');
     expect(redacted).not.toContain('6301021234567890');
-    expect(redacted.match(/\\[NOMOR IDENTITAS DIHAPUS\\]/g)).toHaveLength(2);
+    expect(redacted.split('[NOMOR IDENTITAS DIHAPUS]').length - 1).toBe(2);
   });
 
   it('removes the selected student name from the free-text question before provider submission', () => {
