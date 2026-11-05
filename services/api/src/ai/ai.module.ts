@@ -6,10 +6,11 @@ import { EntitlementService } from '../entitlements/entitlement.service';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { AiGatewayService } from './ai-gateway.service';
+import { MindRouterSyntheticAdapter } from './mindrouter-synthetic.adapter';
 
 @Module({
   imports: [ConfigModule, AuthModule],
   controllers: [AiController],
-  providers: [AiService, AiGatewayService, EntitlementService, SessionAuthGuard],
+  providers: [AiService, AiGatewayService, MindRouterSyntheticAdapter, EntitlementService, SessionAuthGuard],
 })
 export class AiModule {}
