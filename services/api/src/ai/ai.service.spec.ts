@@ -12,6 +12,7 @@ describe('AiService privacy safeguards', () => {
 
   const internals = service as unknown as {
     redactSensitiveText(value: string): string;
+    redactCaseQuestion(value: string, names: Array<string | null | undefined>): string;
     buildPrompt(capability: 'teacher_assistant' | 'leadership_insights', context: Record<string, unknown>): string;
     normalizeAssessmentScore(score: unknown, maxScore: number): number | null;
   };
@@ -40,6 +41,17 @@ describe('AiService privacy safeguards', () => {
     expect(redacted).toContain('[EMAIL DIHAPUS]');
     expect(redacted).toContain('[NOMOR TELEPON DIHAPUS]');
     expect(redacted).toContain('[NOMOR IDENTITAS DIHAPUS]');
+  });
+
+  it('removes the selected student name from the free-text question before provider submission', () => {
+    const sanitized = internals.redactCaseQuestion(
+      'Bagaimana membantu Ahmad Saputra yang sering absen?',
+      ['Ahmad Saputra', 'Ahmad'],
+    );
+
+    expect(sanitized).not.toContain('Ahmad Saputra');
+    expect(sanitized).not.toContain('Ahmad');
+    expect(sanitized).toContain('[IDENTITAS SISWA DIHAPUS]');
   });
 
   it('keeps the teacher assistant prompt pedagogical and limited to aggregate context', () => {
