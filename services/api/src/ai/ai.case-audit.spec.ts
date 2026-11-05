@@ -105,6 +105,13 @@ describe('AiService student-case audit lifecycle', () => {
       outcome: 'SUCCESS',
       metadata: { generationStatus: 'SUCCEEDED' },
     });
+    expect(audit.record.mock.calls[1][1]).toBe(tx);
+    expect(tx.aiUsageEvent.update).toHaveBeenCalledWith({
+      where: { id: 'usage-event-id' },
+      data: { status: 'SUCCEEDED', promptTokens: 120, completionTokens: 80 },
+    });
+    expect(tx.aiUsageEvent.update.mock.invocationCallOrder[0])
+      .toBeLessThan(audit.record.mock.invocationCallOrder[1]);
 
     for (const event of events) {
       const serialized = JSON.stringify(event.metadata).toLowerCase();
@@ -136,5 +143,12 @@ describe('AiService student-case audit lifecycle', () => {
       outcome: 'FAILURE',
       metadata: { generationStatus: 'FAILED' },
     });
+    expect(audit.record.mock.calls[1][1]).toBe(tx);
+    expect(tx.aiUsageEvent.update).toHaveBeenCalledWith({
+      where: { id: 'usage-event-id' },
+      data: { status: 'FAILED', promptTokens: 0, completionTokens: 0 },
+    });
+    expect(tx.aiUsageEvent.update.mock.invocationCallOrder[0])
+      .toBeLessThan(audit.record.mock.invocationCallOrder[1]);
   });
 });
