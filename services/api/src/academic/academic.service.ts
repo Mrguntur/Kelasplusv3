@@ -1296,25 +1296,30 @@ export class AcademicService {
       if (!schoolClass) throw new BadRequestException('Kelas aktif tidak ditemukan di sekolah yang dipilih.');
 
       const privileged = membership.role === SchoolRole.SCHOOL_ADMIN || membership.role === SchoolRole.SCHOOL_LEADER;
+      let teacherAssessmentSubjectIds: string[] | null = null;
+      let teacherIsHomeroom = false;
       if (!privileged) {
         if (membership.role !== SchoolRole.TEACHER) {
           throw new ForbiddenException('Peran akun ini tidak memiliki akses ke laporan kelas.');
         }
-        const [assignment, isHomeroom] = await Promise.all([
-          tx.teachingAssignment.findFirst({
-            where: { schoolId: user.activeSchoolId!, classId, archivedAt: null, staffProfile: { userId: user.id, status: 'ACTIVE' } },
-            select: { id: true },
+        const staff = await tx.staffProfile.findFirst({
+          where: { schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
+          select: { id: true },
+        });
+        if (!staff) throw new ForbiddenException('Profil guru aktif tidak ditemukan di sekolah ini.');
+        const [assignments, homeroom] = await Promise.all([
+          tx.teachingAssignment.findMany({
+            where: { schoolId: user.activeSchoolId!, classId, staffProfileId: staff.id, archivedAt: null },
+            select: { subjectId: true },
           }),
-          Promise.resolve(schoolClass.homeroomStaffProfileId),
+          schoolClass.homeroomStaffProfileId === staff.id,
         ]);
-        const homeroom = isHomeroom
-          ? await tx.staffProfile.findFirst({
-              where: { id: isHomeroom, schoolId: user.activeSchoolId!, userId: user.id, status: 'ACTIVE' },
-              select: { id: true },
-            })
-          : null;
-        if (!assignment && !homeroom) {
+        teacherIsHomeroom = homeroom;
+        if (!assignments.length && !teacherIsHomeroom) {
           throw new ForbiddenException('Laporan hanya dapat diakses oleh guru yang ditugaskan pada kelas tersebut, wali kelas, atau pimpinan sekolah.');
+        }
+        if (!teacherIsHomeroom) {
+          teacherAssessmentSubjectIds = [...new Set(assignments.map((item) => item.subjectId))];
         }
       }
 
@@ -1347,7 +1352,11 @@ export class AcademicService {
           where: {
             schoolId: user.activeSchoolId!,
             status: 'PUBLISHED',
-            assignment: { classId, archivedAt: null },
+            assignment: {
+              classId,
+              archivedAt: null,
+              ...(teacherAssessmentSubjectIds ? { subjectId: { in: teacherAssessmentSubjectIds } } : {}),
+            },
           },
           orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
           select: {
@@ -1420,7 +1429,7 @@ export class AcademicService {
           attendance: {
             ...counts,
             recordedSessions: recorded,
-            attendanceRate: sessions.length ? Math.round((presentOrLate / sessions.length) * 10000) / 100 : null,
+            attendanceRate: recorded ? Math.round((presentOrLate / recorded) * 10000) / 100 : null,
           },
           assessment: {
             publishedAssessmentsWithScore: scoreSummary?.count ?? 0,
@@ -1455,6 +1464,9 @@ export class AcademicService {
           sessions: sessions.map(({ records: _records, ...session }) => session),
         },
         assessments: assessmentSummaries,
+        assessmentScope: privileged || teacherIsHomeroom
+          ? 'ALL_CLASS_SUBJECTS'
+          : 'ASSIGNED_SUBJECTS_ONLY',
         students,
       };
     });
