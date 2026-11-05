@@ -36,7 +36,7 @@ describe('AiAddonPurchaseService', () => {
     expect(result).toEqual(expect.objectContaining({
       reused: false,
       paymentRequired: true,
-      paymentIntegration: 'PENDING_IMPLEMENTATION',
+      paymentIntegration: 'MIDTRANS',
     }));
     expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(tx.aiAddonPack.findFirst).toHaveBeenCalledWith(expect.objectContaining({
