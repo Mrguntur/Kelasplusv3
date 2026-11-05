@@ -182,3 +182,14 @@ This remains a design artifact. No acceptance table, endpoint, API guard, consen
 - [ ] Manual desktop/mobile, RLS, and tenant-isolation verification.
 
 **Stage 2 is not complete yet.** The remaining items require decisions, evidence, and verification outside documentation-only CI. Do not mark these gates complete or start Stage 3 persistence until they are satisfied.
+
+
+## Owner decision — paid third-party AI provider strategy
+
+The product owner confirmed that Gemini API Free is currently used with limited quota for development, while the intended production direction is a paid third-party API with greater quota and model flexibility.
+
+The platform direction is provider independence through a server-side AI Provider Gateway. A new design document, `docs/product/AI-PROVIDER-STRATEGY-AND-GATEWAY.md`, records provider adapters, allowlisting, role/data-purpose routing, cost and quota controls, fallback rules, and provider due-diligence requirements.
+
+No production provider has been selected or approved yet. Gemini Free is restricted to synthetic/non-personal development and test data. Student-case data must not be routed to a paid provider until its exact API product, DPA, retention, training use, processing region, subprocessors, deletion terms, and education/minor-access suitability are verified. Aggregator routing is not automatically approved; each underlying provider/model must be allowlisted.
+
+This is a recorded product direction and architecture proposal, not a provider integration or production activation.
