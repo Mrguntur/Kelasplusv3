@@ -10,6 +10,7 @@ import { Prisma, SchoolRole } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
+import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
 
 type AiProviderResponse = {
@@ -142,6 +143,213 @@ export class AiService {
         answer,
         usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
         model,
+      };
+    } catch (error) {
+      await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
+      if (error instanceof BadGatewayException) throw error;
+      throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
+    }
+  }
+
+
+  /**
+   * Analyzes one student using a minimized, pseudonymous snapshot.
+   * Only teachers assigned to the student's active class or its homeroom teacher may call this.
+   */
+  async analyzeStudentCase(user: AuthenticatedUser, studentId: string, question: string) {
+    const schoolId = user.activeSchoolId;
+    if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menganalisis kasus siswa.');
+
+    const normalizedQuestion = question.trim();
+    if (normalizedQuestion.length < 5 || normalizedQuestion.length > 2000) {
+      throw new BadRequestException('Pertanyaan harus berisi 5 sampai 2.000 karakter.');
+    }
+    const apiKey = this.config.get<string>('GEMINI_API_KEY');
+    if (!apiKey) throw new ServiceUnavailableException('Layanan AI belum dikonfigurasi oleh administrator platform.');
+    const model = this.config.get<string>('GEMINI_MODEL') || 'gemini-2.5-flash';
+
+    const reservation = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      const membership = await tx.schoolMembership.findUnique({
+        where: { schoolId_userId: { schoolId, userId: user.id } },
+        select: { role: true },
+      });
+      if (!membership || membership.role !== SchoolRole.TEACHER) {
+        throw new ForbiddenException('Analisis kasus individu hanya tersedia bagi guru yang berwenang.');
+      }
+      const staff = await tx.staffProfile.findFirst({
+        where: { schoolId, userId: user.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!staff) throw new ForbiddenException('Profil guru aktif tidak ditemukan.');
+
+      const enrollment = await tx.classEnrollment.findFirst({
+        where: {
+          schoolId, studentId, status: 'ACTIVE',
+          student: { schoolId, status: 'ACTIVE', archivedAt: null },
+          schoolClass: {
+            schoolId, status: 'ACTIVE',
+            OR: [
+              { teachingAssignments: { some: { schoolId, staffProfileId: staff.id, archivedAt: null } } },
+              { homeroomStaffProfileId: staff.id },
+            ],
+          },
+        },
+        select: { classId: true, student: { select: { fullName: true, preferredName: true } } },
+      });
+      if (!enrollment) throw new ForbiddenException('Siswa tidak berada dalam kelas yang ditugaskan kepada Anda atau kelas wali Anda.');
+
+      await this.entitlements.lockSchool(tx, schoolId);
+      await this.entitlements.assertAiCapability(tx, schoolId, membership.role, 'teacher_assistant');
+      const monthlyLimit = await this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, 'teacher_assistant');
+      if (monthlyLimit < 1) throw new ForbiddenException('Kuota AI belum tersedia pada paket sekolah ini.');
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const used = await tx.aiUsageEvent.count({
+        where: { schoolId, capability: 'teacher_assistant', createdAt: { gte: monthStart } },
+      });
+      if (used >= monthlyLimit) throw new ForbiddenException(`Kuota AI bulanan telah tercapai (${used}/${monthlyLimit}).`);
+
+      const isHomeroom = await tx.schoolClass.findFirst({
+        where: { id: enrollment.classId, schoolId, homeroomStaffProfileId: staff.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      const teacherAssignments = isHomeroom
+        ? []
+        : await tx.teachingAssignment.findMany({
+            where: { schoolId, classId: enrollment.classId, staffProfileId: staff.id, archivedAt: null },
+            select: { subjectId: true },
+          });
+      const assignedSubjectIds = [...new Set(teacherAssignments.map((item) => item.subjectId))];
+      if (!isHomeroom && !assignedSubjectIds.length) {
+        throw new ForbiddenException('Tidak ada penugasan mata pelajaran aktif untuk kasus siswa ini.');
+      }
+
+      const since = new Date(now);
+      since.setDate(since.getDate() - 90);
+      const [attendance, assessments] = await Promise.all([
+        tx.attendanceRecord.findMany({
+          where: {
+            schoolId, studentId,
+            attendanceSession: { schoolId, classId: enrollment.classId, status: 'FINALIZED', date: { gte: since, lte: now } },
+          },
+          orderBy: { attendanceSession: { date: 'asc' } },
+          select: { status: true, attendanceSession: { select: { date: true } } },
+          take: 180,
+        }),
+        tx.assessmentScore.findMany({
+          where: {
+            schoolId, studentId,
+            assessment: {
+              schoolId, status: 'PUBLISHED',
+              assignment: {
+                schoolId,
+                classId: enrollment.classId,
+                ...buildAssessmentAssignmentScope(isHomeroom ? null : assignedSubjectIds),
+              },
+            },
+          },
+          orderBy: { enteredAt: 'asc' },
+          select: {
+            score: true,
+            assessment: {
+              select: {
+                maxScore: true,
+                assessmentType: true,
+                assignment: { select: { subject: { select: { name: true } } } },
+              },
+            },
+          },
+          take: 100,
+        }),
+      ]);
+
+      const attendanceSummary = { present: 0, late: 0, sick: 0, excused: 0, absent: 0, total: attendance.length };
+      for (const record of attendance) {
+        if (record.status === 'PRESENT') attendanceSummary.present += 1;
+        else if (record.status === 'LATE') attendanceSummary.late += 1;
+        else if (record.status === 'SICK') attendanceSummary.sick += 1;
+        else if (record.status === 'EXCUSED') attendanceSummary.excused += 1;
+        else if (record.status === 'ABSENT') attendanceSummary.absent += 1;
+      }
+      const validScores = assessments.map((entry) => {
+        const score = entry.score === null ? null : Number(entry.score);
+        const maximum = Number(entry.assessment.maxScore);
+        if (score === null || !Number.isFinite(score) || !Number.isFinite(maximum) || maximum <= 0 || score < 0 || score > maximum) return null;
+        return {
+          subject: entry.assessment.assignment.subject.name,
+          assessmentType: entry.assessment.assessmentType,
+          scorePercent: Math.round((score / maximum) * 10000) / 100,
+        };
+      }).filter((entry): entry is { subject: string; assessmentType: string; scorePercent: number } => entry !== null);
+
+      const event = await tx.aiUsageEvent.create({
+        data: { id: randomUUID(), schoolId, userId: user.id, capability: 'teacher_assistant', model, status: 'PENDING' },
+        select: { id: true },
+      });
+      return {
+        eventId: event.id,
+        used: used + 1,
+        monthlyLimit,
+        caseReference: `CASE-${randomUUID().slice(0, 8).toUpperCase()}`,
+        safeQuestion: this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]),
+        context: {
+          analysisWindowDays: 90,
+          attendance: {
+            ...attendanceSummary,
+            attendanceRatePercent: attendanceSummary.total
+              ? Math.round(((attendanceSummary.present + attendanceSummary.late) / attendanceSummary.total) * 10000) / 100
+              : null,
+            recentStatusSequence: attendance.slice(-30).map((record) => record.status),
+          },
+          publishedAssessmentResults: validScores,
+          assessmentScope: isHomeroom ? 'ALL_CLASS_SUBJECTS' : 'ASSIGNED_SUBJECTS_ONLY',
+          dataLimitations: [
+            'Hanya sesi absensi final dalam 90 hari terakhir yang dihitung.',
+            'Hanya nilai asesmen yang sudah dipublikasikan dan berada dalam rentang valid yang digunakan.',
+            ...(isHomeroom ? [] : ['Nilai dibatasi pada mata pelajaran yang ditugaskan kepada guru peminta.']),
+            'Catatan bebas, identitas, nomor induk, tanggal lahir, dan profil keluarga tidak dikirim ke penyedia AI.',
+          ],
+        },
+      };
+    });
+
+    try {
+      const prompt = [
+        'Anda adalah asisten pedagogis untuk membantu guru SMP melakukan telaah kasus pembelajaran secara suportif.',
+        'Jawab dalam Bahasa Indonesia. Data berikut adalah snapshot pseudonim satu kasus; tidak ada identitas siswa.',
+        'Pisahkan: (1) fakta yang tampak pada data, (2) kemungkinan penjelasan yang harus diverifikasi, (3) pertanyaan klarifikasi untuk guru, (4) intervensi pembelajaran/pendampingan yang realistis, (5) indikator dan waktu evaluasi.',
+        'Jangan mendiagnosis kondisi medis, psikologis, atau disabilitas. Jangan memberi label negatif, memprediksi masa depan siswa, atau menyimpulkan sebab-akibat tanpa bukti. Jangan menyarankan hukuman atau tindakan otomatis.',
+        'Jaga martabat dan kerahasiaan siswa. Keputusan akhir selalu pada guru dan harus mempertimbangkan konteks langsung.',
+        `Snapshot kasus: ${JSON.stringify(reservation.context)}`,
+      ].join('\n\n');
+      const safeQuestion = reservation.safeQuestion;
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: prompt }] },
+            contents: [{ role: 'user', parts: [{ text: safeQuestion }] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1100 },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      if (!response.ok) throw new BadGatewayException('Penyedia AI gagal memproses analisis kasus.');
+      const payload = await response.json() as AiProviderResponse;
+      const answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim();
+      if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
+      await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
+        payload.usageMetadata?.promptTokenCount ?? 0, payload.usageMetadata?.candidatesTokenCount ?? 0);
+      return {
+        answer,
+        caseReference: reservation.caseReference,
+        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
+        model,
+        privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
       };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
@@ -399,6 +607,25 @@ export class AiService {
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL DIHAPUS]')
       .replace(/(?:\+?62|0)\s?8[\d\s-]{7,13}/g, '[NOMOR TELEPON DIHAPUS]')
       .replace(/\b\d{10}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
+  }
+
+  private redactCaseQuestion(value: string, names: Array<string | null | undefined>): string {
+    let sanitized = this.redactSensitiveText(value);
+    for (const name of names) {
+      const normalizedName = name?.trim();
+      if (!normalizedName || normalizedName.length < 2) continue;
+      const needle = normalizedName.toLocaleLowerCase('id-ID');
+      let cursor = 0;
+      let result = '';
+      let match = sanitized.toLocaleLowerCase('id-ID').indexOf(needle, cursor);
+      while (match !== -1) {
+        result += sanitized.slice(cursor, match) + '[IDENTITAS SISWA DIHAPUS]';
+        cursor = match + normalizedName.length;
+        match = sanitized.toLocaleLowerCase('id-ID').indexOf(needle, cursor);
+      }
+      sanitized = result + sanitized.slice(cursor);
+    }
+    return sanitized;
   }
 
   private buildPrompt(capability: AiCapability, context: Record<string, unknown>): string {

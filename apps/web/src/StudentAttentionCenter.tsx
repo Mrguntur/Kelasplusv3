@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCw, Users } from 'lucide-react';
 import { api } from './api';
+import AiStudentCaseButton from './AiStudentCaseButton';
 
 type SchoolClass = { id: string; name: string; gradeLevel: number; academicYear?: { name: string } | null };
 type AttentionStudent = {
@@ -14,7 +15,7 @@ function percent(value: number | null) {
   return value === null ? 'Belum cukup data' : value.toLocaleString('id-ID', { maximumFractionDigits: 1 }) + '%';
 }
 
-export default function StudentAttentionCenter() {
+export default function StudentAttentionCenter({ role }: { role: string }) {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [classId, setClassId] = useState('');
   const [report, setReport] = useState<ClassReport | null>(null);
@@ -54,7 +55,7 @@ export default function StudentAttentionCenter() {
     <p className="student-attention-intro">Menandai indikator kehadiran di bawah 80% atau rerata penilaian di bawah 65%. Ini adalah sinyal awal untuk ditinjau bersama konteks siswa, bukan diagnosis atau keputusan otomatis.</p>
     <div className="student-attention-controls"><label>Pilih kelas<select value={classId} onChange={e=>setClassId(e.target.value)} disabled={loadingClasses}><option value="">Pilih kelas</option>{classes.map(item=><option key={item.id} value={item.id}>{item.name} · Tingkat {item.gradeLevel}</option>)}</select></label><div className="student-attention-filters"><button className={filter==='all'?'selected':''} onClick={()=>setFilter('all')}>Semua</button><button className={filter==='attendance'?'selected':''} onClick={()=>setFilter('attendance')}>Kehadiran</button><button className={filter==='learning'?'selected':''} onClick={()=>setFilter('learning')}>Penilaian</button></div></div>
     {error && <div className="alert error" role="alert">{error}</div>}
-    {loadingClasses || loadingReport ? <div className="academic-empty"><RefreshCw size={16}/> Memuat ringkasan kelas…</div> : !classes.length ? <div className="academic-empty">Belum ada kelas yang dapat diakses oleh akun ini.</div> : !report ? <div className="academic-empty">Pilih kelas untuk memeriksa indikator siswa.</div> : !report.summary.finalizedAttendanceSessions && !report.students.some(s=>s.assessment.publishedAssessmentsWithScore>0) ? <div className="academic-empty">Belum ada data presensi final atau penilaian terpublikasi yang cukup untuk pemeriksaan. </div> : !students.length ? <div className="academic-empty"><Users size={20}/> Tidak ada siswa yang melewati ambang pemeriksaan pada data tersedia.</div> : <div className="table-wrap"><table className="academic-table"><thead><tr><th>Nama siswa</th><th>Kehadiran</th><th>Rerata penilaian</th><th>Indikator</th></tr></thead><tbody>{students.map(student=><tr key={student.id}><td><strong>{student.fullName}</strong><span className="table-subtitle">{student.studentNumber || 'NIS belum diisi'}</span></td><td>{percent(student.attendance.attendanceRate)}</td><td>{percent(student.assessment.averagePercentage)}</td><td><div className="attention-tags">{student.attendanceConcern&&<span>Kehadiran</span>}{student.learningConcern&&<span>Penilaian</span>}</div></td></tr>)}</tbody></table></div>}
+    {loadingClasses || loadingReport ? <div className="academic-empty"><RefreshCw size={16}/> Memuat ringkasan kelas…</div> : !classes.length ? <div className="academic-empty">Belum ada kelas yang dapat diakses oleh akun ini.</div> : !report ? <div className="academic-empty">Pilih kelas untuk memeriksa indikator siswa.</div> : !report.summary.finalizedAttendanceSessions && !report.students.some(s=>s.assessment.publishedAssessmentsWithScore>0) ? <div className="academic-empty">Belum ada data presensi final atau penilaian terpublikasi yang cukup untuk pemeriksaan. </div> : !students.length ? <div className="academic-empty"><Users size={20}/> Tidak ada siswa yang melewati ambang pemeriksaan pada data tersedia.</div> : <div className="table-wrap"><table className="academic-table"><thead><tr><th>Nama siswa</th><th>Kehadiran</th><th>Rerata penilaian</th><th>Indikator</th>{role === 'TEACHER' && <th>Tindak lanjut</th>}</tr></thead><tbody>{students.map(student=><tr key={student.id}><td><strong>{student.fullName}</strong><span className="table-subtitle">{student.studentNumber || 'NIS belum diisi'}</span></td><td>{percent(student.attendance.attendanceRate)}</td><td>{percent(student.assessment.averagePercentage)}</td><td><div className="attention-tags">{student.attendanceConcern&&<span>Kehadiran</span>}{student.learningConcern&&<span>Penilaian</span>}</div></td>{role === 'TEACHER' && <td><AiStudentCaseButton studentId={student.id} studentName={student.fullName}/></td>}</tr>)}</tbody></table></div>}
     <p className="student-attention-footnote">Data diambil dari laporan kelas yang diizinkan untuk role ini. Ambang 80% dan 65% merupakan penanda awal yang dapat ditinjau sekolah, bukan standar kelulusan.</p>
   </section>;
 }

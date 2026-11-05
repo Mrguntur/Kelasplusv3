@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/platform-v2-foundation
+      - feat/platform-v2-ui-design-system
       - feat/platform-v2-super-admin
       - feat/platform-v2-subscription-foundation
       - fix/platform-v2-entitlement-rebased
@@ -16,6 +17,7 @@ on:
       - ".github/workflows/platform-v2-api.yml"
   push:
     branches:
+      - feat/ai-case-analysis-data-governance
       - feat/platform-v2-foundation
       - feat/platform-v2-school-onboarding
     paths:
