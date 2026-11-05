@@ -725,6 +725,7 @@ model AiAddonPurchase {
   pack               AiAddonPack           @relation(fields: [packId], references: [id], onDelete: Restrict)
   ledgerEntries      AiQuotaLedgerEntry[]
 
+  @@unique([schoolId, id])
   @@unique([paymentProvider, providerReference])
   @@unique([paymentProvider, providerPaymentId])
   @@index([schoolId, status, createdAt])
@@ -745,7 +746,7 @@ model AiQuotaLedgerEntry {
   metadata    Json                    @default("{}") @db.JsonB
   createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   school      School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  purchase    AiAddonPurchase?        @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  purchase    AiAddonPurchase?        @relation(fields: [schoolId, purchaseId], references: [schoolId, id], onDelete: Restrict)
 
   @@index([schoolId, expiresAt, createdAt])
   @@index([schoolId, entryType, createdAt])
