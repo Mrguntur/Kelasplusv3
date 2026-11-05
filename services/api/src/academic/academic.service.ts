@@ -28,6 +28,7 @@ import { CreateTeachingJournalDto } from './dto/create-teaching-journal.dto';
 import { UpdateTeachingJournalDto } from './dto/update-teaching-journal.dto';
 import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { UpsertAssessmentScoresDto } from './dto/upsert-assessment-scores.dto';
+import { buildAssessmentAssignmentScope } from './assessment-scope';
 
 @Injectable()
 export class AcademicService {
@@ -1354,8 +1355,7 @@ export class AcademicService {
             status: 'PUBLISHED',
             assignment: {
               classId,
-              archivedAt: null,
-              ...(teacherAssessmentSubjectIds ? { subjectId: { in: teacherAssessmentSubjectIds } } : {}),
+              ...buildAssessmentAssignmentScope(teacherAssessmentSubjectIds),
             },
           },
           orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
