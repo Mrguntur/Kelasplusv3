@@ -210,6 +210,21 @@ export class AiService {
       });
       if (used >= monthlyLimit) throw new ForbiddenException(`Kuota AI bulanan telah tercapai (${used}/${monthlyLimit}).`);
 
+      const isHomeroom = await tx.schoolClass.findFirst({
+        where: { id: enrollment.classId, schoolId, homeroomStaffProfileId: staff.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      const teacherAssignments = isHomeroom
+        ? []
+        : await tx.teachingAssignment.findMany({
+            where: { schoolId, classId: enrollment.classId, staffProfileId: staff.id, archivedAt: null },
+            select: { subjectId: true },
+          });
+      const assignedSubjectIds = [...new Set(teacherAssignments.map((item) => item.subjectId))];
+      if (!isHomeroom && !assignedSubjectIds.length) {
+        throw new ForbiddenException('Tidak ada penugasan mata pelajaran aktif untuk kasus siswa ini.');
+      }
+
       const since = new Date(now);
       since.setDate(since.getDate() - 90);
       const [attendance, assessments] = await Promise.all([
@@ -227,7 +242,12 @@ export class AiService {
             schoolId, studentId,
             assessment: {
               schoolId, status: 'PUBLISHED',
-              assignment: { schoolId, classId: enrollment.classId, archivedAt: null },
+              assignment: {
+                schoolId,
+                classId: enrollment.classId,
+                archivedAt: null,
+                ...(!isHomeroom ? { subjectId: { in: assignedSubjectIds } } : {}),
+              },
             },
           },
           orderBy: { enteredAt: 'asc' },
@@ -284,9 +304,11 @@ export class AiService {
             recentStatusSequence: attendance.slice(-30).map((record) => record.status),
           },
           publishedAssessmentResults: validScores,
+          assessmentScope: isHomeroom ? 'ALL_CLASS_SUBJECTS' : 'ASSIGNED_SUBJECTS_ONLY',
           dataLimitations: [
             'Hanya sesi absensi final dalam 90 hari terakhir yang dihitung.',
             'Hanya nilai asesmen yang sudah dipublikasikan dan berada dalam rentang valid yang digunakan.',
+            ...(isHomeroom ? [] : ['Nilai dibatasi pada mata pelajaran yang ditugaskan kepada guru peminta.']),
             'Catatan bebas, identitas, nomor induk, tanggal lahir, dan profil keluarga tidak dikirim ke penyedia AI.',
           ],
         },
