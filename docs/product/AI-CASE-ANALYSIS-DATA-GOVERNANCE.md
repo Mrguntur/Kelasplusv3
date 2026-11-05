@@ -209,3 +209,20 @@ Key constraints:
 - Gemini Free remains for synthetic/non-personal development and testing only.
 
 The aggregator architecture and balanced budget priority are approved product direction. OpenRouter account tier, contract, model routes, prices, DPA, and legal/privacy/school approval remain pending. No real student data may be routed until these gates are evidenced.
+
+
+## Owner decision update — MindRouter candidate supersedes OpenRouter (5 Nov 2026)
+
+The owner has since selected **MindRouter** as the first aggregator candidate for controlled engineering evaluation. This supersedes the earlier OpenRouter-first-candidate note above. OpenRouter is now only a previously considered alternative and is not the current candidate in the plan.
+
+This is a candidate selection only—not production-provider approval, subprocessor approval, legal approval, or permission to process school/student personal data. MindRouter due diligence must verify the contracting entity, executed DPA, exact upstream model/provider chain, training and retention terms, deletion, processing region/transfers, security/incident terms, education/minor-access suitability, endpoint/model stability, pricing, and billing controls.
+
+Until written evidence is reviewed and approved:
+- keep the provider route registry empty and the gateway fail-closed;
+- use synthetic/non-personal data only with a separately authorized test account;
+- do not commit API keys or expose them to clients;
+- do not send real school/student data to MindRouter or any upstream provider;
+- do not enable student-case routing;
+- do not invent a per-school monetary cap; the amount, currency, and billing period remain pending owner/finance decision.
+
+The existing MindRouter model-price screenshot is a dated informational snapshot, not a current quote or contractual commitment. Revalidate pricing before implementing budget calculations. No production integration, provider activation, merge, or deployment is authorized by this decision.
