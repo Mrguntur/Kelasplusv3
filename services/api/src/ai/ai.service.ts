@@ -752,6 +752,8 @@ export class AiService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
       await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      // Serialize quota releases with reservations for the same school.
+      await this.entitlements.lockSchool(tx, schoolId);
       const event = await tx.aiUsageEvent.findUnique({
         where: { id: eventId },
         select: { quotaSource: true },
