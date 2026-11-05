@@ -5,10 +5,43 @@ import { PlatformAdminGuard } from '../schools/platform-admin.guard';
 import { BillingService } from './billing.service';
 import { MidtransService } from './midtrans.service';
 import { AssignTrialSubscriptionDto, CreatePlanDto, UpdatePlanDto } from './plan.dto';
+import { AiAddonPackService } from './ai-addon-pack.service';
+import { CreateAiAddonPackDto, UpdateAiAddonPackDto } from './ai-addon-pack.dto';
 
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billing: BillingService, private readonly midtrans: MidtransService) {}
+  constructor(
+    private readonly billing: BillingService,
+    private readonly midtrans: MidtransService,
+    private readonly aiAddonPacks: AiAddonPackService,
+  ) {}
+
+  @Get('ai-addons/packs')
+  listPublishedAiAddonPacks() {
+    return this.aiAddonPacks.listPublished();
+  }
+
+  @Get('admin/ai-addons/packs')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  listAllAiAddonPacks(@CurrentUser() user: { id: string }) {
+    return this.aiAddonPacks.listAll(user.id);
+  }
+
+  @Post('admin/ai-addons/packs')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  createAiAddonPack(@CurrentUser() user: { id: string }, @Body() body: CreateAiAddonPackDto) {
+    return this.aiAddonPacks.create(user.id, body);
+  }
+
+  @Patch('admin/ai-addons/packs/:id')
+  @UseGuards(SessionAuthGuard, PlatformAdminGuard)
+  updateAiAddonPack(
+    @CurrentUser() user: { id: string },
+    @Param('id', new ParseUUIDPipe()) packId: string,
+    @Body() body: UpdateAiAddonPackDto,
+  ) {
+    return this.aiAddonPacks.update(user.id, packId, body);
+  }
 
   @Get('plans')
   listPublishedPlans() {
