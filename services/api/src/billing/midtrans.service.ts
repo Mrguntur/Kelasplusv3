@@ -122,6 +122,54 @@ export class MidtransService {
     }
   }
 
+  async reconcileAiAddonPurchase(userId: string, schoolId: string | null | undefined, purchaseId: string) {
+    if (!schoolId) throw new ConflictException('Pilih sekolah aktif terlebih dahulu.');
+    const settings = this.settings();
+    const purchase = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      const membership = await tx.schoolMembership.findUnique({
+        where: { schoolId_userId: { schoolId, userId } }, select: { role: true },
+      });
+      if (!membership || membership.role !== 'SCHOOL_ADMIN') throw new UnauthorizedException('Hanya Admin Sekolah yang dapat merekonsiliasi pembayaran add-on.');
+      return tx.aiAddonPurchase.findFirst({
+        where: { id: purchaseId, schoolId },
+        select: { id: true, status: true, paymentProvider: true, providerReference: true },
+      });
+    });
+    if (!purchase) throw new NotFoundException('Pesanan kuota AI tidak ditemukan.');
+    if (purchase.paymentProvider !== 'MIDTRANS' || !purchase.providerReference) {
+      return { purchaseId, purchaseStatus: purchase.status, reconciled: false, reason: 'CHECKOUT_NOT_CREATED' };
+    }
+    let response: Response;
+    try {
+      response = await fetch(`${settings.apiBaseUrl}/v2/${encodeURIComponent(purchase.providerReference)}/status`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Basic ${Buffer.from(`${settings.serverKey}:`).toString('base64')}`,
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (error) {
+      this.logger.error('Midtrans AI add-on Get Status request failed', error instanceof Error ? error.stack : String(error));
+      throw new BadGatewayException('Status pembayaran add-on belum dapat diverifikasi ke Midtrans.');
+    }
+    if (response.status === 404) {
+      return { purchaseId, purchaseStatus: purchase.status, providerStatus: 'not_found_yet', reconciled: false };
+    }
+    if (!response.ok) throw new BadGatewayException('Midtrans belum dapat mengembalikan status pembayaran add-on.');
+    const notification = await response.json() as MidtransNotification;
+    if (notification.order_id !== purchase.providerReference ||
+        typeof notification.gross_amount !== 'string' ||
+        typeof notification.status_code !== 'string' ||
+        typeof notification.signature_key !== 'string') {
+      throw new BadGatewayException('Respons status Midtrans untuk add-on tidak lengkap atau tidak cocok.');
+    }
+    const result = await this.handleNotification(notification);
+    return { purchaseId, ...result, reconciled: true, source: 'MIDTRANS_GET_STATUS' };
+  }
+
   async createCheckout(adminUserId: string, invoiceId: string) {
     const settings = this.settings();
     const checkout = await this.prisma.$transaction(async (tx) => {
