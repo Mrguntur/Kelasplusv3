@@ -10,6 +10,7 @@ import { Prisma, SchoolRole } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
+import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
 
 type AiProviderResponse = {
@@ -245,8 +246,7 @@ export class AiService {
               assignment: {
                 schoolId,
                 classId: enrollment.classId,
-                archivedAt: null,
-                ...(!isHomeroom ? { subjectId: { in: assignedSubjectIds } } : {}),
+                ...buildAssessmentAssignmentScope(isHomeroom ? null : assignedSubjectIds),
               },
             },
           },
