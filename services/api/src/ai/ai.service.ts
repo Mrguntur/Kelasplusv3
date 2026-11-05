@@ -301,7 +301,7 @@ export class AiService {
         'Jangan mendiagnosis kondisi medis, psikologis, atau disabilitas. Jangan memberi label negatif, memprediksi masa depan siswa, atau menyimpulkan sebab-akibat tanpa bukti. Jangan menyarankan hukuman atau tindakan otomatis.',
         'Jaga martabat dan kerahasiaan siswa. Keputusan akhir selalu pada guru dan harus mempertimbangkan konteks langsung.',
         `Snapshot kasus: ${JSON.stringify(reservation.context)}`,
-      ].join('\\n\\n');
+      ].join('\n\n');
       const safeQuestion = reservation.safeQuestion;
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -327,7 +327,7 @@ export class AiService {
         caseReference: reservation.caseReference,
         usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
         model,
-        privacy: 'Identitas siswa dan ID internal tidak dikirim ke penyedia AI.',
+        privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
       };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
