@@ -245,6 +245,79 @@ describe('MidtransService notification verification', () => {
     fetchSpy.mockRestore();
   });
 
+
+  it('grants AI add-on units exactly once after a verified settlement notification', async () => {
+    const purchase = {
+      id: 'purchase-123', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR',
+      status: 'PENDING', expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    (audit.record as jest.Mock).mockResolvedValue(undefined);
+    const body = signed({
+      order_id: 'KLS-AI-purchase-123', gross_amount: '50000.00',
+      transaction_id: 'midtrans-ai-tx-1', transaction_status: 'settlement',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, purchaseStatus: 'PAID', grantedUnits: 250 });
+    expect(tx.aiAddonPurchase.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: purchase.id },
+      data: expect.objectContaining({ status: 'PAID', providerPaymentId: 'midtrans-ai-tx-1' }),
+    }));
+    expect(tx.aiQuotaLedgerEntry.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({
+        purchaseId: purchase.id, entryType: 'GRANT', unitsDelta: 250,
+        referenceKey: 'ai-addon-purchase:purchase-123:grant',
+      })],
+      skipDuplicates: true,
+    }));
+  });
+
+  it('does not grant AI add-on units twice for a repeated settlement', async () => {
+    const purchase = {
+      id: 'purchase-123', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PAID',
+      expiresAfterDays: 30, expiresAt: new Date(Date.now() + 86400000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-123', gross_amount: '50000.00',
+      transaction_id: 'midtrans-ai-tx-1', transaction_status: 'settlement',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, duplicate: true, purchaseStatus: 'PAID' });
+    expect(tx.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
   it('uses the Sandbox configuration by default', () => {
     expect(config.get('MIDTRANS_IS_PRODUCTION')).toBe('false');
   });
