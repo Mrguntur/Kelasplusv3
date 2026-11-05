@@ -323,7 +323,7 @@ export class AiService {
         }),
       }, tx);
       return {
-        eventId: event.id,
+        eventId,
         used: used + (quotaSource === 'PLAN' ? 1 : 0),
         monthlyLimit,
         quotaSource,
