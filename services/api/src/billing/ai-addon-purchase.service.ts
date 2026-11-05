@@ -37,9 +37,11 @@ export class AiAddonPurchaseService {
         select: { purchaseId: true, unitsDelta: true, expiresAt: true, createdAt: true },
       });
       const now = new Date();
-      const eligiblePurchases = new Map(purchases
-        .filter((purchase) => purchase.status === 'PAID' && (!purchase.expiresAt || purchase.expiresAt > now))
-        .map((purchase) => [purchase.id, true]));
+      const eligibleRows = await tx.aiAddonPurchase.findMany({
+        where: { schoolId, status: 'PAID', OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        select: { id: true },
+      });
+      const eligiblePurchases = new Set(eligibleRows.map((purchase) => purchase.id));
       const balances = new Map<string, number>();
       for (const entry of entries) {
         if (entry.expiresAt && entry.expiresAt <= now) continue;
