@@ -245,6 +245,384 @@ describe('MidtransService notification verification', () => {
     fetchSpy.mockRestore();
   });
 
+
+  it('grants AI add-on units exactly once after a verified settlement notification', async () => {
+    const purchase = {
+      id: 'purchase-123', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR',
+      status: 'PENDING', expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    (audit.record as jest.Mock).mockResolvedValue(undefined);
+    const body = signed({
+      order_id: 'KLS-AI-purchase-123', gross_amount: '50000.00',
+      transaction_id: 'midtrans-ai-tx-1', transaction_status: 'settlement',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, purchaseStatus: 'PAID', grantedUnits: 250 });
+    expect(tx.aiAddonPurchase.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: purchase.id },
+      data: expect.objectContaining({ status: 'PAID', providerPaymentId: 'midtrans-ai-tx-1' }),
+    }));
+    expect(tx.aiQuotaLedgerEntry.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({
+        purchaseId: purchase.id, entryType: 'GRANT', unitsDelta: 250,
+        referenceKey: 'ai-addon-purchase:purchase-123:grant',
+      })],
+      skipDuplicates: true,
+    }));
+  });
+
+  it('does not grant AI add-on units twice for a repeated settlement', async () => {
+    const purchase = {
+      id: 'purchase-123', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PAID',
+      expiresAfterDays: 30, expiresAt: new Date(Date.now() + 86400000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-123', gross_amount: '50000.00',
+      transaction_id: 'midtrans-ai-tx-1', transaction_status: 'settlement',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, duplicate: true, purchaseStatus: 'PAID' });
+    expect(tx.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
+
+  it('does not grant add-on units when a signed notification amount does not match the purchase', async () => {
+    const purchase = {
+      id: 'purchase-mismatch', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PENDING',
+      expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-mismatch', gross_amount: '1.00',
+      transaction_id: 'midtrans-ai-tx-mismatch', transaction_status: 'settlement',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    await expect(service.handleNotification(body))
+      .rejects.toThrow('Nominal atau mata uang notifikasi tidak cocok');
+    expect(tx.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it('marks a denied add-on payment failed without granting quota', async () => {
+    const purchase = {
+      id: 'purchase-denied', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PENDING',
+      expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-denied', gross_amount: '50000.00',
+      transaction_status: 'deny', status_code: '202',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, purchaseStatus: 'FAILED' });
+    expect(tx.aiAddonPurchase.update).toHaveBeenCalledWith({
+      where: { id: purchase.id }, data: { status: 'FAILED' },
+    });
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it('does not reverse add-on quota before Midtrans confirms the refund with the bank', async () => {
+    const purchase = {
+      id: 'purchase-refund-pending', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PAID',
+      expiresAfterDays: 30, expiresAt: new Date(Date.now() + 86400000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { findMany: jest.fn(), createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-refund-pending', gross_amount: '50000.00',
+      transaction_status: 'refund',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({
+      received: true, reviewRequired: true, awaitingBankConfirmation: true, purchaseStatus: 'PAID',
+    });
+    expect(tx.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.findMany).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it('reverses only the remaining quota after a verified full refund', async () => {
+    const purchase = {
+      id: 'purchase-refund', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PAID',
+      expiresAfterDays: 30, expiresAt: new Date(Date.now() + 86400000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      aiQuotaLedgerEntry: {
+        findMany: jest.fn().mockResolvedValue([{ unitsDelta: 250 }, { unitsDelta: -80 }]),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-refund', gross_amount: '50000.00',
+      transaction_id: 'midtrans-ai-tx-refund', transaction_status: 'refund',
+      refunds: [{ refund_amount: '50000.00', bank_confirmed_at: '2026-11-05 10:30:00' }],
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, purchaseStatus: 'REFUNDED' });
+    expect(tx.aiAddonPurchase.update).toHaveBeenCalledWith({
+      where: { id: purchase.id }, data: { status: 'REFUNDED' },
+    });
+    expect(tx.aiQuotaLedgerEntry.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({
+        purchaseId: purchase.id, entryType: 'REVERSAL', unitsDelta: -170,
+        referenceKey: 'ai-addon-purchase:purchase-refund:reversal',
+      })],
+      skipDuplicates: true,
+    }));
+  });
+
+  it('does not grant quota for a partial refund and flags it for finance review', async () => {
+    const purchase = {
+      id: 'purchase-partial', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PAID',
+      expiresAfterDays: 30, expiresAt: new Date(Date.now() + 86400000),
+    };
+    const tx = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn(), findMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-partial', gross_amount: '50000.00',
+      transaction_status: 'partial_refund',
+    });
+    body.signature_key = createHash('sha512')
+      .update(`${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`)
+      .digest('hex');
+
+    const result = await service.handleNotification(body);
+
+    expect(result).toEqual({ received: true, reviewRequired: true, purchaseStatus: 'PAID' });
+    expect(tx.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a valid Midtrans settlement and grants add-on quota once', async () => {
+    const purchase = {
+      id: 'purchase-reconcile', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PENDING',
+      expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx1 = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'SCHOOL_ADMIN' }) },
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: purchase.id, status: 'PENDING', paymentProvider: 'MIDTRANS',
+          providerReference: 'KLS-AI-purchase-reconcile',
+        }),
+      },
+    };
+    const tx2 = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    (prisma.$transaction as jest.Mock)
+      .mockImplementationOnce(async (callback: (client: typeof tx1) => unknown) => callback(tx1))
+      .mockImplementationOnce(async (callback: (client: typeof tx2) => unknown) => callback(tx2));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-reconcile', gross_amount: '50000.00',
+      transaction_status: 'settlement', transaction_id: 'midtrans-reconcile-1',
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 200, json: async () => body,
+    } as Response);
+    (audit.record as jest.Mock).mockResolvedValue(undefined);
+
+    const result = await service.reconcileAiAddonPurchase('admin-1', 'school-1', purchase.id);
+
+    expect(result).toEqual(expect.objectContaining({
+      purchaseId: purchase.id, received: true, purchaseStatus: 'PAID',
+      grantedUnits: 250, reconciled: true, source: 'MIDTRANS_GET_STATUS',
+    }));
+    expect(tx2.aiAddonPurchase.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: purchase.id }, data: expect.objectContaining({ status: 'PAID' }),
+    }));
+    expect(tx2.aiQuotaLedgerEntry.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ entryType: 'GRANT', unitsDelta: 250 })],
+      skipDuplicates: true,
+    }));
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects AI add-on reconciliation for a non-school-admin before calling Midtrans', async () => {
+    const tx = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'TEACHER' }) },
+      aiAddonPurchase: { findFirst: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(service.reconcileAiAddonPurchase('teacher-1', 'school-1', 'purchase-1'))
+      .rejects.toThrow('Hanya Admin Sekolah');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects an AI add-on Get Status response with an invalid signature', async () => {
+    const purchase = {
+      id: 'purchase-1', status: 'PENDING', paymentProvider: 'MIDTRANS',
+      providerReference: 'KLS-AI-purchase-1',
+    };
+    const tx = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'SCHOOL_ADMIN' }) },
+      aiAddonPurchase: { findFirst: jest.fn().mockResolvedValue(purchase) },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementationOnce(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ ...signed({ order_id: purchase.providerReference }), signature_key: 'invalid' }),
+    } as Response);
+
+    await expect(service.reconcileAiAddonPurchase('admin-1', 'school-1', purchase.id))
+      .rejects.toThrow('Signature not valid.');
+    expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/v2/KLS-AI-purchase-1/status'), expect.any(Object));
+    fetchSpy.mockRestore();
+  });
+
+  it('does not settle an AI add-on when Get Status amount differs from the purchase', async () => {
+    const purchase = {
+      id: 'purchase-amount', schoolId: 'school-1', requestUnits: 250,
+      priceAmount: new Prisma.Decimal('50000'), currency: 'IDR', status: 'PENDING',
+      expiresAfterDays: 30, expiresAt: null,
+    };
+    const tx1 = {
+      $executeRaw: jest.fn(),
+      schoolMembership: { findUnique: jest.fn().mockResolvedValue({ role: 'SCHOOL_ADMIN' }) },
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: purchase.id, status: 'PENDING', paymentProvider: 'MIDTRANS',
+          providerReference: 'KLS-AI-purchase-amount',
+        }),
+      },
+    };
+    const tx2 = {
+      $executeRaw: jest.fn(), $queryRaw: jest.fn(),
+      aiAddonPurchase: {
+        findFirst: jest.fn().mockResolvedValue({ id: purchase.id }),
+        findUnique: jest.fn().mockResolvedValue(purchase),
+        update: jest.fn(),
+      },
+      aiQuotaLedgerEntry: { createMany: jest.fn() },
+    };
+    (prisma.$transaction as jest.Mock)
+      .mockImplementationOnce(async (callback: (client: typeof tx1) => unknown) => callback(tx1))
+      .mockImplementationOnce(async (callback: (client: typeof tx2) => unknown) => callback(tx2));
+    const body = signed({
+      order_id: 'KLS-AI-purchase-amount', gross_amount: '1.00',
+      transaction_status: 'settlement',
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true, status: 200, json: async () => body,
+    } as Response);
+
+    await expect(service.reconcileAiAddonPurchase('admin-1', 'school-1', purchase.id))
+      .rejects.toThrow('Nominal atau mata uang notifikasi tidak cocok');
+    expect(tx2.aiAddonPurchase.update).not.toHaveBeenCalled();
+    expect(tx2.aiQuotaLedgerEntry.createMany).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
   it('uses the Sandbox configuration by default', () => {
     expect(config.get('MIDTRANS_IS_PRODUCTION')).toBe('false');
   });

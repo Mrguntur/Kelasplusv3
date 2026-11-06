@@ -2,7 +2,7 @@
 
 Status: implementation specification and agreement outline (not a final legal agreement).
 Owner: KELAS+ Platform
-Target branch: `feat/ai-case-analysis-data-governance`
+Target branch: `feat/ai-privacy-audit-stage-2`
 
 ## 1. Product decision
 
@@ -64,7 +64,7 @@ The platform keeps the mapping between the student record and the case session i
 ## 5. Security, audit, and retention requirements
 
 - Use tenant-scoped database transactions and existing row-level security context.
-- Record an audit event for case-analysis access and generation, including actor, school, internal case reference, timestamp, capability, outcome, and policy version. Do not store raw prompt or student identity in the AI usage event.
+- Record audit events for authorized case-analysis requests and generation completion/failure, including actor, school, random case reference, timestamp, capability, outcome, assessment scope, data-category allowlist/exclusion list, and policy version. Do not store raw prompt, student ID, or student identity in audit metadata.
 - Define retention and deletion behavior for AI case history before release; make retention configurable only through an explicit product policy.
 - Protect case history with the same tenant and role authorization as the underlying student record.
 - Do not use school/student records to train provider models unless a separate, explicit, informed agreement and legally reviewed basis exists.
@@ -110,4 +110,119 @@ Do not represent acceptance of general platform terms as a substitute for any se
 
 ## 8. Current implementation status
 
-This specification records the agreed product direction. It does not claim that student case analysis, the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
+- Stage 1: authorization and subject-scope hardening, service tests, and Web/API CI completed on the feature PR.
+- Stage 2 implementation: audit events are recorded for authorized case-analysis requests and generation completion/failure. Audit metadata uses a random case reference and policy/data-category metadata; it does not include the prompt or student ID.
+- Student-case usage status and completion/failure audit event are persisted in the same database transaction. If audit persistence fails, the API does not report a successful result; it attempts a safe failure transition and returns a generic unavailable response if audit persistence remains unavailable.
+- Unit tests cover successful and provider-failed generation, event ordering, outcome/status metadata, identity exclusion, and audit persistence failure paths. CI runs #642–#647 passed on the Stage 2 branch.
+- A separate AI retention/deletion proposal now documents data categories, required policy decisions, deletion workflow, and release gates. It is a design proposal only: no retention duration or automatic purge is active.
+- The free-text question redaction covers common email/phone patterns and numeric identity-like sequences of 8–18 digits, in addition to the selected student's full/preferred name. This is a defense-in-depth filter, not proof of complete anonymization or detection of every person's name.
+- Provider-payload fixture tests and service-level audit lifecycle tests have passed CI. Staging verification, approval and implementation of retention/deletion controls, agreement acceptance, and provider/legal review remain release gates until all checks and reviews are complete.
+
+This specification records the agreed product direction. It does not claim that the agreement acceptance flow, retention controls, or provider contract safeguards are implemented. These must be delivered and tested before production release.
+
+## Draft dokumen privasi dan perjanjian pengguna
+
+Dua rancangan berbahasa Indonesia ditambahkan untuk review internal:
+
+- `docs/legal/USER-DATA-AGREEMENT-DRAFT-ID.md` — rancangan perjanjian penggunaan data antara penyelenggara dan sekolah.
+- `docs/legal/AI-PRIVACY-NOTICE-DRAFT-ID.md` — rancangan pemberitahuan privasi dan penggunaan AI untuk pengguna.
+
+Keduanya berstatus **DRAFT INTERNAL**, bukan dokumen yang telah disahkan atau siap diberlakukan. Dokumen menggunakan placeholder untuk identitas penyelenggara, kontak privasi, daftar penyedia, lokasi pemrosesan, dasar pemrosesan, retensi, dan prosedur hak subjek data. Semua klaim wajib dicocokkan dengan implementasi dan kontrak penyedia serta ditinjau penasihat hukum sebelum publikasi.
+
+CI dokumentasi sebelumnya (#648 dan #649) telah lulus pada commit sebelumnya. Perubahan dokumen privasi ini memicu validasi CI baru; hasilnya harus diperiksa sebelum tahap ini dinyatakan selesai.
+
+## AI History & Access Control
+
+A separate design proposal has been added at `docs/product/AI-HISTORY-AND-ACCESS-CONTROL-DESIGN.md`.
+
+The proposal documents the current implementation boundary (no persisted AI answer/history table or history endpoints), the proposed tenant-scoped history model, current-assignment authorization, role restrictions, audit events, UI behavior, security test matrix, and release gates. It intentionally does not introduce a migration, persist AI response content, or activate retention/deletion behavior. Product decisions and approved retention/provider/legal terms are required before implementation.
+
+## Roadmap boundary and current stage
+
+KELAS+ AI governance work remains in **Stage 2 — AI Privacy, Audit & Data Governance**.
+
+- **Stage 1 — AI Security Hardening:** authorization, subject-scope controls, data minimization, and provider-payload safeguards. The corresponding feature-branch CI checks passed.
+- **Stage 2 — AI Privacy, Audit & Data Governance:** audit lifecycle and failure handling, Indonesian user-data agreement draft, AI privacy notice draft, retention/deletion proposal, and AI History access-control design. CI runs #648–#654 passed for the documented changes up to the current feature-branch head.
+- **Stage 3 — AI History Implementation:** a separate implementation phase for schema, tenant-scoped API, audit-on-read, and teacher UI. This phase has **not started**. No history table, history endpoint, or persisted AI answer exists in the current implementation.
+
+### Approved Stage 2 product decision
+
+The initial AI case-history access policy is **creator-only**: only the teacher who initiated an analysis may view it, and only while that teacher retains active membership, active staff profile, active enrollment/class, and current teaching or homeroom authorization. Other teachers, including a newly assigned teacher or homeroom teacher, do not inherit access.
+
+### Remaining Stage 2 release gates
+
+- [ ] Complete legal/privacy review and fill all placeholders in the user agreement and AI privacy notice.
+- [ ] Verify provider/subprocessor contracts, processing locations, retention, model-training terms, and deletion commitments.
+- [ ] Approve retention periods and deletion authority with school/product/legal stakeholders.
+- [ ] Define and test the user agreement/privacy notice presentation and acceptance evidence.
+- [ ] Complete synthetic-data staging, RLS/tenant-isolation, and desktop/mobile verification.
+
+A green CI confirms automated checks only; it does not complete legal approval, provider due diligence, staging, or manual verification. Do not start Stage 3 persistence or enable production history until the required Stage 2 gates are approved.
+
+
+## Stage 2 update — versioned agreement acceptance flow
+
+A new design artifact is available at `docs/product/AI-AGREEMENT-ACCEPTANCE-FLOW-DESIGN.md`.
+
+It specifies an immutable document-version registry, separate user acknowledgement/acceptance evidence, school-level authorization, version/content-hash binding, server-side AI capability gates, material-change handling, privacy-minimized audit records, UX safeguards, and required tests. It explicitly distinguishes acknowledgement of a privacy notice, contractual acceptance, school authorization, and consent where legally required.
+
+This remains a design artifact. No acceptance table, endpoint, API guard, consent UI, or production gate has been implemented. The lawful basis, guardian/parent process, school authority, document wording, and retention of acceptance evidence remain subject to qualified Indonesian legal/privacy review and school approval.
+
+### Stage 2 validation snapshot
+
+- [x] CI #655 passed for the roadmap/stage-boundary documentation update.
+- [x] CI #656 passed for the retention/deletion decision register.
+- [x] Retention decision register RET-01–RET-10 added; all policy decisions remain Pending until supported by approvals/evidence.
+- [x] Versioned agreement and privacy-notice acceptance flow design added.
+- [ ] CI for the latest acceptance-flow documentation commit.
+- [ ] Legal/privacy and school-authority approvals.
+- [ ] Provider/subprocessor due diligence and verified contractual terms.
+- [ ] Approved retention schedule and deletion authority.
+- [ ] Implementation and staging verification of the approved acceptance and retention controls.
+- [ ] Manual desktop/mobile, RLS, and tenant-isolation verification.
+
+**Stage 2 is not complete yet.** The remaining items require decisions, evidence, and verification outside documentation-only CI. Do not mark these gates complete or start Stage 3 persistence until they are satisfied.
+
+
+## Owner decision — paid third-party AI provider strategy
+
+The product owner confirmed that Gemini API Free is currently used with limited quota for development, while the intended production direction is a paid third-party API with greater quota and model flexibility.
+
+The platform direction is provider independence through a server-side AI Provider Gateway. A new design document, `docs/product/AI-PROVIDER-STRATEGY-AND-GATEWAY.md`, records provider adapters, allowlisting, role/data-purpose routing, cost and quota controls, fallback rules, and provider due-diligence requirements.
+
+No production provider has been selected or approved yet. Gemini Free is restricted to synthetic/non-personal development and test data. Student-case data must not be routed to a paid provider until its exact API product, DPA, retention, training use, processing region, subprocessors, deletion terms, and education/minor-access suitability are verified. Aggregator routing is not automatically approved; each underlying provider/model must be allowlisted.
+
+This is a recorded product direction and architecture proposal, not a provider integration or production activation.
+
+
+## Owner decision — aggregator strategy with balanced budget
+
+The product owner selected an **AI provider aggregator** strategy with a **balanced** cost/quality priority. OpenRouter is the first candidate for evaluation, not an approved production subprocessor. The provider strategy document now records official privacy/provider-routing findings and a provisional KELAS+ allowlist policy.
+
+Key constraints:
+- OpenRouter states it does not train its own models on Inputs/Outputs, but requests are transmitted to underlying model providers whose retention and training policies vary.
+- Provider data-policy filters and no-training settings must be explicitly configured; exact provider/model routes must be allowlisted.
+- ZDR and Safety Retention are distinct. Safety Retention is not to be treated as ZDR.
+- Business/Enterprise EU/US in-region routing does not establish Indonesian data residency.
+- Obtain the executed DPA, verify the underlying provider chain, processing location, retention, deletion, and education/minor-access suitability.
+- No free-model routing for school data; no unknown automatic route for student-case analysis; no unreviewed fallback.
+- Gemini Free remains for synthetic/non-personal development and testing only.
+
+The aggregator architecture and balanced budget priority are approved product direction. OpenRouter account tier, contract, model routes, prices, DPA, and legal/privacy/school approval remain pending. No real student data may be routed until these gates are evidenced.
+
+
+## Owner decision update — MindRouter candidate supersedes OpenRouter (5 Nov 2026)
+
+The owner has since selected **MindRouter** as the first aggregator candidate for controlled engineering evaluation. This supersedes the earlier OpenRouter-first-candidate note above. OpenRouter is now only a previously considered alternative and is not the current candidate in the plan.
+
+This is a candidate selection only—not production-provider approval, subprocessor approval, legal approval, or permission to process school/student personal data. MindRouter due diligence must verify the contracting entity, executed DPA, exact upstream model/provider chain, training and retention terms, deletion, processing region/transfers, security/incident terms, education/minor-access suitability, endpoint/model stability, pricing, and billing controls.
+
+Until written evidence is reviewed and approved:
+- keep the provider route registry empty and the gateway fail-closed;
+- use synthetic/non-personal data only with a separately authorized test account;
+- do not commit API keys or expose them to clients;
+- do not send real school/student data to MindRouter or any upstream provider;
+- do not enable student-case routing;
+- do not invent a per-school monetary cap; the amount, currency, and billing period remain pending owner/finance decision.
+
+The existing MindRouter model-price screenshot is a dated informational snapshot, not a current quote or contractual commitment. Revalidate pricing before implementing budget calculations. No production integration, provider activation, merge, or deployment is authorized by this decision.

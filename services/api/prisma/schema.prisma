@@ -85,6 +85,8 @@ model School {
   subjects Subject[]
   subscriptions Subscription[]
   aiUsageEvents AiUsageEvent[]
+  aiAddonPurchases AiAddonPurchase[]
+  aiQuotaLedgerEntries AiQuotaLedgerEntry[]
   @@map("schools")
 }
 
@@ -653,6 +655,7 @@ model AiUsageEvent {
   capability       String   @db.VarChar(40)
   model            String   @db.VarChar(80)
   status           String   @default("PENDING") @db.VarChar(20)
+  quotaSource      String   @default("PLAN") @map("quota_source") @db.VarChar(20)
   promptTokens     Int      @default(0) @map("prompt_tokens")
   completionTokens Int      @default(0) @map("completion_tokens")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -662,5 +665,95 @@ model AiUsageEvent {
   @@index([schoolId, capability, createdAt])
   @@index([userId, createdAt])
   @@map("ai_usage_events")
+}
+
+
+enum AiAddonPurchaseStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  EXPIRED
+  REFUNDED
+}
+
+enum AiQuotaLedgerEntryType {
+  GRANT
+  CONSUME
+  RELEASE
+  EXPIRE
+  REVERSAL
+}
+
+/// Platform-managed top-up product. Prices and unit counts are versioned by
+/// purchase snapshots; editing a pack never mutates an existing purchase.
+model AiAddonPack {
+  id               String   @id @default(uuid()) @db.Uuid
+  code             String   @unique @db.VarChar(60)
+  name             String   @db.VarChar(120)
+  description      String?  @db.VarChar(500)
+  requestUnits     Int      @map("request_units")
+  priceAmount      Decimal  @map("price_amount") @db.Decimal(14, 2)
+  currency         String   @default("IDR") @db.Char(3)
+  expiresAfterDays Int?     @map("expires_after_days")
+  isPublished      Boolean  @default(false) @map("is_published")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  purchases        AiAddonPurchase[]
+
+  @@index([isPublished, priceAmount])
+  @@map("ai_addon_packs")
+}
+
+/// School-scoped purchase. Commercial values are immutable snapshots.
+model AiAddonPurchase {
+  id                 String                @id @default(uuid()) @db.Uuid
+  schoolId           String                @map("school_id") @db.Uuid
+  packId             String                @map("pack_id") @db.Uuid
+  requestUnits       Int                   @map("request_units")
+  priceAmount        Decimal               @map("price_amount") @db.Decimal(14, 2)
+  currency           String                @default("IDR") @db.Char(3)
+  status             AiAddonPurchaseStatus @default(PENDING)
+  idempotencyKey     String                @unique @map("idempotency_key") @db.VarChar(120)
+  paymentProvider    String?               @map("payment_provider") @db.VarChar(40)
+  providerReference  String?               @map("provider_reference") @db.VarChar(160)
+  providerPaymentId  String?               @map("provider_payment_id") @db.VarChar(160)
+  expiresAfterDays   Int?                  @map("expires_after_days")
+  paymentUrl         String?               @map("payment_url") @db.VarChar(1000)
+  providerToken      String?               @map("provider_token") @db.VarChar(500)
+  expiresAt          DateTime?             @map("expires_at") @db.Timestamptz(6)
+  paidAt             DateTime?             @map("paid_at") @db.Timestamptz(6)
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  school             School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  pack               AiAddonPack           @relation(fields: [packId], references: [id], onDelete: Restrict)
+  ledgerEntries      AiQuotaLedgerEntry[]
+
+  @@unique([schoolId, id])
+  @@unique([paymentProvider, providerReference])
+  @@unique([paymentProvider, providerPaymentId])
+  @@index([schoolId, status, createdAt])
+  @@index([schoolId, expiresAt])
+  @@map("ai_addon_purchases")
+}
+
+/// Append-only quota ledger. Positive entries grant/release units; negative
+/// entries consume/expire/reverse units. referenceKey provides idempotency.
+model AiQuotaLedgerEntry {
+  id          String                  @id @default(uuid()) @db.Uuid
+  schoolId    String                  @map("school_id") @db.Uuid
+  purchaseId  String?                 @map("purchase_id") @db.Uuid
+  entryType   AiQuotaLedgerEntryType  @map("entry_type")
+  unitsDelta  Int                     @map("units_delta")
+  referenceKey String                 @unique @map("reference_key") @db.VarChar(160)
+  expiresAt   DateTime?               @map("expires_at") @db.Timestamptz(6)
+  metadata    Json                    @default("{}") @db.JsonB
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  school      School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  purchase    AiAddonPurchase?        @relation(fields: [schoolId, purchaseId], references: [schoolId, id], onDelete: Restrict)
+
+  @@index([schoolId, expiresAt, createdAt])
+  @@index([schoolId, entryType, createdAt])
+  @@map("ai_quota_ledger_entries")
 }
 

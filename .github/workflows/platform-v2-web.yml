@@ -8,6 +8,8 @@ on:
   push:
     branches:
       - feat/platform-v2-foundation
+      - feat/ai-privacy-audit-stage-2
+      - feat/platform-v2-school-onboarding
     paths:
       - "apps/web/**"
       - ".github/workflows/platform-v2-web.yml"

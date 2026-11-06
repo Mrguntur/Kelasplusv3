@@ -12,6 +12,10 @@ import { PrismaService } from '../database/prisma.service';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { buildAssessmentAssignmentScope } from '../academic/assessment-scope';
 import { EntitlementService, type AiCapability } from '../entitlements/entitlement.service';
+import { AuditService } from '../audit/audit.service';
+import { buildStudentCaseAuditMetadata, buildStudentCaseProviderPayload } from './ai-provider-payload';
+import { AiGatewayService } from './ai-gateway.service';
+import { AiQuotaService } from './ai-quota.service';
 
 type AiProviderResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -24,6 +28,9 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly entitlements: EntitlementService,
+    private readonly audit: AuditService,
+    private readonly gateway: AiGatewayService,
+    private readonly aiQuota: AiQuotaService,
   ) {}
 
 
@@ -54,6 +61,7 @@ export class AiService {
   }
 
   async generate(user: AuthenticatedUser, capability: AiCapability, question: string) {
+    this.gateway.assertProviderRouteApproved();
     const schoolId = user.activeSchoolId;
     if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menggunakan AI.');
 
@@ -79,34 +87,40 @@ export class AiService {
       await this.entitlements.lockSchool(tx, schoolId);
       await this.entitlements.assertAiCapability(tx, schoolId, membership.role, capability);
       const monthlyLimit = await this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, capability);
-      if (monthlyLimit < 1) {
-        throw new ForbiddenException('Kuota AI belum tersedia pada paket sekolah ini.');
-      }
-
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
-        where: { schoolId, capability, createdAt: { gte: monthStart } },
+        where: { schoolId, capability, quotaSource: 'PLAN', createdAt: { gte: monthStart } },
       });
-      if (used >= monthlyLimit) {
-        throw new ForbiddenException(`Kuota AI bulanan telah tercapai (${used}/${monthlyLimit}).`);
-      }
 
       const context = await this.getAggregateContext(tx, schoolId, user.id, membership.role);
-      const event = await tx.aiUsageEvent.create({
+      const eventId = randomUUID();
+      const quotaSource = used < monthlyLimit
+        ? 'PLAN'
+        : (await this.aiQuota.reserveAddonUnit(tx, schoolId, eventId) ? 'ADDON' : null);
+      if (!quotaSource) {
+        throw new ForbiddenException(`Kuota AI paket dan add-on telah habis (${used}/${monthlyLimit}).`);
+      }
+      await tx.aiUsageEvent.create({
         data: {
-          id: randomUUID(),
+          id: eventId,
           schoolId,
           userId: user.id,
           capability,
           model,
           status: 'PENDING',
+          quotaSource,
         },
         select: { id: true },
       });
-      return { eventId: event.id, context, used: used + 1, monthlyLimit };
+      return {
+        eventId, context, used: used + (quotaSource === 'PLAN' ? 1 : 0),
+        monthlyLimit, quotaSource,
+      };
     });
 
+    let payload: AiProviderResponse;
+    let answer: string;
     try {
       const safeQuestion = this.redactSensitiveText(normalizedQuestion);
       const prompt = this.buildPrompt(capability, reservation.context);
@@ -123,32 +137,25 @@ export class AiService {
           signal: AbortSignal.timeout(30_000),
         },
       );
-
-      if (!response.ok) {
-        throw new BadGatewayException('Penyedia AI gagal memproses permintaan. Silakan coba kembali nanti.');
-      }
-
-      const payload = await response.json() as AiProviderResponse;
-      const answer = payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text ?? '')
-        .join('')
-        .trim();
+      if (!response.ok) throw new BadGatewayException('Penyedia AI gagal memproses permintaan. Silakan coba kembali nanti.');
+      payload = await response.json() as AiProviderResponse;
+      answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim() ?? '';
       if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
-
-      await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
-        payload.usageMetadata?.promptTokenCount ?? 0,
-        payload.usageMetadata?.candidatesTokenCount ?? 0);
-
-      return {
-        answer,
-        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
-        model,
-      };
     } catch (error) {
       await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
+
+    // Provider succeeded: persistence failure must not release the reserved add-on unit.
+    await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
+      payload.usageMetadata?.promptTokenCount ?? 0,
+      payload.usageMetadata?.candidatesTokenCount ?? 0);
+    return {
+      answer,
+      usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
+      model,
+    };
   }
 
 
@@ -157,6 +164,7 @@ export class AiService {
    * Only teachers assigned to the student's active class or its homeroom teacher may call this.
    */
   async analyzeStudentCase(user: AuthenticatedUser, studentId: string, question: string) {
+    this.gateway.assertProviderRouteApproved();
     const schoolId = user.activeSchoolId;
     if (!schoolId) throw new ForbiddenException('Pilih sekolah aktif sebelum menganalisis kasus siswa.');
 
@@ -203,13 +211,11 @@ export class AiService {
       await this.entitlements.lockSchool(tx, schoolId);
       await this.entitlements.assertAiCapability(tx, schoolId, membership.role, 'teacher_assistant');
       const monthlyLimit = await this.entitlements.getAiMonthlyLimit(tx, schoolId, membership.role, 'teacher_assistant');
-      if (monthlyLimit < 1) throw new ForbiddenException('Kuota AI belum tersedia pada paket sekolah ini.');
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const used = await tx.aiUsageEvent.count({
-        where: { schoolId, capability: 'teacher_assistant', createdAt: { gte: monthStart } },
+        where: { schoolId, capability: 'teacher_assistant', quotaSource: 'PLAN', createdAt: { gte: monthStart } },
       });
-      if (used >= monthlyLimit) throw new ForbiddenException(`Kuota AI bulanan telah tercapai (${used}/${monthlyLimit}).`);
 
       const isHomeroom = await tx.schoolClass.findFirst({
         where: { id: enrollment.classId, schoolId, homeroomStaffProfileId: staff.id, status: 'ACTIVE' },
@@ -284,15 +290,39 @@ export class AiService {
         };
       }).filter((entry): entry is { subject: string; assessmentType: string; scorePercent: number } => entry !== null);
 
-      const event = await tx.aiUsageEvent.create({
-        data: { id: randomUUID(), schoolId, userId: user.id, capability: 'teacher_assistant', model, status: 'PENDING' },
+      const eventId = randomUUID();
+      const quotaSource = used < monthlyLimit
+        ? 'PLAN'
+        : (await this.aiQuota.reserveAddonUnit(tx, schoolId, eventId) ? 'ADDON' : null);
+      if (!quotaSource) {
+        throw new ForbiddenException(`Kuota AI paket dan add-on telah habis (${used}/${monthlyLimit}).`);
+      }
+      await tx.aiUsageEvent.create({
+        data: {
+          id: eventId, schoolId, userId: user.id,
+          capability: 'teacher_assistant', model, status: 'PENDING', quotaSource,
+        },
         select: { id: true },
       });
+      const caseReference = `CASE-${randomUUID().slice(0, 8).toUpperCase()}`;
+      await this.audit.record({
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_REQUESTED',
+        outcome: 'SUCCESS',
+        metadata: buildStudentCaseAuditMetadata({
+          caseReference,
+          model,
+          generationStatus: 'PENDING',
+          assessmentScope: isHomeroom ? 'ALL_CLASS_SUBJECTS' : 'ASSIGNED_SUBJECTS_ONLY',
+        }),
+      }, tx);
       return {
-        eventId: event.id,
-        used: used + 1,
+        eventId,
+        used: used + (quotaSource === 'PLAN' ? 1 : 0),
         monthlyLimit,
-        caseReference: `CASE-${randomUUID().slice(0, 8).toUpperCase()}`,
+        quotaSource,
+        caseReference,
         safeQuestion: this.redactCaseQuestion(normalizedQuestion, [enrollment.student.fullName, enrollment.student.preferredName]),
         context: {
           analysisWindowDays: 90,
@@ -315,6 +345,8 @@ export class AiService {
       };
     });
 
+    let payload: AiProviderResponse;
+    let answer: string;
     try {
       const prompt = [
         'Anda adalah asisten pedagogis untuk membantu guru SMP melakukan telaah kasus pembelajaran secara suportif.',
@@ -323,39 +355,69 @@ export class AiService {
         'Jangan mendiagnosis kondisi medis, psikologis, atau disabilitas. Jangan memberi label negatif, memprediksi masa depan siswa, atau menyimpulkan sebab-akibat tanpa bukti. Jangan menyarankan hukuman atau tindakan otomatis.',
         'Jaga martabat dan kerahasiaan siswa. Keputusan akhir selalu pada guru dan harus mempertimbangkan konteks langsung.',
         `Snapshot kasus: ${JSON.stringify(reservation.context)}`,
-      ].join('\n\n');
-      const safeQuestion = reservation.safeQuestion;
+      ].join('\\n\\n');
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: prompt }] },
-            contents: [{ role: 'user', parts: [{ text: safeQuestion }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1100 },
-          }),
+          body: JSON.stringify(buildStudentCaseProviderPayload(prompt, reservation.safeQuestion)),
           signal: AbortSignal.timeout(30_000),
         },
       );
       if (!response.ok) throw new BadGatewayException('Penyedia AI gagal memproses analisis kasus.');
-      const payload = await response.json() as AiProviderResponse;
-      const answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim();
+      payload = await response.json() as AiProviderResponse;
+      answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim() ?? '';
       if (!answer) throw new BadGatewayException('Penyedia AI tidak mengembalikan jawaban.');
-      await this.updateUsage(user, schoolId, reservation.eventId, 'SUCCEEDED',
-        payload.usageMetadata?.promptTokenCount ?? 0, payload.usageMetadata?.candidatesTokenCount ?? 0);
-      return {
-        answer,
-        caseReference: reservation.caseReference,
-        usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit },
-        model,
-        privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
-      };
     } catch (error) {
-      await this.updateUsage(user, schoolId, reservation.eventId, 'FAILED', 0, 0);
+      try {
+        await this.updateStudentCaseUsageWithAudit(
+          user, schoolId, reservation.eventId, 'FAILED', 0, 0,
+          {
+            actorUserId: user.id,
+            schoolId,
+            eventType: 'AI_STUDENT_CASE_GENERATION_FAILED',
+            outcome: 'FAILURE',
+            metadata: buildStudentCaseAuditMetadata({
+              caseReference: reservation.caseReference,
+              model,
+              generationStatus: 'FAILED',
+            }),
+          },
+        );
+      } catch {
+        throw new ServiceUnavailableException(
+          'Status analisis belum dapat dipastikan karena pencatatan audit terganggu. Silakan hubungi administrator sebelum mencoba kembali.',
+        );
+      }
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException('Terjadi gangguan saat menghubungi layanan AI.');
     }
+
+    // A successful provider response remains charged if completion/audit persistence fails.
+    await this.updateStudentCaseUsageWithAudit(
+      user, schoolId, reservation.eventId, 'SUCCEEDED',
+      payload.usageMetadata?.promptTokenCount ?? 0,
+      payload.usageMetadata?.candidatesTokenCount ?? 0,
+      {
+        actorUserId: user.id,
+        schoolId,
+        eventType: 'AI_STUDENT_CASE_GENERATION_COMPLETED',
+        outcome: 'SUCCESS',
+        metadata: buildStudentCaseAuditMetadata({
+          caseReference: reservation.caseReference,
+          model,
+          generationStatus: 'SUCCEEDED',
+        }),
+      },
+    );
+    return {
+      answer,
+      caseReference: reservation.caseReference,
+      usage: { monthlyUsed: reservation.used, monthlyLimit: reservation.monthlyLimit, quotaSource: reservation.quotaSource },
+      model,
+      privacy: 'ID internal, NISN, dan data keluarga tidak dimasukkan ke payload. Nama lengkap/nama panggilan siswa terpilih disamarkan; ini bukan jaminan penghapusan seluruh identitas dari teks bebas.',
+    };
   }
 
   private async getAggregateContext(
@@ -606,7 +668,7 @@ export class AiService {
     return value
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL DIHAPUS]')
       .replace(/(?:\+?62|0)\s?8[\d\s-]{7,13}/g, '[NOMOR TELEPON DIHAPUS]')
-      .replace(/\b\d{10}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
+      .replace(/\b\d{8,18}\b/g, '[NOMOR IDENTITAS DIHAPUS]');
   }
 
   private redactCaseQuestion(value: string, names: Array<string | null | undefined>): string {
@@ -656,10 +718,51 @@ export class AiService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
       await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      await this.entitlements.lockSchool(tx, schoolId);
+      const event = await tx.aiUsageEvent.findUnique({
+        where: { id: eventId },
+        select: { quotaSource: true },
+      });
       await tx.aiUsageEvent.update({
         where: { id: eventId },
         data: { status, promptTokens, completionTokens },
       });
+      if (status === 'FAILED' && event?.quotaSource === 'ADDON') {
+        await this.aiQuota.releaseAddonReservation(tx, schoolId, eventId);
+      }
+    });
+  }
+
+  /**
+   * Keeps the student-case usage outcome and its audit event atomic.
+   * Either both records commit, or neither record is persisted.
+   */
+  private async updateStudentCaseUsageWithAudit(
+    user: AuthenticatedUser,
+    schoolId: string,
+    eventId: string,
+    status: 'SUCCEEDED' | 'FAILED',
+    promptTokens: number,
+    completionTokens: number,
+    auditInput: Parameters<AuditService['record']>[0],
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${user.id}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.current_school_id', ${schoolId}, true)`;
+      // Serialize quota releases with reservations for the same school.
+      await this.entitlements.lockSchool(tx, schoolId);
+      const event = await tx.aiUsageEvent.findUnique({
+        where: { id: eventId },
+        select: { quotaSource: true },
+      });
+      await tx.aiUsageEvent.update({
+        where: { id: eventId },
+        data: { status, promptTokens, completionTokens },
+      });
+      if (status === 'FAILED' && event?.quotaSource === 'ADDON') {
+        await this.aiQuota.releaseAddonReservation(tx, schoolId, eventId);
+      }
+      await this.audit.record(auditInput, tx);
     });
   }
 }

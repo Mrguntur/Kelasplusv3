@@ -15,7 +15,8 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:migrate:dev": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test:ai-quota:integration": "ts-node test/ai-quota-concurrency.integration.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
