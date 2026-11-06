@@ -110,4 +110,51 @@ describe('AiQuotaService', () => {
       })],
     }));
   });
+
+  it('preserves an expired reservation expiry when releasing so the unit cannot be revived', async () => {
+    const expiredAt = new Date('2026-10-01T00:00:00.000Z');
+    (tx.aiQuotaLedgerEntry.findMany as jest.Mock).mockResolvedValue([{
+      purchaseId: 'purchase-expired',
+      unitsDelta: -1,
+      expiresAt: expiredAt,
+      referenceKey: 'ai-request:event-expired:consume:purchase-expired',
+    }]);
+    (tx.aiQuotaLedgerEntry.createMany as jest.Mock).mockResolvedValue({ count: 1 });
+
+    await service.releaseAddonReservation(tx, 'school-1', 'event-expired');
+
+    expect(tx.aiQuotaLedgerEntry.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      skipDuplicates: true,
+      data: [expect.objectContaining({
+        entryType: 'RELEASE',
+        unitsDelta: 1,
+        expiresAt: expiredAt,
+        referenceKey: 'ai-request:event-expired:release:purchase-expired',
+      })],
+    }));
+  });
+
+  it('uses the same unique release reference on retries to prevent duplicate refunds', async () => {
+    (tx.aiQuotaLedgerEntry.findMany as jest.Mock).mockResolvedValue([{
+      purchaseId: 'purchase-1',
+      unitsDelta: -1,
+      expiresAt: null,
+      referenceKey: 'ai-request:event-retry:consume:purchase-1',
+    }]);
+    (tx.aiQuotaLedgerEntry.createMany as jest.Mock).mockResolvedValue({ count: 0 });
+
+    await service.releaseAddonReservation(tx, 'school-1', 'event-retry');
+    await service.releaseAddonReservation(tx, 'school-1', 'event-retry');
+
+    expect(tx.aiQuotaLedgerEntry.createMany).toHaveBeenCalledTimes(2);
+    for (const call of (tx.aiQuotaLedgerEntry.createMany as jest.Mock).mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({
+        skipDuplicates: true,
+        data: [expect.objectContaining({
+          referenceKey: 'ai-request:event-retry:release:purchase-1',
+          unitsDelta: 1,
+        })],
+      }));
+    }
+  });
 });
