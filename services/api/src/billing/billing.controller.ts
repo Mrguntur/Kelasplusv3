@@ -60,8 +60,8 @@ export class BillingController {
     @Body() body: CreateAiAddonPurchaseDto,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    if (!idempotencyKey || !/^[A-Za-z0-9._:-]{16,120}$/.test(idempotencyKey)) {
-      throw new BadRequestException('Header Idempotency-Key wajib diisi (16–120 karakter).');
+    if (!idempotencyKey || !/^[A-Za-z0-9._:-]{16,46}$/.test(idempotencyKey)) {
+      throw new BadRequestException('Header Idempotency-Key wajib diisi (16–46 karakter).');
     }
     return this.aiAddonPurchases.createPurchase(user.id, user.activeSchoolId, body.packId, idempotencyKey);
   }
