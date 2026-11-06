@@ -78,6 +78,11 @@ jobs:
       - name: Test PostgreSQL tenant RLS policies
         run: psql "postgresql://postgres:postgres@localhost:5432/kelasplus_test" -f test/rls.integration.sql
 
+      - name: Test PostgreSQL AI quota concurrency
+        run: npm run test:ai-quota:integration
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kelasplus_test?schema=public
+
       - name: Type check
         run: npm run typecheck
 
