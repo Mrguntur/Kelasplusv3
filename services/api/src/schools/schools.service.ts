@@ -18,6 +18,68 @@ export class SchoolsService {
     private readonly invitationEmail: InvitationEmailService,
   ) {}
 
+  async createSchoolManually(adminUserId: string, input: SchoolRegistrationDto) {
+    const schoolName = input.schoolName.trim();
+    const requestedSlug = input.requestedSlug.trim().toLowerCase();
+    const contactName = input.contactName.trim();
+    const email = input.email.trim().toLowerCase();
+    const phone = input.phone?.trim() || null;
+    const reviewedAt = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${adminUserId}, true)`;
+      await tx.$executeRaw`SELECT set_config('app.is_platform_admin', 'true', true)`;
+
+      const existingSchool = await tx.school.findUnique({
+        where: { slug: requestedSlug },
+        select: { id: true },
+      });
+      if (existingSchool) throw new ConflictException('Slug sekolah sudah digunakan.');
+
+      const existingRequest = await tx.schoolRegistrationRequest.findFirst({
+        where: { requestedSlug, status: 'APPROVED' },
+        select: { id: true },
+      });
+      if (existingRequest) throw new ConflictException('Slug tersebut sudah memiliki proses onboarding.');
+
+      const requestId = randomUUID();
+      const school = await tx.school.create({
+        data: { name: schoolName, slug: requestedSlug, status: 'PENDING' },
+        select: { id: true, name: true, slug: true, status: true, createdAt: true },
+      });
+
+      await tx.schoolRegistrationRequest.create({
+        data: {
+          id: requestId,
+          schoolName,
+          requestedSlug,
+          contactName,
+          email,
+          phone,
+          status: 'APPROVED',
+          reviewedAt,
+          reviewedBy: adminUserId,
+          rejectionReason: null,
+        },
+      });
+
+      await this.audit.record({
+        actorUserId: adminUserId,
+        schoolId: school.id,
+        eventType: 'school.manually_created',
+        outcome: 'SUCCESS',
+        metadata: { requestId, requestedSlug, contactEmail: email, source: 'platform_admin_dashboard' },
+      }, tx);
+
+      return {
+        requestId,
+        school,
+        status: 'CREATED',
+        message: 'Sekolah berhasil ditambahkan. Kirim undangan administrator untuk melanjutkan aktivasi.',
+      };
+    });
+  }
+
   async requestRegistration(input: SchoolRegistrationDto) {
     const requestId = randomUUID();
     const submittedAt = new Date();
