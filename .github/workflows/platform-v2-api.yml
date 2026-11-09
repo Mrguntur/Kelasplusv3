@@ -9,6 +9,7 @@ on:
       - feat/platform-v2-subscription-foundation
       - fix/platform-v2-entitlement-rebased
       - feat/platform-v2-entitlement-engine
+      - feat/platform-v2-docker-local-stack
     paths:
       - "services/api/**"
       - "infra/**"

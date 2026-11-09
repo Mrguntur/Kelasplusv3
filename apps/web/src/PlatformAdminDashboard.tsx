@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Activity, Building2, CheckCircle2, Clock3, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
+import { Activity, Building2, CheckCircle2, Clock3, Plus, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { api } from './api';
 
 type PlatformOverview = {
@@ -97,6 +97,14 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [checkoutUrl, setCheckoutUrl] = useState('');
+  const [showCreateSchool, setShowCreateSchool] = useState(false);
+  const [schoolName, setSchoolName] = useState('');
+  const [schoolSlug, setSchoolSlug] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPhone, setAdminPhone] = useState('');
+  const [pendingInviteRequestId, setPendingInviteRequestId] = useState('');
+  const [creatingSchool, setCreatingSchool] = useState(false);
 
   async function refresh() {
     setBusy(true);
@@ -164,6 +172,75 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
   }
 
 
+  function updateSchoolName(value: string) {
+    setSchoolName(value);
+    setSchoolSlug(value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80));
+  }
+
+  async function sendSchoolInvitation(requestId: string) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api<{ email: string; schoolName: string; status: string }>(
+        `/schools/admin/registration-requests/${requestId}/invite-admin`,
+        { method: 'POST' },
+      );
+      setPendingInviteRequestId('');
+      setNotice(`Undangan administrator untuk ${result.schoolName} berhasil dikirim ke ${result.email}.`);
+      await refresh();
+    } catch (e) {
+      setPendingInviteRequestId(requestId);
+      setError(e instanceof Error ? e.message : 'Sekolah sudah dibuat, tetapi undangan belum terkirim. Silakan coba lagi.');
+      setBusy(false);
+    }
+  }
+
+  async function createSchool(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingSchool(true);
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api<{ requestId: string; school: { name: string } }>(
+        '/schools/admin/manual',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            schoolName: schoolName.trim(),
+            requestedSlug: schoolSlug.trim().toLowerCase(),
+            contactName: contactName.trim(),
+            email: adminEmail.trim().toLowerCase(),
+            phone: adminPhone.trim() || undefined,
+          }),
+        },
+      );
+      setSchoolName('');
+      setSchoolSlug('');
+      setContactName('');
+      setAdminEmail('');
+      setAdminPhone('');
+      setShowCreateSchool(false);
+      setPendingInviteRequestId(result.requestId);
+      setNotice(`Sekolah ${result.school.name} berhasil dibuat. Mengirim undangan administrator...`);
+      setCreatingSchool(false);
+      await refresh();
+      await sendSchoolInvitation(result.requestId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sekolah belum dapat dibuat.');
+      setBusy(false);
+      setCreatingSchool(false);
+    }
+  }
+
   async function createInvoice(subscriptionId: string) {
     setBusy(true);
     setError('');
@@ -226,6 +303,43 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
         { label: 'Menunggu aktivasi', value: overview?.metrics.pendingSchools, icon: Clock3 },
         { label: 'Sekolah ditangguhkan', value: overview?.metrics.suspendedSchools, icon: XCircle },
       ].map(item => <article className="metric-card" key={item.label}><div className="metric-top"><span>{item.label}</span><div className="metric-icon"><item.icon size={19}/></div></div><div className="metric-value">{item.value ?? '—'}</div><div className="metric-foot">Data seluruh tenant</div></article>)}
+    </section>
+    <section className="panel platform-create-school-panel">
+      <div className="panel-heading">
+        <div><span className="eyebrow">SCHOOL ONBOARDING</span><h2>Tambah sekolah secara manual</h2></div>
+        <button className="primary-button compact-button" type="button" onClick={() => setShowCreateSchool(value => !value)} disabled={busy}>
+          <Plus size={16}/>{showCreateSchool ? 'Tutup form' : 'Tambah Sekolah'}
+        </button>
+      </div>
+      <p className="panel-footnote">Buat data sekolah langsung dari pusat kendali. Sekolah akan berstatus menunggu hingga administrator menerima undangan.</p>
+      {showCreateSchool && <form className="platform-create-school-form" onSubmit={event => void createSchool(event)}>
+        <label>Nama sekolah
+          <input value={schoolName} onChange={event => updateSchoolName(event.target.value)} minLength={3} maxLength={200} placeholder="Contoh: SMP Negeri 2 Bajuin" required />
+        </label>
+        <label>Slug sekolah
+          <input value={schoolSlug} onChange={event => setSchoolSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 80))} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" minLength={3} maxLength={80} placeholder="smp-negeri-2-bajuin" required />
+          <small>Dipakai sebagai identitas unik sekolah pada platform.</small>
+        </label>
+        <label>Nama administrator / kontak
+          <input value={contactName} onChange={event => setContactName(event.target.value)} minLength={2} maxLength={200} placeholder="Nama calon administrator" required />
+        </label>
+        <label>Email administrator
+          <input type="email" value={adminEmail} onChange={event => setAdminEmail(event.target.value)} maxLength={320} placeholder="admin@sekolah.sch.id" required />
+        </label>
+        <label>Nomor telepon <span>(opsional)</span>
+          <input type="tel" value={adminPhone} onChange={event => setAdminPhone(event.target.value)} maxLength={40} placeholder="08xxxxxxxxxx" />
+        </label>
+        <div className="platform-create-school-actions">
+          <button className="secondary-button" type="button" onClick={() => setShowCreateSchool(false)} disabled={creatingSchool}>Batal</button>
+          <button className="primary-button" type="submit" disabled={creatingSchool || busy}>
+            <Plus size={16}/>{creatingSchool ? 'Menyimpan...' : 'Buat sekolah & kirim undangan'}
+          </button>
+        </div>
+      </form>}
+      {pendingInviteRequestId && <div className="platform-invite-retry">
+        <div><strong>Sekolah sudah dibuat.</strong><span>Pengiriman undangan belum berhasil. Kamu bisa mencoba kembali.</span></div>
+        <button className="primary-button compact-button" type="button" disabled={busy} onClick={() => void sendSchoolInvitation(pendingInviteRequestId)}><Send size={15}/> Coba kirim undangan lagi</button>
+      </div>}
     </section>
     <section className="platform-admin-grid">
       <article className="panel">
