@@ -176,7 +176,7 @@ export default function PlatformAdminDashboard({ onLogout }: { onLogout: () => v
     setSchoolName(value);
     setSchoolSlug(value
       .normalize('NFD')
-      .replace(/[\\u0300-\\u036f]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
